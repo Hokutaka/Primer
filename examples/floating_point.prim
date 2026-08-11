@@ -1,0 +1,7 @@
+a: f32 = 0.1 + 0.2;
+b: f64 = 0.1 + 0.2;
+c: infer = 0.1 + 0.2;
+
+print(a);
+print(b);
+print(c);
