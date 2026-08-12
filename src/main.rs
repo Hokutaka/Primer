@@ -16,6 +16,7 @@ fn run() -> Result<(), String> {
     };
 
     match command.as_str() {
+        // コードの構文チェック
         "check" => {
             let input = required_path(args.next(), "missing input file")?;
 
@@ -30,6 +31,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
 
+        // C コード生成
         "emit-c" => {
             let input = required_path(args.next(), "missing input file")?;
 
@@ -44,6 +46,7 @@ fn run() -> Result<(), String> {
             write_or_print(output, c)
         }
 
+        // LLVM コード生成
         "emit-llvm" => {
             let input = required_path(args.next(), "missing input file")?;
 
@@ -56,6 +59,21 @@ fn run() -> Result<(), String> {
             let llvm = primer_lang::compile_to_llvm(&source)?;
 
             write_or_print(output, llvm)
+        }
+
+        // WAT コード生成
+        "emit-wat" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            let rest: Vec<String> = args.collect();
+
+            let output = parse_output_option(&rest, "primer emit-wat <file> [-o <output.wat>]")?;
+
+            let source = read_source(&input)?;
+
+            let wat = primer_lang::compile_to_wat(&source)?;
+
+            write_or_print(output, wat)
         }
 
         "--version" | "-V" | "version" => {
