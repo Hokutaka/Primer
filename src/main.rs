@@ -91,6 +91,52 @@ fn run() -> Result<(), String> {
             write_or_print(output, qbe)
         }
 
+        // Direct Assembly コード生成
+        "emit-asm" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            let rest: Vec<String> = args.collect();
+
+            let output = parse_output_option(&rest, "primer emit-asm <file> [-o <output.s>]")?;
+
+            let source = read_source(&input)?;
+
+            let asm = primer_lang::compile_to_x86_64_win_asm(&source)?;
+
+            write_or_print(output, asm)
+        }
+
+        // Primer Bytecode 生成
+        "emit-bytecode" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            let rest: Vec<String> = args.collect();
+
+            let output =
+                parse_output_option(&rest, "primer emit-bytecode <file> [-o <output.pbc>]")?;
+
+            let source = read_source(&input)?;
+
+            let bytecode = primer_lang::compile_to_bytecode_text(&source)?;
+
+            write_or_print(output, bytecode)
+        }
+
+        // Primer VM 実行
+        "run" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            reject_extra(args)?;
+
+            let source = read_source(&input)?;
+
+            let output = primer_lang::run_vm(&source)?;
+
+            print!("{output}");
+
+            Ok(())
+        }
+
         "--version" | "-V" | "version" => {
             println!("primer {}", env!("CARGO_PKG_VERSION"));
 
@@ -154,6 +200,7 @@ fn print_help() {
            primer emit-llvm <file> [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [-o <output.ssa>]\n\
+           primer emit-asm <file> [-o <output.s>]\n\
            primer --version\n",
         env!("CARGO_PKG_VERSION")
     );
