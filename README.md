@@ -6,7 +6,9 @@ Primer is a small experimental programming language designed to keep the path fr
 
 It starts deliberately small. Primer itself performs as little optimization as possible so that each transformation remains visible and comparable.
 
-The same Primer source can currently be lowered to C, LLVM IR, WebAssembly Text, or QBE IR.
+The same Primer source can currently be lowered through several different paths, including C, LLVM IR, WebAssembly Text, QBE IR, direct x86-64 assembly, and Primer bytecode.
+
+Primer bytecode can also be executed by Primer's own small virtual machine.
 
 ## v0.1 scope
 
@@ -26,6 +28,9 @@ Primer currently supports:
 - LLVM IR generation
 - WebAssembly Text generation
 - QBE IR generation
+- direct Windows x86-64 assembly generation
+- Primer bytecode generation
+- Primer VM execution
 
 Example:
 
@@ -68,6 +73,12 @@ From a checkout:
 
 ```sh
 cargo install --path .
+```
+
+When developing Primer itself, reinstall the CLI after changes:
+
+```sh
+cargo install --path . --force
 ```
 
 ## Use
@@ -194,25 +205,25 @@ QBE
 Assembly
 ```
 
-Primer does not choose optimization levels, CPU targets, benchmark settings, external toolchain versions, or execution policy.
+### Emit direct assembly
 
-Those choices belong to the caller.
+Primer can also generate assembly directly without routing through C, LLVM, or QBE.
 
-## Code generation
+To stdout:
 
-Primer currently has four code generation backends:
-
-```text
-                         ┌─ C backend ───────→ C
-                         │
-                         ├─ LLVM backend ────→ LLVM IR
-Primer source ───────────┤
-                         ├─ WAT backend ─────→ WAT
-                         │
-                         └─ QBE backend ─────→ QBE IR
+```sh
+primer emit-asm examples/hello.prim
 ```
 
-All backends share the same front end:
+To a file:
+
+```sh
+primer emit-asm examples/hello.prim -o hello.s
+```
+
+The current direct assembly backend targets Windows x86-64.
+
+This path is intentionally different from the external compiler paths:
 
 ```text
 Primer source
@@ -223,21 +234,123 @@ Parser / AST
     ↓
 Type checking
     ↓
-Code generation
+Direct assembly backend
+    ↓
+x86-64 Assembly
 ```
 
-This makes it possible to compare how the same Primer program is represented through different lowering paths.
+The generated assembly can then be assembled and linked by an external toolchain.
+
+For example:
+
+```sh
+clang hello.s -o hello
+```
+
+### Emit Primer bytecode
+
+Primer has a small typed stack bytecode format.
+
+To stdout:
+
+```sh
+primer emit-bytecode examples/hello.prim
+```
+
+To a file:
+
+```sh
+primer emit-bytecode examples/hello.prim -o hello.pbc
+```
+
+A program may produce bytecode such as:
+
+```text
+0000  push.f32 0.1
+0001  push.f32 0.2
+0002  add.f32
+0003  store 0
+0004  load 0
+0005  print.f32
+0006  halt
+```
+
+Unlike C, LLVM IR, QBE IR, or assembly, this representation is designed for Primer's own VM.
+
+### Run with the Primer VM
+
+Primer source can be compiled to Primer bytecode and executed directly by the Primer VM:
+
+```sh
+primer run examples/hello.prim
+```
+
+The execution path is:
+
+```text
+Primer source
+    ↓
+Lexer
+    ↓
+Parser / AST
+    ↓
+Type checking
+    ↓
+Primer bytecode
+    ↓
+Primer VM
+    ↓
+Output
+```
+
+The VM is deliberately small and observable rather than optimized for performance.
+
+## Code generation and execution paths
+
+All paths share the same front end:
+
+```text
+Primer source
+    ↓
+Lexer
+    ↓
+Parser / AST
+    ↓
+Type checking
+```
+
+From there, the same typed program can take several different routes:
+
+```text
+                         ┌─ C ────────────→ external C compiler
+                         │
+                         ├─ LLVM IR ──────→ LLVM / Clang
+                         │
+                         ├─ QBE IR ───────→ QBE
+Primer source / AST ─────┼─ WAT ──────────→ WebAssembly toolchain
+                         │
+                         ├─ Direct ASM ────→ assembler / linker
+                         │
+                         └─ Bytecode ──────→ Primer VM
+```
+
+This makes it possible to compare how the same Primer program is represented through different lowering and execution paths.
 
 The generated representation and the external toolchain are intentionally separate:
 
 ```text
-                 ┌─ C ─────────→ GCC / Clang ─→ Assembly
-                 │
-                 ├─ LLVM IR ───→ LLVM / Clang ─→ Assembly
-Primer source ───┼─ QBE IR ────→ QBE ─────────→ Assembly
-                 │
-                 └─ WAT ───────→ WebAssembly toolchain
+Primer → C → GCC / Clang → Assembly
+Primer → LLVM IR → LLVM / Clang → Assembly
+Primer → QBE IR → QBE → Assembly
+Primer → WAT → WebAssembly toolchain
+Primer → Direct ASM → assembler / linker
+
+Primer → Bytecode → Primer VM
 ```
+
+Primer does not choose external compiler versions, optimization levels, benchmark settings, or execution environments for the external-toolchain paths.
+
+Those choices belong to the caller.
 
 ## Design direction
 
@@ -251,113 +364,52 @@ The language and compiler should keep important decisions visible:
 - generated LLVM IR
 - generated WAT
 - generated QBE IR
+- generated direct assembly
+- generated Primer bytecode
 - external compiler transformations
-- resulting assembly or executable code
+- Primer VM execution
+- resulting assembly or executable behavior
 
-Primer intentionally avoids hiding native compiler choices inside the language toolchain.
+Primer intentionally keeps source-level optimization minimal.
 
-A typical C path is:
+The goal is not to hide the path from source to execution, but to make that path easy to inspect.
 
-```text
-Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
-    ↓
-C backend
-    ↓
-Generated C
-    ↓
-GCC / Clang
-    ↓
-Assembly / native execution
-```
-
-A direct LLVM path is:
+The same source program can therefore be viewed through very different representations:
 
 ```text
 Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
-    ↓
-LLVM backend
-    ↓
-LLVM IR
-    ↓
-LLVM / Clang
-    ↓
-Assembly / native execution
+    │
+    ├─ C
+    ├─ LLVM IR
+    ├─ WAT
+    ├─ QBE IR
+    ├─ Direct Assembly
+    └─ Primer Bytecode
 ```
 
-A QBE path is:
-
-```text
-Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
-    ↓
-QBE backend
-    ↓
-QBE IR
-    ↓
-QBE
-    ↓
-Assembly / native execution
-```
-
-A WebAssembly path is:
-
-```text
-Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
-    ↓
-WAT backend
-    ↓
-WebAssembly Text
-    ↓
-WebAssembly toolchain / runtime
-```
+Each path exposes a different layer of the compilation process.
 
 ## Future experiments
 
-Primer is intentionally small enough that adding another lowering path can itself be part of the experiment.
+Primer is intentionally small enough that adding another lowering or execution path can itself be part of the experiment.
 
-Possible future paths include:
+Possible future work includes:
 
-```text
-                         ┌─ C ─────────────→ native compiler
-                         ├─ LLVM IR ───────→ LLVM
-Primer source ───────────┼─ QBE IR ────────→ QBE
-                         ├─ WAT ───────────→ WebAssembly
-                         ├─ Direct Assembly
-                         └─ Primer bytecode → Primer VM
-```
+- lowering WAT to binary WebAssembly as an explicitly observable external step
+- additional direct assembly targets
+- further bytecode and VM experiments
+- making more semantic information explicit between type checking and code generation
+- improving source diagnostics and source locations
 
-A direct Assembly backend would make it possible to compare assembly produced through external compiler backends with assembly generated directly by Primer.
-
-A small Primer VM would provide a different execution path entirely.
+The important constraint remains the same: new machinery should make transformations easier to observe rather than hiding them.
 
 ## Tint
 
 [Tint](https://github.com/Hokutaka/Tint) is a small visual development environment for Primer.
 
-It provides a lightweight source editor and a way to inspect Primer's generated representations without embedding the compiler implementation into the application.
+It provides a lightweight source editor and a way to inspect Primer's generated representations and execution paths without embedding the compiler implementation into the application.
+
+Tint can currently display:
 
 ```text
 Primer source
@@ -366,9 +418,27 @@ Primer source
    Tint*
      │
      ├─ C
+     ├─ C ASM
      ├─ LLVM IR
+     ├─ LLVM ASM
      ├─ WAT
-     └─ QBE IR
+     ├─ QBE IR
+     ├─ QBE ASM
+     ├─ Direct ASM
+     ├─ Bytecode
+     └─ VM Output
+```
+
+Some views are produced directly by Primer, while others intentionally show an external transformation.
+
+For example:
+
+```text
+Primer → C → Clang → C ASM
+Primer → LLVM IR → Clang → LLVM ASM
+Primer → QBE IR → QBE → QBE ASM
+Primer → Direct ASM
+Primer → Bytecode → Primer VM → VM Output
 ```
 
 Primer remains the language toolchain.
@@ -379,7 +449,7 @@ Tint is a window into it.
 
 [Whitebase](https://github.com/Hokutaka/Whitebase) is expected to be one consumer of Primer, not Primer's host repository or runtime.
 
-Primer exposes observable intermediate representations; Whitebase can choose how those representations are compiled, measured, compared, and visualized.
+Primer exposes observable intermediate representations and execution paths; Whitebase can choose how those representations are compiled, measured, compared, and visualized.
 
 For example, the same Primer source can be compared through paths such as:
 
@@ -389,6 +459,8 @@ Primer → C → Clang
 Primer → LLVM IR → LLVM
 Primer → QBE IR → QBE
 Primer → WAT → WebAssembly
+Primer → Direct ASM
+Primer → Bytecode → Primer VM
 ```
 
 with compiler versions, optimization flags, generated assembly, execution results, and measurements recorded independently.
