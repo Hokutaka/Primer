@@ -403,13 +403,13 @@ Possible future work includes:
 
 The important constraint remains the same: new machinery should make transformations easier to observe rather than hiding them.
 
-## Tint
+## Tint\*
 
-[Tint](https://github.com/Hokutaka/Tint) is a small visual development environment for Primer.
+[Tint\*](https://github.com/Hokutaka/Tint-St.) is a small visual development environment for Primer.
 
 It provides a lightweight source editor and a way to inspect Primer's generated representations and execution paths without embedding the compiler implementation into the application.
 
-Tint can currently display:
+Tint\* can currently display:
 
 ```text
 Primer source
@@ -443,7 +443,7 @@ Primer → Bytecode → Primer VM → VM Output
 
 Primer remains the language toolchain.
 
-Tint is a window into it.
+Tint* is a window into it.
 
 ## Whitebase
 
