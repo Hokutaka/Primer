@@ -1,0 +1,18 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %tmp0 =s add s_0.1, s_0.2
+  %primer_a =s copy %tmp0
+  %tmp1 =d add d_0.1, d_0.2
+  %primer_b =d copy %tmp1
+  %tmp2 =d add d_0.1, d_0.2
+  %primer_c =d copy %tmp2
+  %tmp3 =d exts %primer_a
+  %tmp4 =w call $printf(l $fmt_f32, ..., d %tmp3)
+  %tmp5 =w call $printf(l $fmt_f64, ..., d %primer_b)
+  %tmp6 =w call $printf(l $fmt_f64, ..., d %primer_c)
+  ret 0
+}

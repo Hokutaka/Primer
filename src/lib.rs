@@ -44,3 +44,14 @@ pub fn compile_to_wat(source: &str) -> Result<String, String> {
 
     Ok(codegen::emit_wat(&program, &bindings))
 }
+
+// QBE コンパイラ
+pub fn compile_to_qbe(source: &str) -> Result<String, String> {
+    let tokens = lexer::lex(source)?;
+
+    let program = parser::parse(tokens)?;
+
+    let bindings = semantic::check(&program)?;
+
+    Ok(codegen::emit_qbe(&program, &bindings))
+}

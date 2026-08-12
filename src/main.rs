@@ -76,6 +76,21 @@ fn run() -> Result<(), String> {
             write_or_print(output, wat)
         }
 
+        // QBE コード生成
+        "emit-qbe" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            let rest: Vec<String> = args.collect();
+
+            let output = parse_output_option(&rest, "primer emit-qbe <file> [-o <output.ssa>]")?;
+
+            let source = read_source(&input)?;
+
+            let qbe = primer_lang::compile_to_qbe(&source)?;
+
+            write_or_print(output, qbe)
+        }
+
         "--version" | "-V" | "version" => {
             println!("primer {}", env!("CARGO_PKG_VERSION"));
 
@@ -137,6 +152,8 @@ fn print_help() {
            primer check <file>\n\
            primer emit-c <file> [-o <output.c>]\n\
            primer emit-llvm <file> [-o <output.ll>]\n\
+           primer emit-wat <file> [-o <output.wat>]\n\
+           primer emit-qbe <file> [-o <output.ssa>]\n\
            primer --version\n",
         env!("CARGO_PKG_VERSION")
     );
