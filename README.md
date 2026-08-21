@@ -2,35 +2,98 @@
 
 [![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
 
-Primer is a small experimental programming language designed to keep the path from source code to generated code observable.
+Primer is a small experimental programming language designed to make compiler transformations observable.
 
-It starts deliberately small. Primer itself performs as little optimization as possible so that each transformation remains visible and comparable.
-
-The same Primer source can currently be lowered through several different paths, including C, LLVM IR, WebAssembly Text, QBE IR, direct x86-64 assembly, and Primer bytecode.
+The language is deliberately small, and the compiler keeps its transformation boundaries explicit. The same resolved Primer program can be lowered through C, LLVM IR, QBE IR, WebAssembly Text, direct Windows x86-64 assembly, or Primer bytecode.
 
 Primer bytecode can also be executed by Primer's own small virtual machine.
+
+## Compiler architecture
+
+All backends share the same frontend and the same typed, backend-independent Primer IR:
+
+```text
+Primer Source
+      ↓
+Lexer / Parser
+      ↓
+AST
+      ↓
+Primer IR Builder
+  - semantic validation
+  - type resolution
+  - contextual float resolution
+      ↓
+Primer IR
+      │
+      ├── emit-ir / .pir
+      │
+      ↓
+Backend Lowering
+      ↓
+Backend-specific Rust IR
+      ↓
+Emitter
+      ↓
+Backend Artifact
+```
+
+The important boundary is Primer IR.
+
+The frontend decides what the source program means. Each backend then lowers that resolved meaning into its own internal Rust representation before emitting text or bytecode.
+
+Primer's backend emitters do not reinterpret the AST or repeat semantic/type resolution.
+
+For the detailed architecture and invariants, see [docs/design.md](docs/design.md).
+
+## Observation points
+
+Primer exposes two primary observation boundaries.
+
+**Observation 1: resolved Primer meaning**
+
+```sh
+primer emit-ir examples/hello.prim
+primer emit-ir examples/hello.prim -o hello.pir
+```
+
+Primer IR is produced after semantic and type resolution and before backend-specific lowering.
+
+**Observation 2: backend artifact**
+
+```text
+emit-c         → .c
+emit-llvm      → .ll
+emit-qbe       → .ssa
+emit-wat       → .wat
+emit-asm       → .s
+emit-bytecode  → .pbc
+```
+
+The existing `emit-*` commands are the observation surface. Backend-specific Rust IR remains an internal lowering boundary.
 
 ## v0.1 scope
 
 Primer currently supports:
 
-- static typing
-- `i64`, `f32`, and `f64`
-- explicit type declarations
-- explicit type inference with `infer`
-- immutable bindings
-- `+`, `-`, `*`, `/`
-- unary `-`
-- parentheses
-- `print(expr);`
-- `//` line comments
-- C code generation
-- LLVM IR generation
-- WebAssembly Text generation
-- QBE IR generation
-- direct Windows x86-64 assembly generation
-- Primer bytecode generation
-- Primer VM execution
+- static typing;
+- `i64`, `f32`, and `f64`;
+- explicit type declarations;
+- explicit type inference with `infer`;
+- immutable bindings;
+- `+`, `-`, `*`, `/`;
+- unary `-`;
+- parentheses;
+- `print(expr);`;
+- `//` line comments;
+- Primer IR emission;
+- C code generation;
+- LLVM IR generation;
+- QBE IR generation;
+- WebAssembly Text generation;
+- direct Windows x86-64 assembly generation;
+- Primer bytecode generation;
+- Primer VM execution.
 
 Example:
 
@@ -48,9 +111,7 @@ print(double);
 print(inferred);
 ```
 
-The type field is always required.
-
-`infer` explicitly requests type inference rather than omitting the type:
+The type field is always required. `infer` explicitly requests inference rather than omitting the type:
 
 ```primer
 x: infer = 1 + 2;
@@ -63,7 +124,7 @@ a: f32 = 0.1 + 0.2;
 b: f64 = 0.1 + 0.2;
 ```
 
-These can produce different generated representations while preserving the source-level type intent.
+That decision is resolved in Primer IR before backend lowering.
 
 Primer currently performs no implicit numeric conversion between `i64`, `f32`, and `f64`.
 
@@ -81,388 +142,123 @@ When developing Primer itself, reinstall the CLI after changes:
 cargo install --path . --force
 ```
 
-## Use
+## CLI
 
-Validate a program:
+Validate a source file:
 
 ```sh
 primer check examples/hello.prim
 ```
 
-### Emit C
-
-To stdout:
+Emit resolved Primer IR:
 
 ```sh
-primer emit-c examples/hello.prim
+primer emit-ir examples/hello.prim
+primer emit-ir examples/hello.prim -o hello.pir
 ```
 
-To a file:
+Emit backend artifacts:
 
 ```sh
 primer emit-c examples/hello.prim -o hello.c
-```
-
-Example source:
-
-```primer
-a: f32 = 0.1 + 0.2;
-```
-
-can emit straightforward C such as:
-
-```c
-float primer_a = (0.1f + 0.2f);
-```
-
-The caller can then choose the C compiler and optimization level:
-
-```sh
-cc -O0 hello.c -o hello-o0
-cc -O2 hello.c -o hello-o2
-cc -O3 hello.c -o hello-o3
-```
-
-### Emit LLVM IR
-
-To stdout:
-
-```sh
-primer emit-llvm examples/hello.prim
-```
-
-To a file:
-
-```sh
 primer emit-llvm examples/hello.prim -o hello.ll
-```
-
-The same Primer expression may become LLVM IR such as:
-
-```llvm
-%tmp0 = fadd float ...
-```
-
-The generated IR can then be inspected, optimized, or compiled with external LLVM tools.
-
-For example:
-
-```sh
-clang hello.ll -o hello
-```
-
-### Emit WebAssembly Text
-
-To stdout:
-
-```sh
-primer emit-wat examples/hello.prim
-```
-
-To a file:
-
-```sh
-primer emit-wat examples/hello.prim -o hello.wat
-```
-
-The generated WAT can be inspected directly or passed to an external WebAssembly toolchain.
-
-This provides another lowering path while keeping the generated representation readable.
-
-### Emit QBE IR
-
-To stdout:
-
-```sh
-primer emit-qbe examples/hello.prim
-```
-
-To a file:
-
-```sh
 primer emit-qbe examples/hello.prim -o hello.ssa
-```
-
-Primer stops at QBE IR.
-
-The external QBE compiler can then lower that IR to native assembly:
-
-```sh
-qbe -o hello.s hello.ssa
-```
-
-This keeps the two stages separate and observable:
-
-```text
-Primer source
-    ↓
-Primer QBE backend
-    ↓
-QBE IR
-    ↓
-QBE
-    ↓
-Assembly
-```
-
-### Emit direct assembly
-
-Primer can also generate assembly directly without routing through C, LLVM, or QBE.
-
-To stdout:
-
-```sh
-primer emit-asm examples/hello.prim
-```
-
-To a file:
-
-```sh
+primer emit-wat examples/hello.prim -o hello.wat
 primer emit-asm examples/hello.prim -o hello.s
-```
-
-The current direct assembly backend targets Windows x86-64.
-
-This path is intentionally different from the external compiler paths:
-
-```text
-Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
-    ↓
-Direct assembly backend
-    ↓
-x86-64 Assembly
-```
-
-The generated assembly can then be assembled and linked by an external toolchain.
-
-For example:
-
-```sh
-clang hello.s -o hello
-```
-
-### Emit Primer bytecode
-
-Primer has a small typed stack bytecode format.
-
-To stdout:
-
-```sh
-primer emit-bytecode examples/hello.prim
-```
-
-To a file:
-
-```sh
 primer emit-bytecode examples/hello.prim -o hello.pbc
 ```
 
-A program may produce bytecode such as:
-
-```text
-0000  push.f32 0.1
-0001  push.f32 0.2
-0002  add.f32
-0003  store 0
-0004  load 0
-0005  print.f32
-0006  halt
-```
-
-Unlike C, LLVM IR, QBE IR, or assembly, this representation is designed for Primer's own VM.
-
-### Run with the Primer VM
-
-Primer source can be compiled to Primer bytecode and executed directly by the Primer VM:
+Run through Primer bytecode and the Primer VM:
 
 ```sh
 primer run examples/hello.prim
 ```
 
-The execution path is:
+Without `-o`, emit commands write to standard output.
+
+## Backend paths
+
+Each backend follows the same architectural shape:
 
 ```text
-Primer source
+Primer IR
     ↓
-Lexer
+backend::lower()
     ↓
-Parser / AST
+Backend-specific Rust IR
     ↓
-Type checking
+backend::emit()
     ↓
-Primer bytecode
-    ↓
-Primer VM
-    ↓
-Output
+Artifact
 ```
 
-The VM is deliberately small and observable rather than optimized for performance.
+The current routes are:
 
-## Code generation and execution paths
+| Backend | Artifact | Typical next step |
+| --- | --- | --- |
+| C | `.c` | GCC / Clang |
+| LLVM | `.ll` | LLVM / Clang |
+| QBE | `.ssa` | QBE |
+| WebAssembly | `.wat` | WebAssembly toolchain |
+| Direct x86-64 Windows assembly | `.s` | assembler / linker |
+| Primer bytecode | `.pbc` | Primer VM |
 
-All paths share the same front end:
+For example:
 
 ```text
-Primer source
-    ↓
-Lexer
-    ↓
-Parser / AST
-    ↓
-Type checking
+Primer Source
+      ↓
+Primer IR
+      ├──→ C IR        → .c   → GCC / Clang
+      ├──→ LLVM IR     → .ll  → LLVM / Clang
+      ├──→ QBE IR      → .ssa → QBE
+      ├──→ WAT IR      → .wat → WebAssembly toolchain
+      ├──→ ASM IR      → .s   → assembler / linker
+      └──→ Bytecode IR → .pbc → Primer VM
 ```
 
-From there, the same typed program can take several different routes:
-
-```text
-                         ┌─ C ────────────→ external C compiler
-                         │
-                         ├─ LLVM IR ──────→ LLVM / Clang
-                         │
-                         ├─ QBE IR ───────→ QBE
-Primer source / AST ─────┼─ WAT ──────────→ WebAssembly toolchain
-                         │
-                         ├─ Direct ASM ────→ assembler / linker
-                         │
-                         └─ Bytecode ──────→ Primer VM
-```
-
-This makes it possible to compare how the same Primer program is represented through different lowering and execution paths.
-
-The generated representation and the external toolchain are intentionally separate:
-
-```text
-Primer → C → GCC / Clang → Assembly
-Primer → LLVM IR → LLVM / Clang → Assembly
-Primer → QBE IR → QBE → Assembly
-Primer → WAT → WebAssembly toolchain
-Primer → Direct ASM → assembler / linker
-
-Primer → Bytecode → Primer VM
-```
-
-Primer does not choose external compiler versions, optimization levels, benchmark settings, or execution environments for the external-toolchain paths.
-
-Those choices belong to the caller.
+Primer owns the transformation up to the emitted artifact. External compiler versions, optimization levels, CPU targets, benchmark settings, and measurement policy belong to the caller.
 
 ## Design direction
 
 Primer should preserve observability over cleverness.
 
-The language and compiler should keep important decisions visible:
+In practice, that means:
 
-- source-level types
-- inferred types
-- generated C
-- generated LLVM IR
-- generated WAT
-- generated QBE IR
-- generated direct assembly
-- generated Primer bytecode
-- external compiler transformations
-- Primer VM execution
-- resulting assembly or executable behavior
+- frontend type decisions are resolved before backend lowering;
+- backend decisions stay behind explicit lowering boundaries;
+- emitters format backend IR instead of reinterpreting Primer semantics;
+- source-level optimization stays minimal unless an explicit optimization pass is introduced;
+- generated observations should avoid incidental nondeterminism where practical.
 
-Primer intentionally keeps source-level optimization minimal.
-
-The goal is not to hide the path from source to execution, but to make that path easy to inspect.
-
-The same source program can therefore be viewed through very different representations:
-
-```text
-Primer source
-    │
-    ├─ C
-    ├─ LLVM IR
-    ├─ WAT
-    ├─ QBE IR
-    ├─ Direct Assembly
-    └─ Primer Bytecode
-```
-
-Each path exposes a different layer of the compilation process.
-
-## Future experiments
-
-Primer is intentionally small enough that adding another lowering or execution path can itself be part of the experiment.
-
-Possible future work includes:
-
-- lowering WAT to binary WebAssembly as an explicitly observable external step
-- additional direct assembly targets
-- further bytecode and VM experiments
-- making more semantic information explicit between type checking and code generation
-- improving source diagnostics and source locations
-
-The important constraint remains the same: new machinery should make transformations easier to observe rather than hiding them.
+The goal is not merely to generate code. It is to keep the route from source meaning to target representation inspectable.
 
 ## Tint\*
 
-[Tint\*](https://github.com/Hokutaka/Tint-St.) is a small visual development environment for Primer.
+[Tint\*](https://github.com/Hokutaka/Tint-St.) is a visual development and inspection environment for Primer.
 
-It provides a lightweight source editor and a way to inspect Primer's generated representations and execution paths without embedding the compiler implementation into the application.
+Tint* consumes Primer's public CLI output and presents source and generated representations side by side. It may also invoke external tools to show downstream views such as C-generated assembly, LLVM-generated assembly, or QBE-generated assembly.
 
-Tint\* can currently display:
-
-```text
-Primer source
-     │
-     ▼
-   Tint*
-     │
-     ├─ C
-     ├─ C ASM
-     ├─ LLVM IR
-     ├─ LLVM ASM
-     ├─ WAT
-     ├─ QBE IR
-     ├─ QBE ASM
-     ├─ Direct ASM
-     ├─ Bytecode
-     └─ VM Output
-```
-
-Some views are produced directly by Primer, while others intentionally show an external transformation.
-
-For example:
-
-```text
-Primer → C → Clang → C ASM
-Primer → LLVM IR → Clang → LLVM ASM
-Primer → QBE IR → QBE → QBE ASM
-Primer → Direct ASM
-Primer → Bytecode → Primer VM → VM Output
-```
-
-Primer remains the language toolchain.
-
-Tint* is a window into it.
+Primer remains the language toolchain. Tint* is a window into it.
 
 ## Whitebase
 
-[Whitebase](https://github.com/Hokutaka/Whitebase) is expected to be one consumer of Primer, not Primer's host repository or runtime.
+[Whitebase](https://github.com/Hokutaka/Whitebase) is an external consumer of Primer artifacts.
 
-Primer exposes observable intermediate representations and execution paths; Whitebase can choose how those representations are compiled, measured, compared, and visualized.
-
-For example, the same Primer source can be compared through paths such as:
+Primer is responsible for:
 
 ```text
-Primer → C → GCC
-Primer → C → Clang
-Primer → LLVM IR → LLVM
-Primer → QBE IR → QBE
-Primer → WAT → WebAssembly
-Primer → Direct ASM
-Primer → Bytecode → Primer VM
+Transform → Lower → Emit → Observe
 ```
 
-with compiler versions, optimization flags, generated assembly, execution results, and measurements recorded independently.
+Whitebase can take those artifacts and:
 
-For more detailed language semantics and grammar, see `docs/design.md`.
+```text
+Route → Build → Run → Measure → Compare
+```
+
+This keeps compiler semantics inside Primer while leaving toolchain selection, benchmarking, and comparison policy outside it.
+
+## Documentation
+
+For detailed language semantics, compiler architecture, observation boundaries, and future design constraints, see [docs/design.md](docs/design.md).
