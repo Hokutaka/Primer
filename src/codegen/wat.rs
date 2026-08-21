@@ -1,173 +1,55 @@
-use std::fmt::Write;
+mod emit;
+pub mod ir;
+mod lower;
 
-use crate::ir::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
+pub use emit::emit;
+pub use lower::lower;
 
-pub fn emit_wat(program: &Program) -> String {
-    let mut output = String::new();
+use crate::ir as primer_ir;
 
-    writeln!(output, "(module").unwrap();
+pub fn emit_wat(program: &primer_ir::Program) -> String {
+    let module = lower(program);
 
-    // print() is provided by the host.
-    writeln!(
-        output,
-        "  (import \"primer\" \"print_i64\" (func $print_i64 (param i64)))"
-    )
-    .unwrap();
-
-    writeln!(
-        output,
-        "  (import \"primer\" \"print_f32\" (func $print_f32 (param f32)))"
-    )
-    .unwrap();
-
-    writeln!(
-        output,
-        "  (import \"primer\" \"print_f64\" (func $print_f64 (param f64)))"
-    )
-    .unwrap();
-
-    writeln!(output).unwrap();
-
-    writeln!(output, "  (func $main").unwrap();
-
-    // WebAssembly locals must be declared as part of the function,
-    // so declare all Primer bindings first.
-    for statement in &program.statements {
-        if let Statement::Binding { name, ty, .. } = statement {
-            writeln!(output, "    (local $primer_{} {})", name, wat_type(*ty),).unwrap();
-        }
-    }
-
-    if program
-        .statements
-        .iter()
-        .any(|statement| matches!(statement, Statement::Binding { .. }))
-    {
-        writeln!(output).unwrap();
-    }
-
-    for statement in &program.statements {
-        emit_statement(statement, &mut output);
-    }
-
-    writeln!(output, "  )").unwrap();
-
-    writeln!(output, "  (export \"main\" (func $main))").unwrap();
-
-    writeln!(output, ")").unwrap();
-
-    output
-}
-
-fn emit_statement(statement: &Statement, output: &mut String) {
-    match statement {
-        Statement::Binding { name, value, .. } => {
-            emit_expr(value, output);
-
-            writeln!(output, "    local.set $primer_{name}").unwrap();
-        }
-
-        Statement::Print { value } => {
-            emit_expr(value, output);
-
-            let print_function = match value.ty {
-                Type::I64 => "$print_i64",
-                Type::F32 => "$print_f32",
-                Type::F64 => "$print_f64",
-            };
-
-            writeln!(output, "    call {print_function}").unwrap();
-        }
-    }
-}
-
-fn emit_expr(expr: &Expr, output: &mut String) {
-    match &expr.kind {
-        ExprKind::Integer(value) => {
-            writeln!(output, "    i64.const {value}").unwrap();
-        }
-
-        ExprKind::Float { text } => {
-            writeln!(output, "    {}.const {}", wat_type(expr.ty), text,).unwrap();
-        }
-
-        ExprKind::Variable(name) => {
-            writeln!(output, "    local.get $primer_{name}").unwrap();
-        }
-
-        ExprKind::Unary { op, value } => match (*op, expr.ty) {
-            (UnaryOp::Negate, Type::I64) => {
-                writeln!(output, "    i64.const 0").unwrap();
-
-                emit_expr(value, output);
-
-                writeln!(output, "    i64.sub").unwrap();
-            }
-
-            (UnaryOp::Negate, Type::F32) => {
-                emit_expr(value, output);
-
-                writeln!(output, "    f32.neg").unwrap();
-            }
-
-            (UnaryOp::Negate, Type::F64) => {
-                emit_expr(value, output);
-
-                writeln!(output, "    f64.neg").unwrap();
-            }
-        },
-
-        ExprKind::Binary { op, left, right } => {
-            emit_expr(left, output);
-
-            emit_expr(right, output);
-
-            writeln!(output, "    {}", wat_binary_instruction(*op, expr.ty),).unwrap();
-        }
-    }
-}
-
-fn wat_type(ty: Type) -> &'static str {
-    match ty {
-        Type::I64 => "i64",
-        Type::F32 => "f32",
-        Type::F64 => "f64",
-    }
-}
-
-fn wat_binary_instruction(op: BinaryOp, ty: Type) -> &'static str {
-    match (op, ty) {
-        (BinaryOp::Add, Type::I64) => "i64.add",
-
-        (BinaryOp::Subtract, Type::I64) => "i64.sub",
-
-        (BinaryOp::Multiply, Type::I64) => "i64.mul",
-
-        (BinaryOp::Divide, Type::I64) => "i64.div_s",
-
-        (BinaryOp::Add, Type::F32) => "f32.add",
-
-        (BinaryOp::Subtract, Type::F32) => "f32.sub",
-
-        (BinaryOp::Multiply, Type::F32) => "f32.mul",
-
-        (BinaryOp::Divide, Type::F32) => "f32.div",
-
-        (BinaryOp::Add, Type::F64) => "f64.add",
-
-        (BinaryOp::Subtract, Type::F64) => "f64.sub",
-
-        (BinaryOp::Multiply, Type::F64) => "f64.mul",
-
-        (BinaryOp::Divide, Type::F64) => "f64.div",
-    }
+    emit(&module)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::compile_to_ir;
 
-    use super::emit_wat;
+    use super::{
+        emit_wat,
+        ir::{Instruction, Type},
+        lower,
+    };
+
+    #[test]
+    fn lowers_i64_negation_to_stack_instructions() {
+        let program = compile_to_ir("x: i64 = -1;").unwrap();
+        let module = lower(&program);
+
+        assert!(module.instructions.windows(3).any(|instructions| {
+            matches!(
+                instructions,
+                [
+                    Instruction::I64Const(0),
+                    Instruction::I64Const(1),
+                    Instruction::I64Sub
+                ]
+            )
+        }));
+    }
+
+    #[test]
+    fn lowers_print_type() {
+        let program = compile_to_ir("print(1);").unwrap();
+        let module = lower(&program);
+
+        assert!(matches!(
+            module.instructions.last(),
+            Some(Instruction::CallPrint(Type::I64))
+        ));
+    }
 
     #[test]
     fn emits_i64_add() {
