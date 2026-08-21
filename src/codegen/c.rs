@@ -1,7 +1,6 @@
-use crate::ast::{BinaryOp, Expr, Program, Stmt, Type, UnaryOp};
-use crate::semantic::{Bindings, type_of_expr};
+use crate::ir::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
 
-pub fn emit_c(program: &Program, bindings: &Bindings) -> String {
+pub fn emit_c(program: &Program) -> String {
     let mut output = String::new();
 
     output.push_str("#include <stdint.h>\n");
@@ -10,28 +9,20 @@ pub fn emit_c(program: &Program, bindings: &Bindings) -> String {
 
     for statement in &program.statements {
         match statement {
-            Stmt::Binding { name, value, .. } => {
-                let ty = bindings
-                    .get(name)
-                    .copied()
-                    .expect("binding must have been resolved by type checker");
-
+            Statement::Binding { name, ty, value } => {
                 output.push_str("    ");
-                output.push_str(c_type(ty));
+                output.push_str(c_type(*ty));
                 output.push_str(" primer_");
                 output.push_str(name);
                 output.push_str(" = ");
 
-                // 左辺の型を右辺へ渡す
-                emit_expr(value, Some(ty), &mut output);
+                emit_expr(value, &mut output);
 
                 output.push_str(";\n");
             }
 
-            Stmt::Print { value } => {
-                let ty = type_of_expr(value, bindings).expect("expression must have been checked");
-
-                emit_print(value, ty, &mut output);
+            Statement::Print { value } => {
+                emit_print(value, &mut output);
             }
         }
     }
@@ -50,12 +41,12 @@ fn c_type(ty: Type) -> &'static str {
     }
 }
 
-fn emit_print(expr: &Expr, ty: Type, output: &mut String) {
-    match ty {
+fn emit_print(expr: &Expr, output: &mut String) {
+    match expr.ty {
         Type::I64 => {
             output.push_str("    printf(\"%lld\\n\", (long long)(");
 
-            emit_expr(expr, Some(Type::I64), output);
+            emit_expr(expr, output);
 
             output.push_str("));\n");
         }
@@ -63,7 +54,7 @@ fn emit_print(expr: &Expr, ty: Type, output: &mut String) {
         Type::F32 => {
             output.push_str("    printf(\"%.9g\\n\", (double)(");
 
-            emit_expr(expr, Some(Type::F32), output);
+            emit_expr(expr, output);
 
             output.push_str("));\n");
         }
@@ -71,45 +62,33 @@ fn emit_print(expr: &Expr, ty: Type, output: &mut String) {
         Type::F64 => {
             output.push_str("    printf(\"%.17g\\n\", (double)(");
 
-            emit_expr(expr, Some(Type::F64), output);
+            emit_expr(expr, output);
 
             output.push_str("));\n");
         }
     }
 }
 
-fn emit_expr(expr: &Expr, expected: Option<Type>, output: &mut String) {
-    match expr {
-        Expr::Integer(value) => {
+fn emit_expr(expr: &Expr, output: &mut String) {
+    match &expr.kind {
+        ExprKind::Integer(value) => {
             output.push_str(&value.to_string());
         }
 
-        Expr::Float {
-            text,
-            explicit_type,
-        } => {
+        ExprKind::Float { text } => {
             output.push_str(text);
 
-            let ty = match explicit_type {
-                Some(ty) => *ty,
-
-                None => match expected {
-                    Some(Type::F32) => Type::F32,
-                    _ => Type::F64,
-                },
-            };
-
-            if ty == Type::F32 {
+            if expr.ty == Type::F32 {
                 output.push('f');
             }
         }
 
-        Expr::Variable(name) => {
+        ExprKind::Variable(name) => {
             output.push_str("primer_");
             output.push_str(name);
         }
 
-        Expr::Unary { op, value } => {
+        ExprKind::Unary { op, value } => {
             output.push('(');
 
             match op {
@@ -118,15 +97,15 @@ fn emit_expr(expr: &Expr, expected: Option<Type>, output: &mut String) {
                 }
             }
 
-            emit_expr(value, expected, output);
+            emit_expr(value, output);
 
             output.push(')');
         }
 
-        Expr::Binary { op, left, right } => {
+        ExprKind::Binary { op, left, right } => {
             output.push('(');
 
-            emit_expr(left, expected, output);
+            emit_expr(left, output);
 
             output.push(' ');
 
@@ -139,7 +118,7 @@ fn emit_expr(expr: &Expr, expected: Option<Type>, output: &mut String) {
 
             output.push(' ');
 
-            emit_expr(right, expected, output);
+            emit_expr(right, output);
 
             output.push(')');
         }
@@ -148,54 +127,45 @@ fn emit_expr(expr: &Expr, expected: Option<Type>, output: &mut String) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex, parser::parse, semantic::check};
+    use crate::compile_to_ir;
 
     use super::emit_c;
 
     #[test]
     fn emits_contextual_f32_literals() {
-        let program = parse(
-            lex("x: f32 = 0.1 + 0.2;
-                 print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: f32 = 0.1 + 0.2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let c = emit_c(&program, &bindings);
+        let c = emit_c(&program);
 
         assert!(c.contains("float primer_x = (0.1f + 0.2f);"));
     }
 
     #[test]
     fn emits_contextual_f64_literals() {
-        let program = parse(
-            lex("x: f64 = 0.1 + 0.2;
-                 print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: f64 = 0.1 + 0.2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let c = emit_c(&program, &bindings);
+        let c = emit_c(&program);
 
         assert!(c.contains("double primer_x = (0.1 + 0.2);"));
     }
 
     #[test]
     fn inferred_float_defaults_to_f64() {
-        let program = parse(
-            lex("x: infer = 0.1 + 0.2;
-                 print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: infer = 0.1 + 0.2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let c = emit_c(&program, &bindings);
+        let c = emit_c(&program);
 
         assert!(c.contains("double primer_x = (0.1 + 0.2);"));
     }

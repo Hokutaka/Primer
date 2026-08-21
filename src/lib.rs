@@ -33,12 +33,9 @@ pub fn compile_to_ir_text(source: &str) -> Result<String, String> {
 
 // C コンパイラ
 pub fn compile_to_c(source: &str) -> Result<String, String> {
-    let tokens = lexer::lex(source)?;
-    let program = parser::parse(tokens)?;
+    let program = compile_to_ir(source)?;
 
-    let bindings = semantic::check(&program)?;
-
-    Ok(codegen::emit_c(&program, &bindings))
+    Ok(codegen::emit_c(&program))
 }
 
 // LLVM コンパイラ
