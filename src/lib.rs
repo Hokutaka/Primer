@@ -43,12 +43,9 @@ pub fn compile_to_c(source: &str) -> Result<String, String> {
 
 // LLVM コンパイラ
 pub fn compile_to_llvm(source: &str) -> Result<String, String> {
-    let tokens = lexer::lex(source)?;
-    let program = parser::parse(tokens)?;
+    let program = compile_to_ir(source)?;
 
-    let bindings = semantic::check(&program)?;
-
-    Ok(codegen::emit_llvm(&program, &bindings))
+    Ok(codegen::emit_llvm(&program))
 }
 
 // Wasm コンパイラ
