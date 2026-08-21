@@ -1,7 +1,4 @@
-use crate::{
-    ast::Type,
-    bytecode::{BytecodeProgram, Instruction},
-};
+use crate::bytecode::{BytecodeProgram, Instruction, Type};
 
 #[derive(Debug, Clone)]
 enum Value {
@@ -268,24 +265,16 @@ fn trim_decimal(mut text: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytecode, lexer::lex, parser::parse, semantic::check};
+    use crate::{bytecode, compile_to_ir};
 
     use super::run;
 
     #[test]
     fn executes_floating_point_program() {
-        let program = parse(
-            lex("a: f32 = 0.1 + 0.2;
-                 b: f64 = 0.1 + 0.2;
-                 print(a);
-                 print(b);")
-            .unwrap(),
-        )
-        .unwrap();
+        let program =
+            compile_to_ir("a: f32 = 0.1 + 0.2; b: f64 = 0.1 + 0.2; print(a); print(b);").unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let bytecode = bytecode::compile(&program, &bindings);
+        let bytecode = bytecode::lower(&program);
 
         let output = run(&bytecode).unwrap();
 
