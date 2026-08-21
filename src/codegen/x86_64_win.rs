@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, Expr, Program, Stmt, Type, UnaryOp};
-use crate::semantic::{Bindings, type_of_expr};
+use crate::ir::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
 
-pub fn emit_x86_64_win_asm(program: &Program, bindings: &Bindings) -> String {
+pub fn emit_x86_64_win_asm(program: &Program) -> String {
     let binding_slots = assign_binding_slots(program);
 
     // 少し多めにscratch領域を確保。
@@ -21,7 +20,6 @@ pub fn emit_x86_64_win_asm(program: &Program, bindings: &Bindings) -> String {
         data: initial_data(),
         text: String::new(),
 
-        bindings,
         binding_slots,
 
         scratch_base,
@@ -35,11 +33,9 @@ pub fn emit_x86_64_win_asm(program: &Program, bindings: &Bindings) -> String {
     format!("{}{}", generator.data, generator.text,)
 }
 
-struct Generator<'a> {
+struct Generator {
     data: String,
     text: String,
-
-    bindings: &'a Bindings,
 
     binding_slots: HashMap<String, usize>,
 
@@ -49,7 +45,7 @@ struct Generator<'a> {
     frame_size: usize,
 }
 
-impl Generator<'_> {
+impl Generator {
     fn emit_program(&mut self, program: &Program) {
         self.text.push_str("\n.text\n");
 
@@ -80,20 +76,14 @@ impl Generator<'_> {
         self.text.push_str("  retq\n");
     }
 
-    fn emit_statement(&mut self, statement: &Stmt) {
+    fn emit_statement(&mut self, statement: &Statement) {
         match statement {
-            Stmt::Binding { name, value, .. } => {
-                let ty = self
-                    .bindings
-                    .get(name)
-                    .copied()
-                    .expect("binding must have been resolved by type checker");
-
-                self.emit_expr(value, Some(ty), 0);
+            Statement::Binding { name, ty, value } => {
+                self.emit_expr(value, 0);
 
                 let offset = self.binding_offset(name);
 
-                match ty {
+                match *ty {
                     Type::I64 => {
                         self.text
                             .push_str(&format!("  movq %rax, {offset}(%rbp)\n"));
@@ -111,38 +101,24 @@ impl Generator<'_> {
                 }
             }
 
-            Stmt::Print { value } => {
-                let ty =
-                    type_of_expr(value, self.bindings).expect("expression must have been checked");
+            Statement::Print { value } => {
+                self.emit_expr(value, 0);
 
-                self.emit_expr(value, Some(ty), 0);
-
-                self.emit_print(ty);
+                self.emit_print(value.ty);
             }
         }
     }
 
-    fn emit_expr(&mut self, expr: &Expr, expected: Option<Type>, depth: usize) -> Type {
-        match expr {
-            Expr::Integer(value) => {
+    fn emit_expr(&mut self, expr: &Expr, depth: usize) -> Type {
+        match &expr.kind {
+            ExprKind::Integer(value) => {
                 self.text.push_str(&format!("  movabsq ${value}, %rax\n"));
 
                 Type::I64
             }
 
-            Expr::Float {
-                text,
-                explicit_type,
-            } => {
-                let ty = match explicit_type {
-                    Some(ty) => *ty,
-
-                    None => match expected {
-                        Some(Type::F32) => Type::F32,
-
-                        _ => Type::F64,
-                    },
-                };
+            ExprKind::Float { text } => {
+                let ty = expr.ty;
 
                 let label = self.add_float_constant(text, ty);
 
@@ -165,12 +141,8 @@ impl Generator<'_> {
                 ty
             }
 
-            Expr::Variable(name) => {
-                let ty = self
-                    .bindings
-                    .get(name)
-                    .copied()
-                    .expect("variable must have been resolved by type checker");
+            ExprKind::Variable(name) => {
+                let ty = expr.ty;
 
                 let offset = self.binding_offset(name);
 
@@ -194,14 +166,12 @@ impl Generator<'_> {
                 ty
             }
 
-            Expr::Unary { op, value } => {
-                let ty = expected.unwrap_or_else(|| {
-                    type_of_expr(expr, self.bindings).expect("expression must have been checked")
-                });
+            ExprKind::Unary { op, value } => {
+                let ty = expr.ty;
 
-                self.emit_expr(value, Some(ty), depth);
+                self.emit_expr(value, depth);
 
-                match (op, ty) {
+                match (*op, ty) {
                     (UnaryOp::Negate, Type::I64) => {
                         self.text.push_str("  negq %rax\n");
                     }
@@ -220,13 +190,11 @@ impl Generator<'_> {
                 ty
             }
 
-            Expr::Binary { op, left, right } => {
-                let ty = expected.unwrap_or_else(|| {
-                    type_of_expr(expr, self.bindings).expect("expression must have been checked")
-                });
+            ExprKind::Binary { op, left, right } => {
+                let ty = expr.ty;
 
                 // 左辺を計算。
-                self.emit_expr(left, Some(ty), depth + 1);
+                self.emit_expr(left, depth + 1);
 
                 // 左辺をscratchへ退避。
                 let scratch = self.scratch_offset(depth);
@@ -249,7 +217,7 @@ impl Generator<'_> {
                 }
 
                 // 右辺を計算。
-                self.emit_expr(right, Some(ty), depth + 1);
+                self.emit_expr(right, depth + 1);
 
                 match ty {
                     Type::I64 => {
@@ -457,7 +425,7 @@ fn assign_binding_slots(program: &Program) -> HashMap<String, usize> {
     let mut next = 0;
 
     for statement in &program.statements {
-        if let Stmt::Binding { name, .. } = statement {
+        if let Statement::Binding { name, .. } = statement {
             slots.insert(name.clone(), next);
 
             next += 1;
@@ -472,18 +440,22 @@ fn count_program_expr_nodes(program: &Program) -> usize {
         .statements
         .iter()
         .map(|statement| match statement {
-            Stmt::Binding { value, .. } | Stmt::Print { value } => count_expr_nodes(value),
+            Statement::Binding { value, .. } | Statement::Print { value } => {
+                count_expr_nodes(value)
+            }
         })
         .sum()
 }
 
 fn count_expr_nodes(expr: &Expr) -> usize {
-    match expr {
-        Expr::Integer(_) | Expr::Float { .. } | Expr::Variable(_) => 1,
+    match &expr.kind {
+        ExprKind::Integer(_) | ExprKind::Float { .. } | ExprKind::Variable(_) => 1,
 
-        Expr::Unary { value, .. } => 1 + count_expr_nodes(value),
+        ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
 
-        Expr::Binary { left, right, .. } => 1 + count_expr_nodes(left) + count_expr_nodes(right),
+        ExprKind::Binary { left, right, .. } => {
+            1 + count_expr_nodes(left) + count_expr_nodes(right)
+        }
     }
 }
 
@@ -521,22 +493,19 @@ fn f64_instruction(op: BinaryOp) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex, parser::parse, semantic::check};
+    use crate::compile_to_ir;
 
     use super::emit_x86_64_win_asm;
 
     #[test]
     fn emits_i64_arithmetic() {
-        let program = parse(
-            lex("x: i64 = 1 + 2;
-                     print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: i64 = 1 + 2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let asm = emit_x86_64_win_asm(&program, &bindings);
+        let asm = emit_x86_64_win_asm(&program);
 
         assert!(asm.contains("addq %rcx, %rax"));
 
@@ -545,16 +514,13 @@ mod tests {
 
     #[test]
     fn emits_f32_arithmetic() {
-        let program = parse(
-            lex("x: f32 = 0.1 + 0.2;
-                     print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: f32 = 0.1 + 0.2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let asm = emit_x86_64_win_asm(&program, &bindings);
+        let asm = emit_x86_64_win_asm(&program);
 
         assert!(asm.contains("addss %xmm1, %xmm0"));
 
@@ -563,16 +529,13 @@ mod tests {
 
     #[test]
     fn emits_f64_arithmetic() {
-        let program = parse(
-            lex("x: f64 = 0.1 + 0.2;
-                     print(x);")
-            .unwrap(),
+        let program = compile_to_ir(
+            "x: f64 = 0.1 + 0.2;
+             print(x);",
         )
         .unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let asm = emit_x86_64_win_asm(&program, &bindings);
+        let asm = emit_x86_64_win_asm(&program);
 
         assert!(asm.contains("addsd %xmm1, %xmm0"));
 

@@ -61,13 +61,9 @@ pub fn compile_to_qbe(source: &str) -> Result<String, String> {
 
 // Windows x86-64 Direct Assembly コンパイラ
 pub fn compile_to_x86_64_win_asm(source: &str) -> Result<String, String> {
-    let tokens = lexer::lex(source)?;
+    let program = compile_to_ir(source)?;
 
-    let program = parser::parse(tokens)?;
-
-    let bindings = semantic::check(&program)?;
-
-    Ok(codegen::emit_x86_64_win_asm(&program, &bindings))
+    Ok(codegen::emit_x86_64_win_asm(&program))
 }
 
 pub fn compile_to_bytecode(source: &str) -> Result<bytecode::BytecodeProgram, String> {
