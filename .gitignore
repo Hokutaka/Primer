@@ -3,3 +3,8 @@
 *.exe
 *.out
 *.ll
+*.pir
+*.ssa
+*.wat
+*.s
+*.pbc

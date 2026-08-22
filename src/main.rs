@@ -217,6 +217,8 @@ fn print_help() {
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [-o <output.ssa>]\n\
            primer emit-asm <file> [-o <output.s>]\n\
+           primer emit-bytecode <file> [-o <output.pbc>]\n\
+           primer run <file>\n\
            primer --version\n",
         env!("CARGO_PKG_VERSION")
     );
