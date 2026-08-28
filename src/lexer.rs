@@ -1,4 +1,4 @@
-use crate::source::Span;
+use crate::{diagnostic::Diagnostic, source::Span};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -30,7 +30,7 @@ pub struct Token {
     pub span: Span,
 }
 
-pub fn lex(source: &str) -> Result<Vec<Token>, String> {
+pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();
     let mut i = 0;
@@ -119,7 +119,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                     i += 1;
 
                     if i >= bytes.len() || !bytes[i].is_ascii_digit() {
-                        return Err(format!("expected digit after decimal point at byte {i}"));
+                        return Err(Diagnostic::new(
+                            "expected digit after decimal point",
+                            Span::empty(i),
+                        ));
                     }
 
                     while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -137,7 +140,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                     }
 
                     if i >= bytes.len() || !bytes[i].is_ascii_digit() {
-                        return Err(format!("expected exponent digits at byte {i}"));
+                        return Err(Diagnostic::new("expected exponent digits", Span::empty(i)));
                     }
 
                     while i < bytes.len() && bytes[i].is_ascii_digit() {
@@ -158,7 +161,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                 //
                 // from silently becoming multiple tokens.
                 if i < bytes.len() && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
-                    return Err(format!("invalid numeric literal at byte {start}"));
+                    return Err(Diagnostic::new(
+                        "invalid numeric literal",
+                        Span::new(start, i),
+                    ));
                 }
 
                 let text = &source[start..i];
@@ -166,10 +172,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                 if is_float {
                     TokenKind::Float(text.to_owned())
                 } else {
-                    let value = text
-                        .parse::<i64>()
-                        .map_err(|_| format!("integer literal out of range at byte {start}"))?;
-
+                    let value = text.parse::<i64>().map_err(|_| {
+                        Diagnostic::new("integer literal out of range", Span::new(start, i))
+                    })?;
                     TokenKind::Integer(value)
                 }
             }
@@ -190,9 +195,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
             }
 
             _ => {
-                return Err(format!(
-                    "unexpected character {:?} at byte {i}",
-                    source[i..].chars().next().unwrap()
+                let character = source[i..].chars().next().unwrap();
+
+                return Err(Diagnostic::new(
+                    format!("unexpected character {character:?}"),
+                    Span::new(i, i + character.len_utf8()),
                 ));
             }
         };
@@ -293,9 +300,10 @@ mod tests {
 
     #[test]
     fn rejects_invalid_numeric_suffix() {
-        let error = lex("x: f64 = 0.1foo;").unwrap_err();
+        let error = lex("0.1foo").unwrap_err();
 
-        assert!(error.contains("invalid numeric literal"));
+        assert_eq!(error.message(), "invalid numeric literal");
+        assert_eq!(error.primary_span(), Some(Span::new(0, 3)));
     }
 
     #[test]
@@ -306,5 +314,20 @@ mod tests {
         assert_eq!(tokens[1].span, Span::new(1, 2));
         assert_eq!(tokens[2].span, Span::new(3, 6));
         assert_eq!(tokens[3].span, Span::empty(6));
+    }
+
+    #[test]
+    fn reports_utf8_character_span() {
+        let error = lex("あ").unwrap_err();
+
+        assert_eq!(error.primary_span(), Some(Span::new(0, 3)));
+    }
+
+    #[test]
+    fn reports_missing_exponent_digits() {
+        let error = lex("1e").unwrap_err();
+
+        assert_eq!(error.message(), "expected exponent digits");
+        assert_eq!(error.primary_span(), Some(Span::empty(2)));
     }
 }
