@@ -262,3 +262,7 @@ This keeps compiler semantics inside Primer while leaving toolchain selection, b
 ## Documentation
 
 For detailed language semantics, compiler architecture, observation boundaries, and future design constraints, see [docs/design.md](docs/design.md).
+
+## License
+
+Licensed under the [MIT License](LICENSE).
