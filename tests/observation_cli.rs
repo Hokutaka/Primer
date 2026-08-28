@@ -1,5 +1,7 @@
 use std::{fs, path::PathBuf, process::Command};
 
+const OBSERVATION_CASES: &[&str] = &["i64-addition", "float-types"];
+
 fn fixture_path(case_name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -46,45 +48,54 @@ fn assert_observation(case_name: &str, command: &str, expected_file: &str) {
     // Gitのチェックアウト設定に左右されないように、期待値の改行コードを LF に揃える
     let expected = expected.replace("\r\n", "\n");
 
-    assert_eq!(actual, expected, "unexpected output from primer {command}");
+    assert_eq!(
+        actual, expected,
+        "unexpected output from primer {command} for case `{case_name}`"
+    );
+}
+
+fn assert_observation_cases(command: &str, expected_file: &str) {
+    for &case_name in OBSERVATION_CASES {
+        assert_observation(case_name, command, expected_file);
+    }
 }
 
 #[test]
 fn emit_ir_matches_expected_output() {
-    assert_observation("i64-addition", "emit-ir", "ir.pir.txt");
+    assert_observation_cases("emit-ir", "ir.pir.txt");
 }
 
 #[test]
 fn emit_c_matches_expected_output() {
-    assert_observation("i64-addition", "emit-c", "c.c.txt");
+    assert_observation_cases("emit-c", "c.c.txt");
 }
 
 #[test]
 fn emit_llvm_matches_expected_output() {
-    assert_observation("i64-addition", "emit-llvm", "llvm.ll.txt");
+    assert_observation_cases("emit-llvm", "llvm.ll.txt");
 }
 
 #[test]
 fn emit_qbe_matches_expected_output() {
-    assert_observation("i64-addition", "emit-qbe", "qbe.ssa.txt");
+    assert_observation_cases("emit-qbe", "qbe.ssa.txt");
 }
 
 #[test]
 fn emit_wat_matches_expected_output() {
-    assert_observation("i64-addition", "emit-wat", "wat.wat.txt");
+    assert_observation_cases("emit-wat", "wat.wat.txt");
 }
 
 #[test]
 fn emit_asm_matches_expected_output() {
-    assert_observation("i64-addition", "emit-asm", "asm.s.txt");
+    assert_observation_cases("emit-asm", "asm.s.txt");
 }
 
 #[test]
 fn emit_bytecode_matches_expected_output() {
-    assert_observation("i64-addition", "emit-bytecode", "bytecode.pbc.txt");
+    assert_observation_cases("emit-bytecode", "bytecode.pbc.txt");
 }
 
 #[test]
 fn run_matches_expected_output() {
-    assert_observation("i64-addition", "run", "run.stdout.txt");
+    assert_observation_cases("run", "run.stdout.txt");
 }
