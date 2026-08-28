@@ -30,6 +30,8 @@ fn assert_observation(command: &str, expected: &str) {
     let actual = String::from_utf8(output.stdout)
         .unwrap_or_else(|error| panic!("primer {command} emitted non-UTF-8 output: {error}"));
 
+    // Gitのチェックアウト設定に左右されないように、期待値の改行コードを LF に揃える
+    let expected = expected.replace("\r\n", "\n");
     assert_eq!(actual, expected, "unexpected output from primer {command}");
 }
 
@@ -87,4 +89,9 @@ fn emit_bytecode_matches_expected_output() {
         "emit-bytecode",
         include_str!("fixtures/observation/expected/bytecode.pbc.txt"),
     );
+}
+
+#[test]
+fn run_matches_expected_output() {
+    assert_observation("run", "3\n");
 }
