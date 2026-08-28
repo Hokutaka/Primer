@@ -62,40 +62,40 @@ fn assert_observation_cases(command: &str, expected_file: &str) {
 
 #[test]
 fn emit_ir_matches_expected_output() {
-    assert_observation_cases("emit-ir", "ir.pir.txt");
+    assert_observation_cases("emit-ir", "ir.pir");
 }
 
 #[test]
 fn emit_c_matches_expected_output() {
-    assert_observation_cases("emit-c", "c.c.txt");
+    assert_observation_cases("emit-c", "c.c");
 }
 
 #[test]
 fn emit_llvm_matches_expected_output() {
-    assert_observation_cases("emit-llvm", "llvm.ll.txt");
+    assert_observation_cases("emit-llvm", "llvm.ll");
 }
 
 #[test]
 fn emit_qbe_matches_expected_output() {
-    assert_observation_cases("emit-qbe", "qbe.ssa.txt");
+    assert_observation_cases("emit-qbe", "qbe.ssa");
 }
 
 #[test]
 fn emit_wat_matches_expected_output() {
-    assert_observation_cases("emit-wat", "wat.wat.txt");
+    assert_observation_cases("emit-wat", "wat.wat");
 }
 
 #[test]
 fn emit_asm_matches_expected_output() {
-    assert_observation_cases("emit-asm", "asm.s.txt");
+    assert_observation_cases("emit-asm", "asm.s");
 }
 
 #[test]
 fn emit_bytecode_matches_expected_output() {
-    assert_observation_cases("emit-bytecode", "bytecode.pbc.txt");
+    assert_observation_cases("emit-bytecode", "bytecode.pbc");
 }
 
 #[test]
 fn run_matches_expected_output() {
-    assert_observation_cases("run", "run.stdout.txt");
+    assert_observation_cases("run", "run.stdout");
 }
