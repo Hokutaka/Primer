@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, Expr, Program, Stmt, Type, TypeSpec};
+use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, Type, TypeSpec};
 
 pub type Bindings = HashMap<String, Type>;
 
@@ -61,10 +61,10 @@ pub(crate) fn type_of_expr_expected(
     bindings: &Bindings,
     expected: Option<Type>,
 ) -> Result<Type, String> {
-    match expr {
-        Expr::Integer(_) => Ok(Type::I64),
+    match &expr.kind {
+        ExprKind::Integer(_) => Ok(Type::I64),
 
-        Expr::Float { explicit_type, .. } => {
+        ExprKind::Float { explicit_type, .. } => {
             // suffix付きなら絶対その型
             if let Some(ty) = explicit_type {
                 return Ok(*ty);
@@ -80,14 +80,14 @@ pub(crate) fn type_of_expr_expected(
             }
         }
 
-        Expr::Variable(name) => bindings
+        ExprKind::Variable(name) => bindings
             .get(name)
             .copied()
             .ok_or_else(|| format!("unknown binding `{name}`")),
 
-        Expr::Unary { value, .. } => type_of_expr_expected(value, bindings, expected),
+        ExprKind::Unary { value, .. } => type_of_expr_expected(value, bindings, expected),
 
-        Expr::Binary { op, left, right } => {
+        ExprKind::Binary { op, left, right } => {
             // 親から来た期待型を左右両方へ伝える
             let left_type = type_of_expr_expected(left, bindings, expected)?;
 
