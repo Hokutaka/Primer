@@ -144,10 +144,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
                 }
 
                 // Explicit floating-point suffix
-                if bytes[i..].starts_with(b"f32") {
-                    is_float = true;
-                    i += 3;
-                } else if bytes[i..].starts_with(b"f64") {
+                if bytes[i..].starts_with(b"f32") || bytes[i..].starts_with(b"f64") {
                     is_float = true;
                     i += 3;
                 }
