@@ -37,7 +37,7 @@ impl Parser {
             other => {
                 return Err(format!(
                     "expected identifier, found {other:?} at byte {}",
-                    token.offset
+                    token.span.start()
                 ));
             }
         };
@@ -69,12 +69,15 @@ impl Parser {
                 "f64" => Ok(TypeSpec::Explicit(Type::F64)),
                 "infer" => Ok(TypeSpec::Infer),
 
-                _ => Err(format!("unknown type `{name}` at byte {}", token.offset)),
+                _ => Err(format!(
+                    "unknown type `{name}` at byte {}",
+                    token.span.start()
+                )),
             },
 
             other => Err(format!(
                 "expected type, found {other:?} at byte {}",
-                token.offset
+                token.span.start()
             )),
         }
     }
@@ -177,7 +180,7 @@ impl Parser {
 
             other => Err(format!(
                 "expected expression, found {other:?} at byte {}",
-                token.offset
+                token.span.start()
             )),
         }
     }
@@ -190,7 +193,8 @@ impl Parser {
         } else {
             Err(format!(
                 "expected {expected:?}, found {:?} at byte {}",
-                token.kind, token.offset
+                token.kind,
+                token.span.start()
             ))
         }
     }
@@ -210,7 +214,7 @@ impl Parser {
     }
 
     fn error(&self, message: String) -> String {
-        format!("{message} at byte {}", self.peek().offset)
+        format!("{message} at byte {}", self.peek().span.start())
     }
 }
 

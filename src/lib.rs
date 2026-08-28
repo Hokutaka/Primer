@@ -5,6 +5,7 @@ pub mod ir;
 pub mod lexer;
 pub mod parser;
 pub mod semantic;
+pub mod source;
 pub mod vm;
 
 use ast::Program;
