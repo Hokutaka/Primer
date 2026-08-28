@@ -1,0 +1,32 @@
+; Primer bytecode v0.1
+
+.slot 0 single f32
+.slot 1 double f64
+.slot 2 inferred f64
+.slot 3 suffixed f32
+
+0000  push.f32 0.1
+0001  push.f32 0.2
+0002  add.f32
+0003  store 0       ; single
+0004  push.f64 0.1
+0005  push.f64 0.2
+0006  add.f64
+0007  store 1       ; double
+0008  push.f64 0.1
+0009  push.f64 0.2
+0010  add.f64
+0011  store 2       ; inferred
+0012  push.f32 0.1
+0013  push.f32 0.2
+0014  add.f32
+0015  store 3       ; suffixed
+0016  load 0        ; single
+0017  print.f32
+0018  load 1        ; double
+0019  print.f64
+0020  load 2        ; inferred
+0021  print.f64
+0022  load 3        ; suffixed
+0023  print.f32
+0024  halt

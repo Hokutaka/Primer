@@ -1,0 +1,9 @@
+single: f32 = 0.1 + 0.2;
+double: f64 = 0.1 + 0.2;
+inferred: infer = 0.1 + 0.2;
+suffixed: infer = 0.1f32 + 0.2f32;
+
+print(single);
+print(double);
+print(inferred);
+print(suffixed);

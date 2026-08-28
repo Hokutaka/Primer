@@ -7,7 +7,7 @@ pub use lower::lower;
 
 use crate::ir as primer_ir;
 
-pub fn emit_qbe(program: &primer_ir::Program) -> String {
+pub fn emit_llvm(program: &primer_ir::Program) -> String {
     let module = lower(program);
 
     emit(&module)
@@ -17,7 +17,7 @@ pub fn emit_qbe(program: &primer_ir::Program) -> String {
 mod tests {
     use crate::compile_to_ir;
 
-    use super::{emit_qbe, ir::Instruction, lower};
+    use super::{emit_llvm, ir::Instruction, lower};
 
     #[test]
     fn lowers_i64_add() {
@@ -38,37 +38,33 @@ mod tests {
     #[test]
     fn emits_i64_add() {
         let program = compile_to_ir("x: i64 = 1 + 2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let llvm = emit_llvm(&program);
 
-        assert!(qbe.contains("=l add 1, 2"));
-        assert!(qbe.contains("%primer_x =l copy"));
-        assert!(qbe.contains("call $printf(l $fmt_i64, ..., l %primer_x)"));
+        assert!(llvm.contains("add i64 1, 2"));
     }
 
     #[test]
     fn emits_f32_add() {
         let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let llvm = emit_llvm(&program);
 
-        assert!(qbe.contains("=s add s_0.1, s_0.2"));
-        assert!(qbe.contains("=d exts %primer_x"));
-        assert!(qbe.contains("call $printf(l $fmt_f32"));
+        assert!(llvm.contains("fadd float"));
+        assert!(llvm.contains("fpext float"));
     }
 
     #[test]
     fn emits_f64_add() {
         let program = compile_to_ir("x: f64 = 0.1 + 0.2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let llvm = emit_llvm(&program);
 
-        assert!(qbe.contains("=d add d_0.1, d_0.2"));
-        assert!(qbe.contains("call $printf(l $fmt_f64"));
+        assert!(llvm.contains("fadd double"));
     }
 
     #[test]
-    fn inferred_f32_uses_single() {
-        let program = compile_to_ir("a: f32 = 0.1 + 0.2; b: infer = a + a;").unwrap();
-        let qbe = emit_qbe(&program);
+    fn emits_llvm_22_compatible_float_literals() {
+        let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
+        let llvm = emit_llvm(&program);
 
-        assert!(qbe.contains("%primer_b =s copy"));
+        assert!(llvm.contains("fadd float 0x3FB99999A0000000, 0x3FC99999A0000000"));
     }
 }

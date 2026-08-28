@@ -56,7 +56,7 @@ pub fn type_of_expr(expr: &Expr, bindings: &Bindings) -> Result<Type, String> {
     type_of_expr_expected(expr, bindings, None)
 }
 
-fn type_of_expr_expected(
+pub(crate) fn type_of_expr_expected(
     expr: &Expr,
     bindings: &Bindings,
     expected: Option<Type>,

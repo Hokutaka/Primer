@@ -31,6 +31,21 @@ fn run() -> Result<(), String> {
             Ok(())
         }
 
+        // Primer IR 生成
+        "emit-ir" => {
+            let input = required_path(args.next(), "missing input file")?;
+
+            let rest: Vec<String> = args.collect();
+
+            let output = parse_output_option(&rest, "primer emit-ir <file> [-o <output.pir>]")?;
+
+            let source = read_source(&input)?;
+
+            let ir = primer_lang::compile_to_ir_text(&source)?;
+
+            write_or_print(output, ir)
+        }
+
         // C コード生成
         "emit-c" => {
             let input = required_path(args.next(), "missing input file")?;
@@ -196,11 +211,14 @@ fn print_help() {
          A small experimental language with observable code generation.\n\n\
          USAGE:\n\
            primer check <file>\n\
+           primer emit-ir <file> [-o <output.pir>]\n\
            primer emit-c <file> [-o <output.c>]\n\
            primer emit-llvm <file> [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [-o <output.ssa>]\n\
            primer emit-asm <file> [-o <output.s>]\n\
+           primer emit-bytecode <file> [-o <output.pbc>]\n\
+           primer run <file>\n\
            primer --version\n",
         env!("CARGO_PKG_VERSION")
     );

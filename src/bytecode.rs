@@ -1,7 +1,13 @@
 use std::{collections::HashMap, fmt::Write};
 
-use crate::ast::{BinaryOp, Expr, Program, Stmt, Type, UnaryOp};
-use crate::semantic::{Bindings, type_of_expr};
+use crate::ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, UnaryOp};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Type {
+    I64,
+    F32,
+    F64,
+}
 
 #[derive(Debug, Clone)]
 pub struct BytecodeProgram {
@@ -36,22 +42,17 @@ pub enum Instruction {
     Halt,
 }
 
-pub fn compile(program: &Program, bindings: &Bindings) -> BytecodeProgram {
+pub fn lower(program: &Program) -> BytecodeProgram {
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
 
     for statement in &program.statements {
-        if let Stmt::Binding { name, .. } = statement {
-            let ty = bindings
-                .get(name)
-                .copied()
-                .expect("binding must have been resolved by type checker");
-
+        if let Statement::Binding { name, ty, .. } = statement {
             let index = slots.len();
 
             slots.push(Slot {
                 name: name.clone(),
-                ty,
+                ty: (*ty).into(),
             });
 
             slot_map.insert(name.clone(), index);
@@ -59,7 +60,6 @@ pub fn compile(program: &Program, bindings: &Bindings) -> BytecodeProgram {
     }
 
     let mut compiler = Compiler {
-        bindings,
         slot_map,
         instructions: Vec::new(),
     };
@@ -100,23 +100,16 @@ pub fn format_program(program: &BytecodeProgram) -> String {
     output
 }
 
-struct Compiler<'a> {
-    bindings: &'a Bindings,
+struct Compiler {
     slot_map: HashMap<String, usize>,
     instructions: Vec<Instruction>,
 }
 
-impl Compiler<'_> {
-    fn emit_statement(&mut self, statement: &Stmt) {
+impl Compiler {
+    fn emit_statement(&mut self, statement: &Statement) {
         match statement {
-            Stmt::Binding { name, value, .. } => {
-                let ty = self
-                    .bindings
-                    .get(name)
-                    .copied()
-                    .expect("binding must have been resolved by type checker");
-
-                self.emit_expr(value, Some(ty));
+            Statement::Binding { name, value, .. } => {
+                self.emit_expr(value);
 
                 let slot = self
                     .slot_map
@@ -127,61 +120,43 @@ impl Compiler<'_> {
                 self.instructions.push(Instruction::Store(slot));
             }
 
-            Stmt::Print { value } => {
-                let ty =
-                    type_of_expr(value, self.bindings).expect("expression must have been checked");
+            Statement::Print { value } => {
+                self.emit_expr(value);
 
-                self.emit_expr(value, Some(ty));
-
-                self.instructions.push(Instruction::Print(ty));
+                self.instructions.push(Instruction::Print(value.ty.into()));
             }
         }
     }
 
-    fn emit_expr(&mut self, expr: &Expr, expected: Option<Type>) {
-        match expr {
-            Expr::Integer(value) => {
+    fn emit_expr(&mut self, expr: &Expr) {
+        match &expr.kind {
+            ExprKind::Integer(value) => {
                 self.instructions.push(Instruction::PushI64(*value));
             }
 
-            Expr::Float {
-                text,
-                explicit_type,
-            } => {
-                let ty = match explicit_type {
-                    Some(ty) => *ty,
+            ExprKind::Float { text } => match expr.ty {
+                ir::Type::F32 => {
+                    let value = text
+                        .parse::<f32>()
+                        .expect("validated floating-point literal");
 
-                    None => match expected {
-                        Some(Type::F32) => Type::F32,
-
-                        _ => Type::F64,
-                    },
-                };
-
-                match ty {
-                    Type::F32 => {
-                        let value = text
-                            .parse::<f32>()
-                            .expect("validated floating-point literal");
-
-                        self.instructions.push(Instruction::PushF32(value));
-                    }
-
-                    Type::F64 => {
-                        let value = text
-                            .parse::<f64>()
-                            .expect("validated floating-point literal");
-
-                        self.instructions.push(Instruction::PushF64(value));
-                    }
-
-                    Type::I64 => {
-                        unreachable!("integer cannot be emitted as float");
-                    }
+                    self.instructions.push(Instruction::PushF32(value));
                 }
-            }
 
-            Expr::Variable(name) => {
+                ir::Type::F64 => {
+                    let value = text
+                        .parse::<f64>()
+                        .expect("validated floating-point literal");
+
+                    self.instructions.push(Instruction::PushF64(value));
+                }
+
+                ir::Type::I64 => {
+                    unreachable!("integer cannot be emitted as float");
+                }
+            },
+
+            ExprKind::Variable(name) => {
                 let slot = self
                     .slot_map
                     .get(name)
@@ -191,41 +166,39 @@ impl Compiler<'_> {
                 self.instructions.push(Instruction::Load(slot));
             }
 
-            Expr::Unary { op, value } => {
-                let ty = expected.unwrap_or_else(|| {
-                    type_of_expr(expr, self.bindings).expect("expression must have been checked")
-                });
+            ExprKind::Unary { op, value } => {
+                self.emit_expr(value);
 
-                self.emit_expr(value, Some(ty));
-
-                match op {
+                match *op {
                     UnaryOp::Negate => {
-                        self.instructions.push(Instruction::Negate(ty));
+                        self.instructions.push(Instruction::Negate(expr.ty.into()));
                     }
                 }
             }
 
-            Expr::Binary { op, left, right } => {
-                let ty = expected.unwrap_or_else(|| {
-                    type_of_expr(expr, self.bindings).expect("expression must have been checked")
-                });
+            ExprKind::Binary { op, left, right } => {
+                self.emit_expr(left);
+                self.emit_expr(right);
 
-                self.emit_expr(left, Some(ty));
-
-                self.emit_expr(right, Some(ty));
-
-                let instruction = match op {
-                    BinaryOp::Add => Instruction::Add(ty),
-
-                    BinaryOp::Subtract => Instruction::Subtract(ty),
-
-                    BinaryOp::Multiply => Instruction::Multiply(ty),
-
-                    BinaryOp::Divide => Instruction::Divide(ty),
+                let instruction = match *op {
+                    BinaryOp::Add => Instruction::Add(expr.ty.into()),
+                    BinaryOp::Subtract => Instruction::Subtract(expr.ty.into()),
+                    BinaryOp::Multiply => Instruction::Multiply(expr.ty.into()),
+                    BinaryOp::Divide => Instruction::Divide(expr.ty.into()),
                 };
 
                 self.instructions.push(instruction);
             }
+        }
+    }
+}
+
+impl From<ir::Type> for Type {
+    fn from(value: ir::Type) -> Self {
+        match value {
+            ir::Type::I64 => Self::I64,
+            ir::Type::F32 => Self::F32,
+            ir::Type::F64 => Self::F64,
         }
     }
 }
@@ -292,33 +265,22 @@ fn type_name(ty: Type) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex, parser::parse, semantic::check};
+    use crate::compile_to_ir;
 
-    use super::{compile, format_program};
+    use super::{format_program, lower};
 
     #[test]
     fn emits_typed_bytecode() {
-        let program = parse(
-            lex("x: f32 = 0.1 + 0.2;
-                 print(x);")
-            .unwrap(),
-        )
-        .unwrap();
+        let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
 
-        let bindings = check(&program).unwrap();
-
-        let bytecode = compile(&program, &bindings);
+        let bytecode = lower(&program);
 
         let text = format_program(&bytecode);
 
         assert!(text.contains("push.f32"));
-
         assert!(text.contains("add.f32"));
-
         assert!(text.contains("store 0"));
-
         assert!(text.contains("print.f32"));
-
         assert!(text.contains("halt"));
     }
 }
