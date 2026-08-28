@@ -1,3 +1,5 @@
+use crate::source::Span;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Print,
@@ -25,7 +27,7 @@ pub enum TokenKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub kind: TokenKind,
-    pub offset: usize,
+    pub span: Span,
 }
 
 pub fn lex(source: &str) -> Result<Vec<Token>, String> {
@@ -195,12 +197,15 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
             }
         };
 
-        tokens.push(Token { kind, offset });
+        tokens.push(Token {
+            kind,
+            span: Span::new(offset, i),
+        });
     }
 
     tokens.push(Token {
         kind: TokenKind::Eof,
-        offset: source.len(),
+        span: Span::empty(source.len()),
     });
 
     Ok(tokens)
@@ -209,6 +214,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, String> {
 #[cfg(test)]
 mod tests {
     use super::{TokenKind, lex};
+    use crate::source::Span;
 
     #[test]
     fn lexes_minimal_program() {
@@ -290,5 +296,15 @@ mod tests {
         let error = lex("x: f64 = 0.1foo;").unwrap_err();
 
         assert!(error.contains("invalid numeric literal"));
+    }
+
+    #[test]
+    fn records_token_spans() {
+        let tokens = lex("x: i64").unwrap();
+
+        assert_eq!(tokens[0].span, Span::new(0, 1));
+        assert_eq!(tokens[1].span, Span::new(1, 2));
+        assert_eq!(tokens[2].span, Span::new(3, 6));
+        assert_eq!(tokens[3].span, Span::empty(6));
     }
 }

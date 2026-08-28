@@ -80,12 +80,20 @@ fn binary_name(op: BinaryOp) -> &'static str {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp as AstBinaryOp, Expr as AstExpr, Program as AstProgram, Stmt, Type as AstType,
-        TypeSpec,
+        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
+        Stmt, Type as AstType, TypeSpec,
     };
     use crate::ir::builder::build;
+    use crate::source::Span;
 
     use super::emit;
+
+    fn ast_expr(kind: AstExprKind) -> AstExpr {
+        AstExpr {
+            kind,
+            span: Span::empty(0),
+        }
+    }
 
     #[test]
     fn emits_resolved_types() {
@@ -94,20 +102,20 @@ mod tests {
                 Stmt::Binding {
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(AstType::F32),
-                    value: AstExpr::Binary {
+                    value: ast_expr(AstExprKind::Binary {
                         op: AstBinaryOp::Add,
-                        left: Box::new(AstExpr::Float {
+                        left: Box::new(ast_expr(AstExprKind::Float {
                             text: "0.1".into(),
                             explicit_type: None,
-                        }),
-                        right: Box::new(AstExpr::Float {
+                        })),
+                        right: Box::new(ast_expr(AstExprKind::Float {
                             text: "0.2".into(),
                             explicit_type: None,
-                        }),
-                    },
+                        })),
+                    }),
                 },
                 Stmt::Print {
-                    value: AstExpr::Variable("x".into()),
+                    value: ast_expr(AstExprKind::Variable("x".into())),
                 },
             ],
         };

@@ -46,19 +46,19 @@ fn build_expr(
 ) -> Result<Expr, String> {
     let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
 
-    let kind = match expr {
-        ast::Expr::Integer(value) => ExprKind::Integer(*value),
+    let kind = match &expr.kind {
+        ast::ExprKind::Integer(value) => ExprKind::Integer(*value),
 
-        ast::Expr::Float { text, .. } => ExprKind::Float { text: text.clone() },
+        ast::ExprKind::Float { text, .. } => ExprKind::Float { text: text.clone() },
 
-        ast::Expr::Variable(name) => ExprKind::Variable(name.clone()),
+        ast::ExprKind::Variable(name) => ExprKind::Variable(name.clone()),
 
-        ast::Expr::Unary { op, value } => ExprKind::Unary {
+        ast::ExprKind::Unary { op, value } => ExprKind::Unary {
             op: (*op).into(),
             value: Box::new(build_expr(value, Some(ty), bindings)?),
         },
 
-        ast::Expr::Binary { op, left, right } => ExprKind::Binary {
+        ast::ExprKind::Binary { op, left, right } => ExprKind::Binary {
             op: (*op).into(),
             left: Box::new(build_expr(left, Some(ty), bindings)?),
             right: Box::new(build_expr(right, Some(ty), bindings)?),
@@ -103,11 +103,19 @@ impl From<ast::BinaryOp> for BinaryOp {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp as AstBinaryOp, Expr as AstExpr, Program as AstProgram, Stmt, Type as AstType,
-        TypeSpec,
+        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
+        Stmt, Type as AstType, TypeSpec,
     };
+    use crate::source::Span;
 
     use super::*;
+
+    fn ast_expr(kind: AstExprKind) -> AstExpr {
+        AstExpr {
+            kind,
+            span: Span::empty(0),
+        }
+    }
 
     #[test]
     fn resolves_contextual_f32_literals() {
@@ -115,17 +123,17 @@ mod tests {
             statements: vec![Stmt::Binding {
                 name: "x".into(),
                 type_spec: TypeSpec::Explicit(AstType::F32),
-                value: AstExpr::Binary {
+                value: ast_expr(AstExprKind::Binary {
                     op: AstBinaryOp::Add,
-                    left: Box::new(AstExpr::Float {
+                    left: Box::new(ast_expr(AstExprKind::Float {
                         text: "0.1".into(),
                         explicit_type: None,
-                    }),
-                    right: Box::new(AstExpr::Float {
+                    })),
+                    right: Box::new(ast_expr(AstExprKind::Float {
                         text: "0.2".into(),
                         explicit_type: None,
-                    }),
-                },
+                    })),
+                }),
             }],
         };
 
@@ -149,10 +157,10 @@ mod tests {
             statements: vec![Stmt::Binding {
                 name: "x".into(),
                 type_spec: TypeSpec::Infer,
-                value: AstExpr::Float {
+                value: ast_expr(AstExprKind::Float {
                     text: "0.1".into(),
                     explicit_type: None,
-                },
+                }),
             }],
         };
 

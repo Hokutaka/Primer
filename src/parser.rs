@@ -1,5 +1,6 @@
-use crate::ast::{BinaryOp, Expr, Program, Stmt, Type, TypeSpec, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, Type, TypeSpec, UnaryOp};
 use crate::lexer::{Token, TokenKind};
+use crate::source::Span;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Program, String> {
     Parser { tokens, current: 0 }.parse_program()
@@ -37,7 +38,7 @@ impl Parser {
             other => {
                 return Err(format!(
                     "expected identifier, found {other:?} at byte {}",
-                    token.offset
+                    token.span.start()
                 ));
             }
         };
@@ -69,12 +70,15 @@ impl Parser {
                 "f64" => Ok(TypeSpec::Explicit(Type::F64)),
                 "infer" => Ok(TypeSpec::Infer),
 
-                _ => Err(format!("unknown type `{name}` at byte {}", token.offset)),
+                _ => Err(format!(
+                    "unknown type `{name}` at byte {}",
+                    token.span.start()
+                )),
             },
 
             other => Err(format!(
                 "expected type, found {other:?} at byte {}",
-                token.offset
+                token.span.start()
             )),
         }
     }
@@ -110,10 +114,15 @@ impl Parser {
 
             let right = self.parse_multiplicative()?;
 
-            expr = Expr::Binary {
-                op,
-                left: Box::new(expr),
-                right: Box::new(right),
+            let span = Span::new(expr.span.start(), right.span.end());
+
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
             };
         }
 
@@ -133,11 +142,15 @@ impl Parser {
             self.advance();
 
             let right = self.parse_unary()?;
+            let span = Span::new(expr.span.start(), right.span.end());
 
-            expr = Expr::Binary {
-                op,
-                left: Box::new(expr),
-                right: Box::new(right),
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
             };
         }
 
@@ -146,11 +159,16 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Result<Expr, String> {
         if matches!(&self.peek().kind, TokenKind::Minus) {
-            self.advance();
+            let operator_span = self.advance().span;
+            let value = self.parse_unary()?;
+            let span = Span::new(operator_span.start(), value.span.end());
 
-            return Ok(Expr::Unary {
-                op: UnaryOp::Negate,
-                value: Box::new(self.parse_unary()?),
+            return Ok(Expr {
+                kind: ExprKind::Unary {
+                    op: UnaryOp::Negate,
+                    value: Box::new(value),
+                },
+                span,
             });
         }
 
@@ -159,38 +177,46 @@ impl Parser {
 
     fn parse_primary(&mut self) -> Result<Expr, String> {
         let token = self.advance().clone();
+        let span = token.span;
 
         match token.kind {
-            TokenKind::Integer(value) => Ok(Expr::Integer(value)),
+            TokenKind::Integer(value) => Ok(Expr {
+                kind: ExprKind::Integer(value),
+                span,
+            }),
 
-            TokenKind::Float(text) => Ok(parse_float_literal(text)),
+            TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 
-            TokenKind::Identifier(name) => Ok(Expr::Variable(name)),
+            TokenKind::Identifier(name) => Ok(Expr {
+                kind: ExprKind::Variable(name),
+                span,
+            }),
 
             TokenKind::LeftParen => {
                 let expr = self.parse_expression()?;
+                let closing_span = self.expect_simple(TokenKind::RightParen)?;
+                let span = Span::new(span.start(), closing_span.end());
 
-                self.expect_simple(TokenKind::RightParen)?;
-
-                Ok(expr)
+                Ok(Expr { span, ..expr })
             }
 
             other => Err(format!(
                 "expected expression, found {other:?} at byte {}",
-                token.offset
+                token.span.start()
             )),
         }
     }
 
-    fn expect_simple(&mut self, expected: TokenKind) -> Result<(), String> {
+    fn expect_simple(&mut self, expected: TokenKind) -> Result<Span, String> {
         let token = self.advance().clone();
 
         if std::mem::discriminant(&token.kind) == std::mem::discriminant(&expected) {
-            Ok(())
+            Ok(token.span)
         } else {
             Err(format!(
                 "expected {expected:?}, found {:?} at byte {}",
-                token.kind, token.offset
+                token.kind,
+                token.span.start()
             ))
         }
     }
@@ -210,33 +236,36 @@ impl Parser {
     }
 
     fn error(&self, message: String) -> String {
-        format!("{message} at byte {}", self.peek().offset)
+        format!("{message} at byte {}", self.peek().span.start())
     }
 }
 
-fn parse_float_literal(text: String) -> Expr {
-    if let Some(value) = text.strip_suffix("f32") {
-        Expr::Float {
+fn parse_float_literal(text: String, span: Span) -> Expr {
+    let kind = if let Some(value) = text.strip_suffix("f32") {
+        ExprKind::Float {
             text: value.to_owned(),
             explicit_type: Some(Type::F32),
         }
     } else if let Some(value) = text.strip_suffix("f64") {
-        Expr::Float {
+        ExprKind::Float {
             text: value.to_owned(),
             explicit_type: Some(Type::F64),
         }
     } else {
-        Expr::Float {
+        ExprKind::Float {
             text,
             explicit_type: None,
         }
-    }
+    };
+
+    Expr { kind, span }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, Expr, Stmt, Type, TypeSpec};
+    use crate::ast::{BinaryOp, ExprKind, Stmt, Type, TypeSpec};
     use crate::lexer::lex;
+    use crate::source::Span;
 
     use super::parse;
 
@@ -255,7 +284,8 @@ mod tests {
 
         assert_eq!(name, "x");
         assert_eq!(*type_spec, TypeSpec::Explicit(Type::I64));
-        assert_eq!(*value, Expr::Integer(42));
+        assert_eq!(value.kind, ExprKind::Integer(42));
+        assert_eq!(value.span, Span::new(9, 11));
     }
 
     #[test]
@@ -278,10 +308,10 @@ mod tests {
         };
 
         assert_eq!(
-            *value,
-            Expr::Float {
+            value.kind,
+            ExprKind::Float {
                 text: "0.1".into(),
-                explicit_type: None,
+                explicit_type: None
             }
         );
     }
@@ -294,18 +324,42 @@ mod tests {
             panic!("expected binding");
         };
 
-        let Expr::Binary { op, right, .. } = value else {
+        let ExprKind::Binary { op, right, .. } = &value.kind else {
             panic!("expected binary expression");
         };
 
         assert_eq!(*op, BinaryOp::Add);
+        assert_eq!(value.span, Span::new(9, 18));
 
         assert!(matches!(
-            **right,
-            Expr::Binary {
+            &right.kind,
+            ExprKind::Binary {
                 op: BinaryOp::Multiply,
                 ..
             }
         ));
+        assert_eq!(right.span, Span::new(13, 18));
+    }
+
+    #[test]
+    fn unary_span_includes_operator() {
+        let program = parse(lex("x: i64 = -1;").unwrap()).unwrap();
+
+        let Stmt::Binding { value, .. } = &program.statements[0] else {
+            panic!("expected binding");
+        };
+
+        assert_eq!(value.span, Span::new(9, 11));
+    }
+
+    #[test]
+    fn parenthesized_span_includes_parentheses() {
+        let program = parse(lex("x: i64 = (1 + 2);").unwrap()).unwrap();
+
+        let Stmt::Binding { value, .. } = &program.statements[0] else {
+            panic!("expected binding");
+        };
+
+        assert_eq!(value.span, Span::new(9, 16));
     }
 }

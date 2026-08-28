@@ -1,3 +1,5 @@
+use crate::source::Span;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     I64,
@@ -29,21 +31,23 @@ pub enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Expr {
-    Integer(i64),
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExprKind {
+    Integer(i64),
     Float {
         text: String,
         explicit_type: Option<Type>,
     },
-
     Variable(String),
-
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
     },
-
     Binary {
         op: BinaryOp,
         left: Box<Expr>,
