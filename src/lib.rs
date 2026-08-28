@@ -13,7 +13,7 @@ use ast::Program;
 
 pub fn compile(source: &str) -> Result<Program, String> {
     let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
-    let program = parser::parse(tokens)?;
+    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
     semantic::check(&program)?;
 
@@ -22,7 +22,7 @@ pub fn compile(source: &str) -> Result<Program, String> {
 
 pub fn compile_to_ir(source: &str) -> Result<ir::Program, String> {
     let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
-    let program = parser::parse(tokens)?;
+    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
     ir::builder::build(&program)
 }

@@ -1,8 +1,11 @@
 use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, Type, TypeSpec, UnaryOp};
+use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::source::Span;
 
-pub fn parse(tokens: Vec<Token>) -> Result<Program, String> {
+type ParseResult<T> = Result<T, Diagnostic>;
+
+pub fn parse(tokens: Vec<Token>) -> Result<Program, Diagnostic> {
     Parser { tokens, current: 0 }.parse_program()
 }
 
@@ -12,7 +15,7 @@ struct Parser {
 }
 
 impl Parser {
-    fn parse_program(&mut self) -> Result<Program, String> {
+    fn parse_program(&mut self) -> ParseResult<Program> {
         let mut statements = Vec::new();
 
         while !matches!(&self.peek().kind, TokenKind::Eof) {
@@ -22,7 +25,7 @@ impl Parser {
         Ok(Program { statements })
     }
 
-    fn parse_statement(&mut self) -> Result<Stmt, String> {
+    fn parse_statement(&mut self) -> ParseResult<Stmt> {
         match &self.peek().kind {
             TokenKind::Identifier(_) => self.parse_binding(),
             TokenKind::Print => self.parse_print(),
@@ -30,15 +33,15 @@ impl Parser {
         }
     }
 
-    fn parse_binding(&mut self) -> Result<Stmt, String> {
+    fn parse_binding(&mut self) -> ParseResult<Stmt> {
         let token = self.advance().clone();
 
         let name = match token.kind {
             TokenKind::Identifier(name) => name,
             other => {
-                return Err(format!(
-                    "expected identifier, found {other:?} at byte {}",
-                    token.span.start()
+                return Err(Diagnostic::new(
+                    format!("expected identifier, found {other:?}"),
+                    token.span,
                 ));
             }
         };
@@ -60,7 +63,7 @@ impl Parser {
         })
     }
 
-    fn parse_type_spec(&mut self) -> Result<TypeSpec, String> {
+    fn parse_type_spec(&mut self) -> ParseResult<TypeSpec> {
         let token = self.advance().clone();
 
         match token.kind {
@@ -70,20 +73,20 @@ impl Parser {
                 "f64" => Ok(TypeSpec::Explicit(Type::F64)),
                 "infer" => Ok(TypeSpec::Infer),
 
-                _ => Err(format!(
-                    "unknown type `{name}` at byte {}",
-                    token.span.start()
+                _ => Err(Diagnostic::new(
+                    format!("unknown type `{name}`"),
+                    token.span,
                 )),
             },
 
-            other => Err(format!(
-                "expected type, found {other:?} at byte {}",
-                token.span.start()
+            other => Err(Diagnostic::new(
+                format!("expected type, found {other:?}"),
+                token.span,
             )),
         }
     }
 
-    fn parse_print(&mut self) -> Result<Stmt, String> {
+    fn parse_print(&mut self) -> ParseResult<Stmt> {
         self.advance();
 
         self.expect_simple(TokenKind::LeftParen)?;
@@ -96,11 +99,11 @@ impl Parser {
         Ok(Stmt::Print { value })
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, String> {
+    fn parse_expression(&mut self) -> ParseResult<Expr> {
         self.parse_additive()
     }
 
-    fn parse_additive(&mut self) -> Result<Expr, String> {
+    fn parse_additive(&mut self) -> ParseResult<Expr> {
         let mut expr = self.parse_multiplicative()?;
 
         loop {
@@ -129,7 +132,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_multiplicative(&mut self) -> Result<Expr, String> {
+    fn parse_multiplicative(&mut self) -> ParseResult<Expr> {
         let mut expr = self.parse_unary()?;
 
         loop {
@@ -157,7 +160,7 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_unary(&mut self) -> Result<Expr, String> {
+    fn parse_unary(&mut self) -> ParseResult<Expr> {
         if matches!(&self.peek().kind, TokenKind::Minus) {
             let operator_span = self.advance().span;
             let value = self.parse_unary()?;
@@ -175,7 +178,7 @@ impl Parser {
         self.parse_primary()
     }
 
-    fn parse_primary(&mut self) -> Result<Expr, String> {
+    fn parse_primary(&mut self) -> ParseResult<Expr> {
         let token = self.advance().clone();
         let span = token.span;
 
@@ -200,23 +203,22 @@ impl Parser {
                 Ok(Expr { span, ..expr })
             }
 
-            other => Err(format!(
-                "expected expression, found {other:?} at byte {}",
-                token.span.start()
+            other => Err(Diagnostic::new(
+                format!("expected expression, found {other:?}"),
+                token.span,
             )),
         }
     }
 
-    fn expect_simple(&mut self, expected: TokenKind) -> Result<Span, String> {
+    fn expect_simple(&mut self, expected: TokenKind) -> ParseResult<Span> {
         let token = self.advance().clone();
 
         if std::mem::discriminant(&token.kind) == std::mem::discriminant(&expected) {
             Ok(token.span)
         } else {
-            Err(format!(
-                "expected {expected:?}, found {:?} at byte {}",
-                token.kind,
-                token.span.start()
+            Err(Diagnostic::new(
+                format!("expected {expected:?}, found {:?}", token.kind),
+                token.span,
             ))
         }
     }
@@ -235,8 +237,8 @@ impl Parser {
         &self.tokens[index]
     }
 
-    fn error(&self, message: String) -> String {
-        format!("{message} at byte {}", self.peek().span.start())
+    fn error(&self, message: String) -> Diagnostic {
+        Diagnostic::new(message, self.peek().span)
     }
 }
 
@@ -361,5 +363,13 @@ mod tests {
         };
 
         assert_eq!(value.span, Span::new(9, 16));
+    }
+
+    #[test]
+    fn reports_missing_semicolon_at_end_of_input() {
+        let error = parse(lex("x: i64 = 1").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "expected Semicolon, found Eof");
+        assert_eq!(error.primary_span(), Some(Span::empty(10)));
     }
 }
