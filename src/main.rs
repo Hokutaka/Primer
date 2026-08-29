@@ -1,3 +1,4 @@
+use primer_lang::diagnostic::{Diagnostic, render::render_compact};
 use std::{env, fs, path::PathBuf, process};
 
 fn main() {
@@ -24,9 +25,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            primer_lang::compile(&source).map_err(|diagnostic| {
-                primer_lang::diagnostic::render::render_compact(&diagnostic, &source)
-            })?;
+            render_compilation_result(primer_lang::compile(&source), &source)?;
 
             println!("OK {}", input.display());
 
@@ -43,7 +42,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let ir = primer_lang::compile_to_ir_text(&source)?;
+            let ir = render_compilation_result(primer_lang::compile_to_ir_text(&source), &source)?;
 
             write_or_print(output, ir)
         }
@@ -58,7 +57,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let c = primer_lang::compile_to_c(&source)?;
+            let c = render_compilation_result(primer_lang::compile_to_c(&source), &source)?;
 
             write_or_print(output, c)
         }
@@ -73,7 +72,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let llvm = primer_lang::compile_to_llvm(&source)?;
+            let llvm = render_compilation_result(primer_lang::compile_to_llvm(&source), &source)?;
 
             write_or_print(output, llvm)
         }
@@ -88,7 +87,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let wat = primer_lang::compile_to_wat(&source)?;
+            let wat = render_compilation_result(primer_lang::compile_to_wat(&source), &source)?;
 
             write_or_print(output, wat)
         }
@@ -103,7 +102,7 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let qbe = primer_lang::compile_to_qbe(&source)?;
+            let qbe = render_compilation_result(primer_lang::compile_to_qbe(&source), &source)?;
 
             write_or_print(output, qbe)
         }
@@ -118,7 +117,10 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let asm = primer_lang::compile_to_x86_64_win_asm(&source)?;
+            let asm = render_compilation_result(
+                primer_lang::compile_to_x86_64_win_asm(&source),
+                &source,
+            )?;
 
             write_or_print(output, asm)
         }
@@ -134,7 +136,8 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let bytecode = primer_lang::compile_to_bytecode_text(&source)?;
+            let bytecode =
+                render_compilation_result(primer_lang::compile_to_bytecode_text(&source), &source)?;
 
             write_or_print(output, bytecode)
         }
@@ -167,6 +170,10 @@ fn run() -> Result<(), String> {
 
         other => Err(format!("unknown command `{other}`")),
     }
+}
+
+fn render_compilation_result<T>(result: Result<T, Diagnostic>, source: &str) -> Result<T, String> {
+    result.map_err(|diagnostic| render_compact(&diagnostic, source))
 }
 
 fn required_path(value: Option<String>, message: &str) -> Result<PathBuf, String> {
