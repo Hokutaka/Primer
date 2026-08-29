@@ -81,7 +81,7 @@ fn binary_name(op: BinaryOp) -> &'static str {
 mod tests {
     use crate::ast::{
         BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
-        Stmt, Type as AstType, TypeSpec,
+        Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
     };
     use crate::ir::builder::build;
     use crate::source::Span;
@@ -95,11 +95,18 @@ mod tests {
         }
     }
 
+    fn ast_stmt(kind: AstStmtKind) -> Stmt {
+        Stmt {
+            kind,
+            span: Span::empty(0),
+        }
+    }
+
     #[test]
     fn emits_resolved_types() {
         let ast = AstProgram {
             statements: vec![
-                Stmt::Binding {
+                ast_stmt(AstStmtKind::Binding {
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(AstType::F32),
                     value: ast_expr(AstExprKind::Binary {
@@ -113,10 +120,10 @@ mod tests {
                             explicit_type: None,
                         })),
                     }),
-                },
-                Stmt::Print {
+                }),
+                ast_stmt(AstStmtKind::Print {
                     value: ast_expr(AstExprKind::Variable("x".into())),
-                },
+                }),
             ],
         };
 

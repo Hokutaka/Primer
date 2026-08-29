@@ -19,7 +19,13 @@ pub struct Program {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Stmt {
+pub struct Stmt {
+    pub kind: StmtKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StmtKind {
     Binding {
         name: String,
         type_spec: TypeSpec,
