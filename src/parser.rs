@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, Type, TypeSpec, UnaryOp};
+use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, StmtKind, Type, TypeSpec, UnaryOp};
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::source::Span;
@@ -35,6 +35,7 @@ impl Parser {
 
     fn parse_binding(&mut self) -> ParseResult<Stmt> {
         let token = self.advance().clone();
+        let start = token.span.start();
 
         let name = match token.kind {
             TokenKind::Identifier(name) => name,
@@ -47,19 +48,18 @@ impl Parser {
         };
 
         self.expect_simple(TokenKind::Colon)?;
-
         let type_spec = self.parse_type_spec()?;
-
         self.expect_simple(TokenKind::Equal)?;
-
         let value = self.parse_expression()?;
+        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
 
-        self.expect_simple(TokenKind::Semicolon)?;
-
-        Ok(Stmt::Binding {
-            name,
-            type_spec,
-            value,
+        Ok(Stmt {
+            kind: StmtKind::Binding {
+                name,
+                type_spec,
+                value,
+            },
+            span: Span::new(start, semicolon.end()),
         })
     }
 
@@ -87,16 +87,17 @@ impl Parser {
     }
 
     fn parse_print(&mut self) -> ParseResult<Stmt> {
-        self.advance();
+        let start = self.advance().span.start();
 
         self.expect_simple(TokenKind::LeftParen)?;
-
         let value = self.parse_expression()?;
-
         self.expect_simple(TokenKind::RightParen)?;
-        self.expect_simple(TokenKind::Semicolon)?;
+        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
 
-        Ok(Stmt::Print { value })
+        Ok(Stmt {
+            kind: StmtKind::Print { value },
+            span: Span::new(start, semicolon.end()),
+        })
     }
 
     fn parse_expression(&mut self) -> ParseResult<Expr> {
@@ -265,7 +266,7 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, ExprKind, Stmt, Type, TypeSpec};
+    use crate::ast::{BinaryOp, ExprKind, StmtKind, Type, TypeSpec};
     use crate::lexer::lex;
     use crate::source::Span;
 
@@ -275,11 +276,11 @@ mod tests {
     fn parses_binding() {
         let program = parse(lex("x: i64 = 42;").unwrap()).unwrap();
 
-        let Stmt::Binding {
+        let StmtKind::Binding {
             name,
             type_spec,
             value,
-        } = &program.statements[0]
+        } = &program.statements[0].kind
         else {
             panic!("expected binding");
         };
@@ -288,13 +289,14 @@ mod tests {
         assert_eq!(*type_spec, TypeSpec::Explicit(Type::I64));
         assert_eq!(value.kind, ExprKind::Integer(42));
         assert_eq!(value.span, Span::new(9, 11));
+        assert_eq!(program.statements[0].span, Span::new(0, 12));
     }
 
     #[test]
     fn parses_infer() {
         let program = parse(lex("x: infer = 1 + 2;").unwrap()).unwrap();
 
-        let Stmt::Binding { type_spec, .. } = &program.statements[0] else {
+        let StmtKind::Binding { type_spec, .. } = &program.statements[0].kind else {
             panic!("expected binding");
         };
 
@@ -305,7 +307,7 @@ mod tests {
     fn parses_float_without_explicit_type() {
         let program = parse(lex("x: f32 = 0.1;").unwrap()).unwrap();
 
-        let Stmt::Binding { value, .. } = &program.statements[0] else {
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
             panic!("expected binding");
         };
 
@@ -322,7 +324,7 @@ mod tests {
     fn multiplication_has_higher_precedence() {
         let program = parse(lex("x: i64 = 1 + 2 * 3;").unwrap()).unwrap();
 
-        let Stmt::Binding { value, .. } = &program.statements[0] else {
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
             panic!("expected binding");
         };
 
@@ -347,7 +349,7 @@ mod tests {
     fn unary_span_includes_operator() {
         let program = parse(lex("x: i64 = -1;").unwrap()).unwrap();
 
-        let Stmt::Binding { value, .. } = &program.statements[0] else {
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
             panic!("expected binding");
         };
 
@@ -358,7 +360,7 @@ mod tests {
     fn parenthesized_span_includes_parentheses() {
         let program = parse(lex("x: i64 = (1 + 2);").unwrap()).unwrap();
 
-        let Stmt::Binding { value, .. } = &program.statements[0] else {
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
             panic!("expected binding");
         };
 
@@ -371,5 +373,18 @@ mod tests {
 
         assert_eq!(error.message(), "expected Semicolon, found Eof");
         assert_eq!(error.primary_span(), Some(Span::empty(10)));
+    }
+
+    #[test]
+    fn print_span_covers_keyword_through_semicolon() {
+        let program = parse(lex("  print(1);").unwrap()).unwrap();
+        let statement = &program.statements[0];
+
+        let StmtKind::Print { value } = &statement.kind else {
+            panic!("expected print");
+        };
+
+        assert_eq!(statement.span, Span::new(2, 11));
+        assert_eq!(value.span, Span::new(8, 9));
     }
 }

@@ -17,8 +17,8 @@ pub fn build(program: &ast::Program) -> Result<Program, String> {
 }
 
 fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Statement, String> {
-    match statement {
-        ast::Stmt::Binding { name, value, .. } => {
+    match &statement.kind {
+        ast::StmtKind::Binding { name, value, .. } => {
             let ty = bindings
                 .get(name)
                 .copied()
@@ -30,7 +30,7 @@ fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Stateme
                 value: build_expr(value, Some(ty), bindings)?,
             })
         }
-        ast::Stmt::Print { value } => {
+        ast::StmtKind::Print { value } => {
             let ty = semantic::type_of_expr(value, bindings)?;
             Ok(Statement::Print {
                 value: build_expr(value, Some(ty), bindings)?,
@@ -105,7 +105,7 @@ impl From<ast::BinaryOp> for BinaryOp {
 mod tests {
     use crate::ast::{
         BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
-        Stmt, Type as AstType, TypeSpec,
+        Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
     };
     use crate::source::Span;
 
@@ -118,10 +118,17 @@ mod tests {
         }
     }
 
+    fn ast_stmt(kind: AstStmtKind) -> Stmt {
+        Stmt {
+            kind,
+            span: Span::empty(0),
+        }
+    }
+
     #[test]
     fn resolves_contextual_f32_literals() {
         let ast = AstProgram {
-            statements: vec![Stmt::Binding {
+            statements: vec![ast_stmt(AstStmtKind::Binding {
                 name: "x".into(),
                 type_spec: TypeSpec::Explicit(AstType::F32),
                 value: ast_expr(AstExprKind::Binary {
@@ -135,7 +142,7 @@ mod tests {
                         explicit_type: None,
                     })),
                 }),
-            }],
+            })],
         };
 
         let ir = build(&ast).unwrap();
@@ -155,14 +162,14 @@ mod tests {
     #[test]
     fn infer_defaults_unsuffixed_float_to_f64() {
         let ast = AstProgram {
-            statements: vec![Stmt::Binding {
+            statements: vec![ast_stmt(AstStmtKind::Binding {
                 name: "x".into(),
                 type_spec: TypeSpec::Infer,
                 value: ast_expr(AstExprKind::Float {
                     text: "0.1".into(),
                     explicit_type: None,
                 }),
-            }],
+            })],
         };
 
         let ir = build(&ast).unwrap();
@@ -176,7 +183,7 @@ mod tests {
     #[test]
     fn preserves_expression_spans() {
         let ast = AstProgram {
-            statements: vec![Stmt::Print {
+            statements: vec![ast_stmt(AstStmtKind::Print {
                 value: AstExpr {
                     kind: AstExprKind::Binary {
                         op: AstBinaryOp::Add,
@@ -191,7 +198,7 @@ mod tests {
                     },
                     span: Span::new(0, 5),
                 },
-            }],
+            })],
         };
 
         let ir = build(&ast).unwrap();

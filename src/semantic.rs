@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, Type, TypeSpec};
+use crate::ast::{BinaryOp, Expr, ExprKind, Program, StmtKind, Type, TypeSpec};
 
 pub type Bindings = HashMap<String, Type>;
 
@@ -8,8 +8,8 @@ pub fn check(program: &Program) -> Result<Bindings, String> {
     let mut bindings = HashMap::new();
 
     for statement in &program.statements {
-        match statement {
-            Stmt::Binding {
+        match &statement.kind {
+            StmtKind::Binding {
                 name,
                 type_spec,
                 value,
@@ -43,7 +43,7 @@ pub fn check(program: &Program) -> Result<Bindings, String> {
                 bindings.insert(name.clone(), value_type);
             }
 
-            Stmt::Print { value } => {
+            StmtKind::Print { value } => {
                 type_of_expr_expected(value, &bindings, None)?;
             }
         }
