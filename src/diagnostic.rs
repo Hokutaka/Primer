@@ -1,3 +1,5 @@
+pub mod render;
+
 use crate::source::Span;
 
 /// コンパイル中に見つかった問題を表します。

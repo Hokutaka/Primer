@@ -24,7 +24,9 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            primer_lang::compile(&source)?;
+            primer_lang::compile(&source).map_err(|diagnostic| {
+                primer_lang::diagnostic::render::render_compact(&diagnostic, &source)
+            })?;
 
             println!("OK {}", input.display());
 
