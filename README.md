@@ -1,16 +1,18 @@
 # Primer
 
+日本語 | [English](README.en.md)
+
 [![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
 
-Primer is a small experimental programming language designed to make compiler transformations observable.
+Primerは、コンパイラによる変換を観測可能にするための実験用プログラミング言語です。
 
-The language is deliberately small, and the compiler keeps its transformation boundaries explicit. The same resolved Primer program can be lowered through C, LLVM IR, QBE IR, WebAssembly Text, direct Windows x86-64 assembly, or Primer bytecode.
+コンパイラは変換境界を明示します。同じ意味に解決されたPrimerプログラムを、C、LLVM IR、QBE IR、WebAssembly Text、Windows x86-64直接アセンブリ、Primer bytecodeへloweringできます。
 
-Primer bytecode can also be executed by Primer's own small virtual machine.
+Primer bytecodeは、Primer自身の小さな仮想マシンでも実行できます。
 
-## Compiler architecture
+## コンパイラ構成
 
-All backends share the same frontend and the same typed, backend-independent Primer IR:
+すべてのバックエンドは、同じフロントエンドと、型付きでバックエンドに依存しない同じPrimer IRを共有します。
 
 ```text
 Primer Source
@@ -38,28 +40,28 @@ Emitter
 Backend Artifact
 ```
 
-The important boundary is Primer IR.
+この構成で重要な境界はPrimer IRです。
 
-The frontend decides what the source program means. Each backend then lowers that resolved meaning into its own internal Rust representation before emitting text or bytecode.
+フロントエンドは、ソースプログラムの意味を決定します。各バックエンドは、解決済みの意味を自身の内部Rust表現へloweringしてから成果物を出力します。
 
-Primer's backend emitters do not reinterpret the AST or repeat semantic/type resolution.
+Primerのバックエンドemitterは、ASTを再解釈したり、意味や型の解決を繰り返したりしません。
 
-For the detailed architecture and invariants, see [docs/design.md](docs/design.md).
+詳しい構成と不変条件は、[コンパイラ設計](docs/design/architecture.ja.md)を参照してください。
 
-## Observation points
+## 観測点
 
-Primer exposes two primary observation boundaries.
+Primerは二つの主要な観測境界を公開します。
 
-**Observation 1: resolved Primer meaning**
+**観測1: 解決済みのPrimerの意味**
 
 ```sh
 primer emit-ir examples/hello.prim
 primer emit-ir examples/hello.prim -o hello.pir
 ```
 
-Primer IR is produced after semantic and type resolution and before backend-specific lowering.
+Primer IRは、意味と型の解決後、バックエンド固有のloweringより前に生成されます。
 
-**Observation 2: backend artifact**
+**観測2: 出力成果物**
 
 ```text
 emit-c         → .c
@@ -70,32 +72,32 @@ emit-asm       → .s
 emit-bytecode  → .pbc
 ```
 
-The existing `emit-*` commands are the observation surface. Backend-specific Rust IR remains an internal lowering boundary.
+既存の`emit-*`コマンドが観測面です。バックエンド固有のRust IRは、内部のlowering境界として扱います。
 
-## v0.1 scope
+## v0.1の範囲
 
-Primer currently supports:
+Primerは現在、次の機能を備えています。
 
-- static typing;
-- `i64`, `f32`, and `f64`;
-- explicit type declarations;
-- explicit type inference with `infer`;
-- immutable bindings;
-- `+`, `-`, `*`, `/`;
-- unary `-`;
-- parentheses;
-- `print(expr);`;
-- `//` line comments;
-- Primer IR emission;
-- C code generation;
-- LLVM IR generation;
-- QBE IR generation;
-- WebAssembly Text generation;
-- direct Windows x86-64 assembly generation;
-- Primer bytecode generation;
-- Primer VM execution.
+- 静的型付け
+- `i64`、`f32`、`f64`
+- 明示的な型宣言
+- `infer`による明示的な型推論
+- 不変な変数束縛
+- `+`、`-`、`*`、`/`
+- 単項`-`
+- 丸括弧
+- `print(expr);`
+- `//`による行コメント
+- Primer IRの出力
+- Cコード生成
+- LLVM IR生成
+- QBE IR生成
+- WebAssembly Text生成
+- Windows x86-64直接アセンブリ生成
+- Primer bytecode生成
+- Primer VMによる実行
 
-Example:
+例を示します。
 
 ```primer
 integer: i64 = 1 + 2;
@@ -111,32 +113,32 @@ print(double);
 print(inferred);
 ```
 
-The type field is always required. `infer` explicitly requests inference rather than omitting the type:
+型の指定は常に必要です。型を省略する代わりに、`infer`で型推論を明示的に要求します。
 
 ```primer
 x: infer = 1 + 2;
 ```
 
-Unsuffixed floating-point literals are contextually typed when possible:
+接尾辞のない浮動小数点リテラルは、可能な場合、文脈に基づいて型付けされます。
 
 ```primer
 a: f32 = 0.1 + 0.2;
 b: f64 = 0.1 + 0.2;
 ```
 
-That decision is resolved in Primer IR before backend lowering.
+この決定は、バックエンドへのloweringより前にPrimer IRで解決されます。
 
-Primer currently performs no implicit numeric conversion between `i64`, `f32`, and `f64`.
+Primerは現在、`i64`、`f32`、`f64`の間で暗黙の数値変換を行いません。
 
-## Install
+## インストール
 
-From a checkout:
+リポジトリをcheckoutしたディレクトリで、次のコマンドを実行します。
 
 ```sh
 cargo install --path .
 ```
 
-When developing Primer itself, reinstall the CLI after changes:
+Primer自体を開発している場合は、変更後にCLIを再インストールします。
 
 ```sh
 cargo install --path . --force
@@ -144,20 +146,20 @@ cargo install --path . --force
 
 ## CLI
 
-Validate a source file:
+ソースファイルを検証します。
 
 ```sh
 primer check examples/hello.prim
 ```
 
-Emit resolved Primer IR:
+解決済みのPrimer IRを出力します。
 
 ```sh
 primer emit-ir examples/hello.prim
 primer emit-ir examples/hello.prim -o hello.pir
 ```
 
-Emit backend artifacts:
+各出力経路の成果物を生成します。
 
 ```sh
 primer emit-c examples/hello.prim -o hello.c
@@ -168,17 +170,17 @@ primer emit-asm examples/hello.prim -o hello.s
 primer emit-bytecode examples/hello.prim -o hello.pbc
 ```
 
-Run through Primer bytecode and the Primer VM:
+Primer bytecodeとPrimer VMを通して実行します。
 
 ```sh
 primer run examples/hello.prim
 ```
 
-Without `-o`, emit commands write to standard output.
+`-o`を指定しない場合、emitコマンドは標準出力へ書き出します。
 
-## Backend paths
+## 出力経路
 
-Each backend follows the same architectural shape:
+各出力経路を実現するバックエンドは、同じ構造に従います。
 
 ```text
 Primer IR
@@ -192,18 +194,18 @@ backend::emit()
 Artifact
 ```
 
-The current routes are:
+現在の経路は次のとおりです。
 
-| Backend | Artifact | Typical next step |
-| --- | --- | --- |
-| C | `.c` | GCC / Clang |
-| LLVM | `.ll` | LLVM / Clang |
-| QBE | `.ssa` | QBE |
-| WebAssembly | `.wat` | WebAssembly toolchain |
-| Direct x86-64 Windows assembly | `.s` | assembler / linker |
-| Primer bytecode | `.pbc` | Primer VM |
+| 出力経路 | 現在のターゲット | 成果物 | 代表的な次の処理 |
+| --- | --- | --- | --- |
+| C | Primerでは指定しない | `.c` | GCC / Clang |
+| LLVM IR | Primerでは指定しない | `.ll` | LLVM / Clang |
+| QBE IR | Primerでは指定しない | `.ssa` | QBE |
+| WebAssembly Text | WebAssembly | `.wat` | WebAssembly toolchain |
+| ネイティブアセンブリ | x86-64、Windows、Windows x64 ABI | `.s` | assembler / linker |
+| Primer bytecode | Primer VM | `.pbc` | Primer VM |
 
-For example:
+たとえば、次のような経路になります。
 
 ```text
 Primer Source
@@ -217,52 +219,62 @@ Primer IR
       └──→ Bytecode IR → .pbc → Primer VM
 ```
 
-Primer owns the transformation up to the emitted artifact. External compiler versions, optimization levels, CPU targets, benchmark settings, and measurement policy belong to the caller.
+Primerは、成果物を出力するまでの変換を担当します。外部コンパイラのバージョン、最適化レベル、対象CPU、ベンチマーク設定、測定方法は、Primerを呼び出す側が決定します。
 
-## Design direction
+出力経路、ターゲット、成果物、バックエンドの区別は、[出力経路とターゲット](docs/design/targets.ja.md)で定義します。
 
-Primer should preserve observability over cleverness.
+## 設計方針
 
-In practice, that means:
+Primerは、洗練された実装と可観測性の両立を目指します。実装や変換が高度になっても、その境界と結果を観測可能に保ちます。
 
-- frontend type decisions are resolved before backend lowering;
-- backend decisions stay behind explicit lowering boundaries;
-- emitters format backend IR instead of reinterpreting Primer semantics;
-- source-level optimization stays minimal unless an explicit optimization pass is introduced;
-- generated observations should avoid incidental nondeterminism where practical.
+具体的には、次の方針に従います。
 
-The goal is not merely to generate code. It is to keep the route from source meaning to target representation inspectable.
+- フロントエンドで型に関する決定を解決してから、バックエンドへloweringします。
+- バックエンド固有の決定は、明示的なlowering境界の内側で行います。
+- emitterはPrimerの意味を再解釈せず、バックエンドIRを出力形式へ変換します。
+- 最適化を行う場合は、明示的で観測可能なパスとして導入します。
+- 生成する観測結果から、可能な限り偶発的な非決定性を取り除きます。
+
+目的は、単にコードを生成することではありません。ソースの意味から対象表現に至る経路を観察可能に保つことです。
 
 ## Tint\*
 
-[Tint\*](https://github.com/Hokutaka/Tint-St.) is a visual development and inspection environment for Primer.
+[Tint\*](https://github.com/Hokutaka/Tint-St.)は、Primerのための視覚的な開発・観察環境です。
 
-Tint* consumes Primer's public CLI output and presents source and generated representations side by side. It may also invoke external tools to show downstream views such as C-generated assembly, LLVM-generated assembly, or QBE-generated assembly.
+Tint*はPrimerが公開するCLI出力を利用し、ソースと生成された表現を並べて表示します。外部ツールを呼び出し、C、LLVM、QBEから生成されたアセンブリなどの後続表現を表示することもできます。
 
-Primer remains the language toolchain. Tint* is a window into it.
+Primerは言語ツールチェーンであり、Tint*はその内部を観察するための窓です。
 
 ## Whitebase
 
-[Whitebase](https://github.com/Hokutaka/Whitebase) is an external consumer of Primer artifacts.
+[Whitebase](https://github.com/Hokutaka/Whitebase)は、Primerの成果物を利用する外部ツールです。
 
-Primer is responsible for:
+Primerは次の処理を担当します。
 
 ```text
 Transform → Lower → Emit → Observe
 ```
 
-Whitebase can take those artifacts and:
+Whitebaseは、それらの成果物を受け取り、次の処理を行えます。
 
 ```text
 Route → Build → Run → Measure → Compare
 ```
 
-This keeps compiler semantics inside Primer while leaving toolchain selection, benchmarking, and comparison policy outside it.
+これにより、コンパイラの意味はPrimerの内側に保ち、ツールチェーンの選択、ベンチマーク、比較方法をPrimerの外側に置きます。
 
-## Documentation
+## ドキュメント
 
-For detailed language semantics, compiler architecture, observation boundaries, and future design constraints, see [docs/design.md](docs/design.md).
+Primerの文書は、目的ごとに整理されています。
 
-## License
+- [コンパイラ設計](docs/design/architecture.ja.md)
+- [可観測性の契約](docs/design/observability.ja.md)
+- [出力経路とターゲット](docs/design/targets.ja.md)
+- [言語リファレンス](docs/reference/language.ja.md)
+- [CLIリファレンス](docs/reference/cli.ja.md)
 
-Licensed under the [MIT License](LICENSE).
+英語版を含む文書全体の索引は、[docs/README.md](docs/README.md)にあります。
+
+## ライセンス
+
+[MIT License](LICENSE)の条件で公開しています。

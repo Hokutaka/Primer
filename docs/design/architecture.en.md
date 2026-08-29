@@ -1,12 +1,14 @@
-# Primer design notes
+# Primer compiler design
 
-Primer is a small, statically typed experimental language designed to make compiler transformations observable.
+[日本語](architecture.ja.md)
 
-The language is intentionally small. The compiler architecture is intentionally explicit.
+Primer is a statically typed experimental language designed to make compiler transformations observable. Its compiler architecture and transformation boundaries are explicit.
+
+The boundaries that Primer preserves for observability are defined in the [observability contract](observability.en.md). Terminology and conditions for generated output are defined in [output routes and targets](targets.en.md).
 
 ## Principles
 
-Primer should preserve observability over cleverness.
+Primer aims to combine sophisticated implementation with observability. As transformations become more advanced, their boundaries and results must remain observable.
 
 In particular:
 
@@ -14,7 +16,7 @@ In particular:
 - backend-independent meaning should be resolved before backend lowering;
 - backend-specific decisions should happen behind an explicit lowering boundary;
 - emitters should format backend IR rather than reinterpret Primer semantics;
-- source-level optimization should not happen unless an explicit optimization pass is added for an experiment;
+- optimizations should be introduced as explicit, observable passes that can be examined as part of an experiment;
 - generated observations should avoid incidental nondeterminism such as timestamps or random identifiers.
 
 Primer v0.1 does not silently insert numeric conversions or hide transformations that are useful to observe.
@@ -107,9 +109,9 @@ Primer IR deliberately does not attempt to be a universal machine IR or prematur
 
 Each backend lowers Primer IR into a backend-specific Rust representation before emission.
 
-Current backend boundaries are:
+The current output routes and implementation boundaries are:
 
-| Backend | Internal representation | Emitted artifact |
+| Output route | Backend-internal representation | Emitted artifact |
 | --- | --- | --- |
 | C | C IR | `.c` |
 | LLVM | LLVM IR representation | `.ll` |
@@ -156,9 +158,9 @@ An `emit-ir` result guarantees that:
 
 Backend allocation, ABI, stack-machine, or target-instruction decisions do not belong in this observation.
 
-### Observation 2: backend artifact
+### Observation 2: output artifact
 
-Backend emit commands expose the result after backend lowering and emission:
+Emit commands for each output route expose the result after backend lowering and emission:
 
 ```text
 primer emit-c <file> [-o <output.c>]
@@ -171,9 +173,9 @@ primer emit-bytecode <file> [-o <output.pbc>]
 
 These observations are intended to answer:
 
-> How did this backend represent the resolved Primer program?
+> How did the selected output route and target represent the resolved Primer program?
 
-The existing `emit-*` commands are the Observation API. Primer does not currently need a second `observe` command that duplicates them.
+The existing `emit-*` commands are the observation API. Primer does not currently need a second `observe` command that duplicates them.
 
 ### Internal backend IR is not an observation contract
 
@@ -183,175 +185,11 @@ Making backend IR public would turn implementation details into compatibility re
 
 A future explicit backend-IR observation point may be added only if there is a concrete need for it.
 
-## v0.1 grammar
-
-```text
-program     := statement* EOF
-
-statement   := binding
-             | "print" "(" expression ")" ";"
-
-binding     := IDENT ":" type_spec "=" expression ";"
-
-type_spec   := "i64"
-             | "f32"
-             | "f64"
-             | "infer"
-
-expression  := additive
-
-additive    := multiply (("+" | "-") multiply)*
-
-multiply    := unary (("*" | "/") unary)*
-
-unary       := "-" unary
-             | primary
-
-primary     := INTEGER
-             | FLOAT
-             | IDENT
-             | "(" expression ")"
-```
-
-Bindings are immutable and may only refer to bindings declared earlier in the file.
-
-A type specifier is always required.
-
-```primer
-count: i64 = 42;
-single: f32 = 0.1 + 0.2;
-double: f64 = 0.1 + 0.2;
-value: infer = count * 2;
-```
-
-`infer` explicitly requests type inference. It is not itself a runtime type.
-
-## Types
-
-Primer v0.1 has three concrete numeric types:
-
-```text
-i64
-f32
-f64
-```
-
-Backends map these types to their own representations during lowering.
-
-For example, the C backend maps them as follows:
-
-```text
-Primer    C
-i64       int64_t
-f32       float
-f64       double
-```
-
-## Numeric literals
-
-Integer literals have type `i64`.
-
-```primer
-x: i64 = 42;
-```
-
-Floating-point literals without a suffix are contextually typed when an explicit floating-point type is available.
-
-```primer
-a: f32 = 0.1 + 0.2;
-b: f64 = 0.1 + 0.2;
-```
-
-That distinction is resolved in Primer IR before backend lowering.
-
-For example, the C backend may emit:
-
-```c
-float primer_a = (0.1f + 0.2f);
-double primer_b = (0.1 + 0.2);
-```
-
-When no expected floating-point type is available, an unsuffixed floating-point literal defaults to `f64`.
-
-```primer
-x: infer = 0.1 + 0.2;
-```
-
-Here `x` is inferred as `f64`.
-
-A literal suffix can explicitly select its type:
-
-```primer
-a: infer = 0.1f32 + 0.2f32;
-b: infer = 0.1f64 + 0.2f64;
-```
-
-Scientific notation is also accepted for floating-point literals:
-
-```primer
-x: f64 = 1.5e-3;
-```
-
-## Type checking
-
-Arithmetic initially requires both operands to have the same type.
-
-```text
-i64 op i64 -> i64
-f32 op f32 -> f32
-f64 op f64 -> f64
-```
-
-Primer v0.1 performs no implicit numeric conversion.
-
-For example:
-
-```primer
-x: infer = 1 + 0.1;
-```
-
-is a type error because the operands are `i64` and `f64`.
-
-Explicit binding types are checked against the resolved expression type:
-
-```primer
-x: f32 = 0.1 + 0.2;
-```
-
-The `f32` binding supplies the expected type to unsuffixed floating-point literals, so the expression is evaluated as `f32`.
-
-This decision is recorded in Primer IR and is not recomputed by individual backends.
-
-## Output
-
-`print(expression);` accepts all current numeric types.
-
-Primer keeps floating-point output precise enough to expose the behavior being observed.
-
-The current formatting policy is:
-
-```text
-i64    integer output
-f32    9 significant digits
-f64    17 significant digits
-```
-
-For example, an `f32` calculation such as:
-
-```primer
-x: f32 = 0.1 + 0.2;
-print(x);
-```
-
-may visibly produce the floating-point approximation rather than a shortened decimal representation.
-
-Backends are responsible for preserving the observable print behavior while implementing it according to their own target conventions.
-
 ## Code generation
 
-Primer deliberately avoids implicit source-level optimization.
+Primer avoids unobservable, implicit source-level optimization rather than optimization itself.
 
-Backend lowering may perform the mechanical transformations required by its target representation, but it should not erase useful structure merely to be clever.
+Backend lowering may perform advanced transformations as well as the mechanical transformations required by its target representation. If a transformation removes structure that is useful to observe, it must be treated as an explicit, observable pass.
 
 Examples of legitimate backend lowering include:
 
@@ -362,40 +200,6 @@ Examples of legitimate backend lowering include:
 - lowering Primer operations into bytecode instructions.
 
 If optimization is introduced later, it should appear as a named pass with an explicit boundary rather than being hidden inside emission.
-
-## CLI contract
-
-The current CLI surface is:
-
-```text
-primer check <file>
-primer emit-ir <file> [-o <output.pir>]
-primer emit-c <file> [-o <output.c>]
-primer emit-llvm <file> [-o <output.ll>]
-primer emit-wat <file> [-o <output.wat>]
-primer emit-qbe <file> [-o <output.ssa>]
-primer emit-asm <file> [-o <output.s>]
-primer emit-bytecode <file> [-o <output.pbc>]
-primer run <file>
-primer --version
-```
-
-`primer check` performs parsing and semantic/type validation.
-
-Each `emit-*` command writes its observation to standard output by default. With `-o`, the caller chooses the output path.
-
-`primer run` lowers through Primer bytecode and executes the resulting `BytecodeProgram` in the Primer VM. Runtime output is useful for validation and experiments, but it is distinct from the two compiler observation boundaries defined above.
-
-Primer does not choose external experiment policy such as:
-
-- GCC versus Clang;
-- optimization levels for external compilers;
-- CPU targets for external toolchains;
-- benchmark settings;
-- measurement policy;
-- comparison policy.
-
-Those choices belong to the caller.
 
 ## Tool responsibilities
 
@@ -425,17 +229,13 @@ Primer defines and produces the observable compiler artifacts.
 
 Tint* is a visual development and inspection environment for Primer.
 
-It should consume Primer's public CLI observations rather than duplicate compiler semantics.
-
-Its role is to make source and generated representations easy to inspect and compare interactively.
+It should consume Primer's public CLI observations rather than duplicate compiler semantics. Its role is to make source and generated representations easy to inspect and compare interactively.
 
 ### Whitebase
 
 Whitebase consumes emitted artifacts as experiment inputs.
 
 Its role is to route, build, run, measure, and compare them while recording the external choices that affect the experiment.
-
-For example:
 
 ```text
 Primer source
@@ -458,7 +258,7 @@ Whitebase should treat Primer as an external tool boundary rather than depending
 
 Observation artifacts are most useful when they can be compared directly.
 
-For the same Primer version, source input, backend, and explicit options, Primer should produce deterministic textual observations whenever practical.
+For the same Primer version, source input, output route, target, target features, and explicit options, Primer should produce deterministic textual observations whenever practical.
 
 Primer-generated observations should therefore avoid incidental values such as timestamps, random identifiers, or environment-dependent metadata unless such data is itself the subject of an experiment.
 
@@ -484,4 +284,4 @@ Possible future work includes:
 
 Those features should be added only when they preserve the central rule:
 
-> Primer should make transformations easier to observe, not harder to explain.
+> Primer should make transformations easier to observe and easier to explain.

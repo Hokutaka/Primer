@@ -1,0 +1,41 @@
+# Observability contract
+
+[日本語](observability.ja.md)
+
+## Purpose
+
+This document defines the boundaries that Primer's observation features must preserve.
+
+Primer prioritizes the ability to observe the transformation process from source code to generated artifacts. The ability to observe compilation is distinct from the ability to interfere with it.
+
+## Separation of observation and control
+
+- Observation APIs are read-only.
+- Primer does not provide an API that allows external users to modify compiler state directly.
+- Mutation, plugins, and hooks are treated as capabilities and permissions separate from observation.
+- Identifiers contained in observation data do not grant authority to perform operations.
+
+## Internal observability
+
+- Primer preserves enough provenance to trace elements across tokens, the AST, semantic-analysis results, and IR.
+- Observation data is provided as read-only information detached from the compiler's internal state.
+- Observation must not feed information back into compilation or alter transformation results.
+
+## Public observation surfaces
+
+- The current public contracts are Primer IR and the artifacts produced by each output route.
+- Retaining information for internal observation does not make that information a public compatibility API.
+- A new public format must be defined as an explicitly versioned schema.
+
+## Security
+
+- Source text and file paths are disclosed only when explicitly requested by the user.
+- Control characters and escape sequences are handled safely when text is written to a terminal.
+- Traces, diagnostics, and source snippets have appropriate size limits.
+- Environment variables, secrets, and execution-environment details unnecessary for observation are not recorded.
+
+## Reproducibility
+
+- Enabling or disabling observation does not change compilation results.
+- The same Primer version, source, output route, target, target features, and explicit options produce deterministic observation results.
+- Observation results do not contain incidental nondeterminism such as timestamps or random identifiers.
