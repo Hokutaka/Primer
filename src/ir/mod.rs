@@ -1,6 +1,8 @@
 pub mod builder;
 pub mod text;
 
+use crate::source::Span;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     I64,
@@ -23,6 +25,7 @@ pub enum Statement {
 pub struct Expr {
     pub ty: Type,
     pub kind: ExprKind,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

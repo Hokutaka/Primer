@@ -68,6 +68,7 @@ fn build_expr(
     Ok(Expr {
         ty: ty.into(),
         kind,
+        span: expr.span,
     })
 }
 
@@ -170,5 +171,41 @@ mod tests {
         };
         assert_eq!(*ty, Type::F64);
         assert_eq!(value.ty, Type::F64);
+    }
+
+    #[test]
+    fn preserves_expression_spans() {
+        let ast = AstProgram {
+            statements: vec![Stmt::Print {
+                value: AstExpr {
+                    kind: AstExprKind::Binary {
+                        op: AstBinaryOp::Add,
+                        left: Box::new(AstExpr {
+                            kind: AstExprKind::Integer(1),
+                            span: Span::new(0, 1),
+                        }),
+                        right: Box::new(AstExpr {
+                            kind: AstExprKind::Integer(2),
+                            span: Span::new(4, 5),
+                        }),
+                    },
+                    span: Span::new(0, 5),
+                },
+            }],
+        };
+
+        let ir = build(&ast).unwrap();
+        let Statement::Print { value } = &ir.statements[0] else {
+            panic!("expected print");
+        };
+
+        assert_eq!(value.span, Span::new(0, 5));
+
+        let ExprKind::Binary { left, right, .. } = &value.kind else {
+            panic!("expected binary expression");
+        };
+
+        assert_eq!(left.span, Span::new(0, 1));
+        assert_eq!(right.span, Span::new(4, 5));
     }
 }
