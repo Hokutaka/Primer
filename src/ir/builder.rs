@@ -1,11 +1,12 @@
 use crate::{
     ast,
+    diagnostic::Diagnostic,
     semantic::{self, Bindings},
 };
 
 use super::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
 
-pub fn build(program: &ast::Program) -> Result<Program, String> {
+pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     let bindings = semantic::check(program)?;
     let mut statements = Vec::with_capacity(program.statements.len());
 
@@ -16,13 +17,12 @@ pub fn build(program: &ast::Program) -> Result<Program, String> {
     Ok(Program { statements })
 }
 
-fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Statement, String> {
+fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Statement, Diagnostic> {
     match &statement.kind {
         ast::StmtKind::Binding { name, value, .. } => {
-            let ty = bindings
-                .get(name)
-                .copied()
-                .ok_or_else(|| format!("missing resolved type for binding `{name}`"))?;
+            let ty = bindings.get(name).copied().ok_or_else(|| {
+                Diagnostic::without_span(format!("missing resolved type for binding `{name}`"))
+            })?;
 
             Ok(Statement::Binding {
                 name: name.clone(),
@@ -43,7 +43,7 @@ fn build_expr(
     expr: &ast::Expr,
     expected: Option<ast::Type>,
     bindings: &Bindings,
-) -> Result<Expr, String> {
+) -> Result<Expr, Diagnostic> {
     let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
 
     let kind = match &expr.kind {
