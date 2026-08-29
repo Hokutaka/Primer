@@ -1,4 +1,63 @@
+pub mod render;
+
 use crate::bytecode::{BytecodeProgram, Instruction, Type};
+
+/// Primer VMの実行中に発生した問題の種類を表します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmErrorKind {
+    /// 実行位置がbytecodeの範囲外へ到達しました。
+    InstructionOutOfBounds,
+
+    /// 存在しないスロットへアクセスしました。
+    InvalidSlot { slot: usize },
+
+    /// 初期化前のスロットを読み取りました。
+    UninitializedSlot { slot: usize },
+
+    /// 初期化済みのスロットへ再度書き込みました。
+    SlotAlreadyInitialized { slot: usize },
+
+    /// 必要な値がスタックにありませんでした。
+    StackUnderflow,
+
+    /// 命令が期待した型と実際の値の型が一致しませんでした。
+    TypeMismatch { expected: Type, actual: Type },
+
+    /// 整数をゼロで除算しようとしました。
+    DivisionByZero,
+
+    /// 整数除算の結果を`i64`で表現できませんでした。
+    DivisionOverflow,
+
+    /// VM停止時に未使用の値がスタックへ残っていました。
+    UnusedStackValues { count: usize },
+}
+
+/// Primer VMの実行エラーと発生したbytecode命令位置を表します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VmError {
+    kind: VmErrorKind,
+    instruction_index: usize,
+}
+
+impl VmError {
+    const fn new(kind: VmErrorKind, instruction_index: usize) -> Self {
+        Self {
+            kind,
+            instruction_index,
+        }
+    }
+
+    /// エラーの種類を返します。
+    pub const fn kind(self) -> VmErrorKind {
+        self.kind
+    }
+
+    /// `emit-bytecode`の表示と対応する0から始まる命令番号を返します。
+    pub const fn instruction_index(self) -> usize {
+        self.instruction_index
+    }
+}
 
 #[derive(Debug, Clone)]
 enum Value {
@@ -7,7 +66,23 @@ enum Value {
     F64(f64),
 }
 
-pub fn run(program: &BytecodeProgram) -> Result<String, String> {
+impl Value {
+    const fn ty(&self) -> Type {
+        match self {
+            Self::I64(_) => Type::I64,
+            Self::F32(_) => Type::F32,
+            Self::F64(_) => Type::F64,
+        }
+    }
+}
+
+type VmResult<T> = Result<T, VmErrorKind>;
+
+fn at_instruction<T>(result: VmResult<T>, instruction_index: usize) -> Result<T, VmError> {
+    result.map_err(|kind| VmError::new(kind, instruction_index))
+}
+
+pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
     let mut stack: Vec<Value> = Vec::new();
 
     let mut slots: Vec<Option<Value>> = vec![None; program.slots.len()];
@@ -20,7 +95,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, String> {
         let instruction = program
             .instructions
             .get(pc)
-            .ok_or_else(|| format!("bytecode execution escaped program at pc {pc}"))?;
+            .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match instruction {
             Instruction::PushI64(value) => {
@@ -38,51 +113,56 @@ pub fn run(program: &BytecodeProgram) -> Result<String, String> {
             Instruction::Load(slot) => {
                 let value = slots
                     .get(*slot)
-                    .ok_or_else(|| format!("invalid slot {slot}"))?
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?
                     .clone()
-                    .ok_or_else(|| format!("load from uninitialized slot {slot}"))?;
+                    .ok_or_else(|| {
+                        VmError::new(VmErrorKind::UninitializedSlot { slot: *slot }, pc)
+                    })?;
 
                 stack.push(value);
             }
 
             Instruction::Store(slot) => {
-                let value = pop_value(&mut stack)?;
+                let value = at_instruction(pop_value(&mut stack), pc)?;
 
                 let destination = slots
                     .get_mut(*slot)
-                    .ok_or_else(|| format!("invalid slot {slot}"))?;
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
 
                 if destination.is_some() {
-                    return Err(format!("slot {slot} already initialized"));
+                    return Err(VmError::new(
+                        VmErrorKind::SlotAlreadyInitialized { slot: *slot },
+                        pc,
+                    ));
                 }
 
                 *destination = Some(value);
             }
 
             Instruction::Add(ty) => {
-                binary(*ty, &mut stack, BinaryOperation::Add)?;
+                at_instruction(binary(*ty, &mut stack, BinaryOperation::Add), pc)?;
             }
 
             Instruction::Subtract(ty) => {
-                binary(*ty, &mut stack, BinaryOperation::Subtract)?;
+                at_instruction(binary(*ty, &mut stack, BinaryOperation::Subtract), pc)?;
             }
 
             Instruction::Multiply(ty) => {
-                binary(*ty, &mut stack, BinaryOperation::Multiply)?;
+                at_instruction(binary(*ty, &mut stack, BinaryOperation::Multiply), pc)?;
             }
 
             Instruction::Divide(ty) => {
-                binary(*ty, &mut stack, BinaryOperation::Divide)?;
+                at_instruction(binary(*ty, &mut stack, BinaryOperation::Divide), pc)?;
             }
 
             Instruction::Negate(ty) => {
-                negate(*ty, &mut stack)?;
+                at_instruction(negate(*ty, &mut stack), pc)?;
             }
 
             Instruction::Print(ty) => {
-                let value = pop_value(&mut stack)?;
+                let value = at_instruction(pop_value(&mut stack), pc)?;
 
-                let line = format_value(value, *ty)?;
+                let line = at_instruction(format_value(value, *ty), pc)?;
 
                 output.push_str(&line);
 
@@ -98,9 +178,9 @@ pub fn run(program: &BytecodeProgram) -> Result<String, String> {
     }
 
     if !stack.is_empty() {
-        return Err(format!(
-            "VM halted with {} value(s) left on stack",
-            stack.len(),
+        return Err(VmError::new(
+            VmErrorKind::UnusedStackValues { count: stack.len() },
+            pc,
         ));
     }
 
@@ -115,7 +195,7 @@ enum BinaryOperation {
     Divide,
 }
 
-fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> Result<(), String> {
+fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmResult<()> {
     match ty {
         Type::I64 => {
             let right = pop_i64(stack)?;
@@ -129,9 +209,14 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> Resul
 
                 BinaryOperation::Multiply => left.wrapping_mul(right),
 
-                BinaryOperation::Divide => left
-                    .checked_div(right)
-                    .ok_or_else(|| "invalid i64 division".to_owned())?,
+                BinaryOperation::Divide => {
+                    if right == 0 {
+                        return Err(VmErrorKind::DivisionByZero);
+                    }
+
+                    left.checked_div(right)
+                        .ok_or(VmErrorKind::DivisionOverflow)?
+                }
             };
 
             stack.push(Value::I64(value));
@@ -177,7 +262,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> Resul
     Ok(())
 }
 
-fn negate(ty: Type, stack: &mut Vec<Value>) -> Result<(), String> {
+fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
     match ty {
         Type::I64 => {
             let value = pop_i64(stack)?;
@@ -201,35 +286,44 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> Result<(), String> {
     Ok(())
 }
 
-fn pop_value(stack: &mut Vec<Value>) -> Result<Value, String> {
-    stack.pop().ok_or_else(|| "VM stack underflow".to_owned())
+fn pop_value(stack: &mut Vec<Value>) -> VmResult<Value> {
+    stack.pop().ok_or(VmErrorKind::StackUnderflow)
 }
 
-fn pop_i64(stack: &mut Vec<Value>) -> Result<i64, String> {
+fn pop_i64(stack: &mut Vec<Value>) -> VmResult<i64> {
     match pop_value(stack)? {
         Value::I64(value) => Ok(value),
 
-        other => Err(format!("expected i64, found {other:?}")),
+        other => Err(VmErrorKind::TypeMismatch {
+            expected: Type::I64,
+            actual: other.ty(),
+        }),
     }
 }
 
-fn pop_f32(stack: &mut Vec<Value>) -> Result<f32, String> {
+fn pop_f32(stack: &mut Vec<Value>) -> VmResult<f32> {
     match pop_value(stack)? {
         Value::F32(value) => Ok(value),
 
-        other => Err(format!("expected f32, found {other:?}")),
+        other => Err(VmErrorKind::TypeMismatch {
+            expected: Type::F32,
+            actual: other.ty(),
+        }),
     }
 }
 
-fn pop_f64(stack: &mut Vec<Value>) -> Result<f64, String> {
+fn pop_f64(stack: &mut Vec<Value>) -> VmResult<f64> {
     match pop_value(stack)? {
         Value::F64(value) => Ok(value),
 
-        other => Err(format!("expected f64, found {other:?}")),
+        other => Err(VmErrorKind::TypeMismatch {
+            expected: Type::F64,
+            actual: other.ty(),
+        }),
     }
 }
 
-fn format_value(value: Value, expected: Type) -> Result<String, String> {
+fn format_value(value: Value, expected: Type) -> VmResult<String> {
     match (value, expected) {
         (Value::I64(value), Type::I64) => Ok(value.to_string()),
 
@@ -237,9 +331,10 @@ fn format_value(value: Value, expected: Type) -> Result<String, String> {
 
         (Value::F64(value), Type::F64) => Ok(trim_decimal(format!("{value:.17}"))),
 
-        (value, expected) => Err(format!(
-            "print type mismatch: expected {expected:?}, found {value:?}"
-        )),
+        (value, expected) => Err(VmErrorKind::TypeMismatch {
+            expected,
+            actual: value.ty(),
+        }),
     }
 }
 
@@ -265,9 +360,12 @@ fn trim_decimal(mut text: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{bytecode, compile_to_ir};
+    use crate::{
+        bytecode::{self, BytecodeProgram, Instruction, Type},
+        compile_to_bytecode, compile_to_ir,
+    };
 
-    use super::run;
+    use super::{VmErrorKind, run};
 
     #[test]
     fn executes_floating_point_program() {
@@ -279,5 +377,33 @@ mod tests {
         let output = run(&bytecode).unwrap();
 
         assert_eq!(output, "0.300000012\n0.30000000000000004\n");
+    }
+
+    #[test]
+    fn reports_integer_division_by_zero_at_instruction() {
+        let program = compile_to_bytecode("print(1 / 0);").unwrap();
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(error.kind(), VmErrorKind::DivisionByZero);
+        assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn distinguishes_integer_division_overflow() {
+        let program = BytecodeProgram {
+            slots: Vec::new(),
+            instructions: vec![
+                Instruction::PushI64(i64::MIN),
+                Instruction::PushI64(-1),
+                Instruction::Divide(Type::I64),
+                Instruction::Halt,
+            ],
+        };
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(error.kind(), VmErrorKind::DivisionOverflow);
+        assert_eq!(error.instruction_index(), 2);
     }
 }

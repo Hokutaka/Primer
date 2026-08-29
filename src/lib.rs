@@ -12,6 +12,16 @@ pub mod vm;
 use ast::Program;
 use diagnostic::Diagnostic;
 
+/// `run_vm`で発生したコンパイルエラーまたはVM実行エラーを表します。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunError {
+    /// Primerソースからbytecodeを生成するまでに見つかった問題です。
+    Compilation(Diagnostic),
+
+    /// 生成されたbytecodeをPrimer VMで実行中に見つかった問題です。
+    Execution(vm::VmError),
+}
+
 pub fn compile(source: &str) -> Result<Program, Diagnostic> {
     let tokens = lexer::lex(source)?;
     let program = parser::parse(tokens)?;
@@ -81,23 +91,16 @@ pub fn compile_to_bytecode_text(source: &str) -> Result<String, Diagnostic> {
     Ok(bytecode::format_program(&bytecode))
 }
 
-pub fn run_vm(source: &str) -> Result<String, String> {
-    let bytecode = compile_to_bytecode(source).map_err(format_legacy_diagnostic)?;
+pub fn run_vm(source: &str) -> Result<String, RunError> {
+    let bytecode = compile_to_bytecode(source).map_err(RunError::Compilation)?;
 
-    vm::run(&bytecode)
-}
-
-// VM実行時エラーを構造化するまでは、コンパイル診断を既存形式へ変換する
-fn format_legacy_diagnostic(diagnostic: Diagnostic) -> String {
-    match diagnostic.primary_span() {
-        Some(span) => format!("{} at byte {}", diagnostic.message(), span.start()),
-        None => diagnostic.message().to_owned(),
-    }
+    vm::run(&bytecode).map_err(RunError::Execution)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::compile_to_ir_text;
+    use super::{RunError, compile_to_ir_text, run_vm};
+    use crate::vm::VmErrorKind;
 
     #[test]
     fn emits_primer_ir_with_resolved_types() {
@@ -107,5 +110,23 @@ mod tests {
             ir,
             "; Primer IR v0.1\n\n%x: f32 = add.f32(0.1f32, 0.2f32)\nprint.f32 %x:f32\n"
         );
+    }
+
+    #[test]
+    fn distinguishes_compilation_and_execution_errors() {
+        let compilation_error = run_vm("print(missing);").unwrap_err();
+        let execution_error = run_vm("print(1 / 0);").unwrap_err();
+
+        assert!(matches!(compilation_error, RunError::Compilation(_)));
+
+        match execution_error {
+            RunError::Execution(error) => {
+                assert_eq!(error.kind(), VmErrorKind::DivisionByZero);
+                assert_eq!(error.instruction_index(), 2);
+            }
+            RunError::Compilation(diagnostic) => {
+                panic!("expected execution error, found {diagnostic:?}");
+            }
+        }
     }
 }

@@ -70,3 +70,13 @@ fn semantic_unknown_binding_matches_expected_diagnostic() {
 fn emit_ir_semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "emit-ir", "emit-ir.stderr");
 }
+
+#[test]
+fn run_compilation_error_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-unknown-binding", "run", "run.stderr");
+}
+
+#[test]
+fn run_vm_error_matches_expected_diagnostic() {
+    assert_diagnostic("vm-division-by-zero", "run", "run.stderr");
+}
