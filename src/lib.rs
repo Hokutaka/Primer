@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod bytecode;
 pub mod codegen;
+pub mod diagnostic;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
@@ -11,8 +12,8 @@ pub mod vm;
 use ast::Program;
 
 pub fn compile(source: &str) -> Result<Program, String> {
-    let tokens = lexer::lex(source)?;
-    let program = parser::parse(tokens)?;
+    let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
+    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
     semantic::check(&program)?;
 
@@ -20,8 +21,8 @@ pub fn compile(source: &str) -> Result<Program, String> {
 }
 
 pub fn compile_to_ir(source: &str) -> Result<ir::Program, String> {
-    let tokens = lexer::lex(source)?;
-    let program = parser::parse(tokens)?;
+    let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
+    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
     ir::builder::build(&program)
 }
@@ -83,6 +84,14 @@ pub fn run_vm(source: &str) -> Result<String, String> {
     let bytecode = compile_to_bytecode(source)?;
 
     vm::run(&bytecode)
+}
+
+// 構造化診断のCLI rendererへ移行するまで既存の出力形式を維持する
+fn format_legacy_diagnostic(diagnostic: diagnostic::Diagnostic) -> String {
+    match diagnostic.primary_span() {
+        Some(span) => format!("{} at byte {}", diagnostic.message(), span.start()),
+        None => diagnostic.message().to_owned(),
+    }
 }
 
 #[cfg(test)]
