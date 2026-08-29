@@ -46,8 +46,7 @@ mod tests {
     fn renders_line_and_column() {
         let source = "x: i64 = 1;\nprint(missing);";
         let offset = source.find("missing").unwrap();
-        let diagnostic =
-            Diagnostic::new("unknown binding `missing`", Span::empty(offset));
+        let diagnostic = Diagnostic::new("unknown binding `missing`", Span::empty(offset));
 
         assert_eq!(
             render_compact(&diagnostic, source),
@@ -76,16 +75,12 @@ mod tests {
     fn escapes_control_characters() {
         let diagnostic = Diagnostic::without_span("line\n\u{1b}[31m");
 
-        assert_eq!(
-            render_compact(&diagnostic, ""),
-            r"line\n\u{1b}[31m"
-        );
+        assert_eq!(render_compact(&diagnostic, ""), r"line\n\u{1b}[31m");
     }
 
     #[test]
     fn preserves_regular_backslashes_and_quotes() {
-        let diagnostic =
-            Diagnostic::without_span(r#"quoted "value" at \path"#);
+        let diagnostic = Diagnostic::without_span(r#"quoted "value" at \path"#);
 
         assert_eq!(
             render_compact(&diagnostic, ""),
