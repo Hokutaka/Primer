@@ -15,7 +15,7 @@ pub fn compile(source: &str) -> Result<Program, String> {
     let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
     let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
-    semantic::check(&program)?;
+    semantic::check(&program).map_err(format_legacy_diagnostic)?;
 
     Ok(program)
 }
@@ -24,7 +24,7 @@ pub fn compile_to_ir(source: &str) -> Result<ir::Program, String> {
     let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
     let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
 
-    ir::builder::build(&program)
+    ir::builder::build(&program).map_err(format_legacy_diagnostic)
 }
 
 pub fn compile_to_ir_text(source: &str) -> Result<String, String> {
