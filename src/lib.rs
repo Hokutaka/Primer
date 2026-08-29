@@ -10,8 +10,9 @@ pub mod source;
 pub mod vm;
 
 use ast::Program;
+use diagnostic::Diagnostic;
 
-pub fn compile(source: &str) -> Result<Program, diagnostic::Diagnostic> {
+pub fn compile(source: &str) -> Result<Program, Diagnostic> {
     let tokens = lexer::lex(source)?;
     let program = parser::parse(tokens)?;
 
@@ -20,74 +21,74 @@ pub fn compile(source: &str) -> Result<Program, diagnostic::Diagnostic> {
     Ok(program)
 }
 
-pub fn compile_to_ir(source: &str) -> Result<ir::Program, String> {
-    let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
-    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
+pub fn compile_to_ir(source: &str) -> Result<ir::Program, Diagnostic> {
+    let tokens = lexer::lex(source)?;
+    let program = parser::parse(tokens)?;
 
-    ir::builder::build(&program).map_err(format_legacy_diagnostic)
+    ir::builder::build(&program)
 }
 
-pub fn compile_to_ir_text(source: &str) -> Result<String, String> {
+pub fn compile_to_ir_text(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(ir::text::emit(&program))
 }
 
 // C コンパイラ
-pub fn compile_to_c(source: &str) -> Result<String, String> {
+pub fn compile_to_c(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(codegen::emit_c(&program))
 }
 
 // LLVM コンパイラ
-pub fn compile_to_llvm(source: &str) -> Result<String, String> {
+pub fn compile_to_llvm(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(codegen::emit_llvm(&program))
 }
 
 // Wasm コンパイラ
-pub fn compile_to_wat(source: &str) -> Result<String, String> {
+pub fn compile_to_wat(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(codegen::emit_wat(&program))
 }
 
 // QBE コンパイラ
-pub fn compile_to_qbe(source: &str) -> Result<String, String> {
+pub fn compile_to_qbe(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(codegen::emit_qbe(&program))
 }
 
 // Windows x86-64 Direct Assembly コンパイラ
-pub fn compile_to_x86_64_win_asm(source: &str) -> Result<String, String> {
+pub fn compile_to_x86_64_win_asm(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(codegen::emit_x86_64_win_asm(&program))
 }
 
-pub fn compile_to_bytecode(source: &str) -> Result<bytecode::BytecodeProgram, String> {
+pub fn compile_to_bytecode(source: &str) -> Result<bytecode::BytecodeProgram, Diagnostic> {
     let program = compile_to_ir(source)?;
 
     Ok(bytecode::lower(&program))
 }
 
-pub fn compile_to_bytecode_text(source: &str) -> Result<String, String> {
+pub fn compile_to_bytecode_text(source: &str) -> Result<String, Diagnostic> {
     let bytecode = compile_to_bytecode(source)?;
 
     Ok(bytecode::format_program(&bytecode))
 }
 
 pub fn run_vm(source: &str) -> Result<String, String> {
-    let bytecode = compile_to_bytecode(source)?;
+    let bytecode = compile_to_bytecode(source).map_err(format_legacy_diagnostic)?;
 
     vm::run(&bytecode)
 }
 
-// 構造化診断を各出力経路へ接続するまでは既存の出力形式を維持する
-fn format_legacy_diagnostic(diagnostic: diagnostic::Diagnostic) -> String {
+// VM実行時エラーを構造化するまでは、コンパイル診断を既存形式へ変換する
+fn format_legacy_diagnostic(diagnostic: Diagnostic) -> String {
     match diagnostic.primary_span() {
         Some(span) => format!("{} at byte {}", diagnostic.message(), span.start()),
         None => diagnostic.message().to_owned(),

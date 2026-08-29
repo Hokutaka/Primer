@@ -65,3 +65,8 @@ fn parser_missing_semicolon_matches_expected_diagnostic() {
 fn semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "check", "check.stderr");
 }
+
+#[test]
+fn emit_ir_semantic_unknown_binding_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-unknown-binding", "emit-ir", "emit-ir.stderr");
+}
