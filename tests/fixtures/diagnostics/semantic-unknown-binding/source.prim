@@ -1,1 +1,2 @@
+x: i64 = 1;
 print(missing);

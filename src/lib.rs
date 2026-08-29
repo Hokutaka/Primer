@@ -11,11 +11,11 @@ pub mod vm;
 
 use ast::Program;
 
-pub fn compile(source: &str) -> Result<Program, String> {
-    let tokens = lexer::lex(source).map_err(format_legacy_diagnostic)?;
-    let program = parser::parse(tokens).map_err(format_legacy_diagnostic)?;
+pub fn compile(source: &str) -> Result<Program, diagnostic::Diagnostic> {
+    let tokens = lexer::lex(source)?;
+    let program = parser::parse(tokens)?;
 
-    semantic::check(&program).map_err(format_legacy_diagnostic)?;
+    semantic::check(&program)?;
 
     Ok(program)
 }
@@ -86,7 +86,7 @@ pub fn run_vm(source: &str) -> Result<String, String> {
     vm::run(&bytecode)
 }
 
-// 構造化診断のCLI rendererへ移行するまで既存の出力形式を維持する
+// 構造化診断を各出力経路へ接続するまでは既存の出力形式を維持する
 fn format_legacy_diagnostic(diagnostic: diagnostic::Diagnostic) -> String {
     match diagnostic.primary_span() {
         Some(span) => format!("{} at byte {}", diagnostic.message(), span.start()),
