@@ -1,4 +1,8 @@
-use primer_lang::diagnostic::{Diagnostic, render::render_compact};
+use primer_lang::{
+    RunError,
+    diagnostic::{Diagnostic, render::render_compact},
+    vm::render::render_compact as render_vm_error,
+};
 use std::{env, fs, path::PathBuf, process};
 
 fn main() {
@@ -150,7 +154,8 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let output = primer_lang::run_vm(&source)?;
+            let output =
+                primer_lang::run_vm(&source).map_err(|error| render_run_error(error, &source))?;
 
             print!("{output}");
 
@@ -174,6 +179,13 @@ fn run() -> Result<(), String> {
 
 fn render_compilation_result<T>(result: Result<T, Diagnostic>, source: &str) -> Result<T, String> {
     result.map_err(|diagnostic| render_compact(&diagnostic, source))
+}
+
+fn render_run_error(error: RunError, source: &str) -> String {
+    match error {
+        RunError::Compilation(diagnostic) => render_compact(&diagnostic, source),
+        RunError::Execution(error) => render_vm_error(&error),
+    }
 }
 
 fn required_path(value: Option<String>, message: &str) -> Result<PathBuf, String> {
