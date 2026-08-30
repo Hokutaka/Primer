@@ -1,6 +1,9 @@
 use std::{collections::HashMap, fmt::Write};
 
-use crate::ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp};
+use crate::{
+    ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp},
+    source::Span,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
@@ -22,7 +25,41 @@ pub struct Slot {
 }
 
 #[derive(Debug, Clone)]
-pub enum Instruction {
+pub struct Instruction {
+    pub kind: InstructionKind,
+    pub origin: InstructionOrigin,
+}
+
+impl Instruction {
+    /// ソースコードに由来する命令を作ります。
+    pub const fn source(kind: InstructionKind, span: Span) -> Self {
+        Self {
+            kind,
+            origin: InstructionOrigin::Source(span),
+        }
+    }
+
+    /// コンパイラが補助的に生成した命令を作ります。
+    pub const fn synthetic(kind: InstructionKind) -> Self {
+        Self {
+            kind,
+            origin: InstructionOrigin::Synthetic,
+        }
+    }
+}
+
+/// bytecode命令がどこから生成されたかを表します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstructionOrigin {
+    /// ソースコード中の構文要素から生成された命令です。
+    Source(Span),
+
+    /// ソースコード上に対応箇所を持たない、コンパイラ生成の命令です。
+    Synthetic,
+}
+
+#[derive(Debug, Clone)]
+pub enum InstructionKind {
     PushI64(i64),
     PushF32(f32),
     PushF64(f64),
@@ -68,7 +105,9 @@ pub fn lower(program: &Program) -> BytecodeProgram {
         compiler.emit_statement(statement);
     }
 
-    compiler.instructions.push(Instruction::Halt);
+    compiler
+        .instructions
+        .push(Instruction::synthetic(InstructionKind::Halt));
 
     BytecodeProgram {
         slots,
@@ -94,7 +133,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
     for (pc, instruction) in program.instructions.iter().enumerate() {
         write!(output, "{pc:04}  ").unwrap();
 
-        format_instruction(instruction, program, &mut output);
+        format_instruction(&instruction.kind, program, &mut output);
     }
 
     output
@@ -117,13 +156,13 @@ impl Compiler {
                     .copied()
                     .expect("binding must have a bytecode slot");
 
-                self.instructions.push(Instruction::Store(slot));
+                self.emit_source(InstructionKind::Store(slot), statement.span);
             }
 
             StatementKind::Print { value } => {
                 self.emit_expr(value);
 
-                self.instructions.push(Instruction::Print(value.ty.into()));
+                self.emit_source(InstructionKind::Print(value.ty.into()), statement.span);
             }
         }
     }
@@ -131,7 +170,7 @@ impl Compiler {
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Integer(value) => {
-                self.instructions.push(Instruction::PushI64(*value));
+                self.emit_source(InstructionKind::PushI64(*value), expr.span);
             }
 
             ExprKind::Float { text } => match expr.ty {
@@ -140,7 +179,7 @@ impl Compiler {
                         .parse::<f32>()
                         .expect("validated floating-point literal");
 
-                    self.instructions.push(Instruction::PushF32(value));
+                    self.emit_source(InstructionKind::PushF32(value), expr.span);
                 }
 
                 ir::Type::F64 => {
@@ -148,7 +187,7 @@ impl Compiler {
                         .parse::<f64>()
                         .expect("validated floating-point literal");
 
-                    self.instructions.push(Instruction::PushF64(value));
+                    self.emit_source(InstructionKind::PushF64(value), expr.span);
                 }
 
                 ir::Type::I64 => {
@@ -163,7 +202,7 @@ impl Compiler {
                     .copied()
                     .expect("variable must have a bytecode slot");
 
-                self.instructions.push(Instruction::Load(slot));
+                self.emit_source(InstructionKind::Load(slot), expr.span);
             }
 
             ExprKind::Unary { op, value } => {
@@ -171,7 +210,7 @@ impl Compiler {
 
                 match *op {
                     UnaryOp::Negate => {
-                        self.instructions.push(Instruction::Negate(expr.ty.into()));
+                        self.emit_source(InstructionKind::Negate(expr.ty.into()), expr.span);
                     }
                 }
             }
@@ -181,15 +220,19 @@ impl Compiler {
                 self.emit_expr(right);
 
                 let instruction = match *op {
-                    BinaryOp::Add => Instruction::Add(expr.ty.into()),
-                    BinaryOp::Subtract => Instruction::Subtract(expr.ty.into()),
-                    BinaryOp::Multiply => Instruction::Multiply(expr.ty.into()),
-                    BinaryOp::Divide => Instruction::Divide(expr.ty.into()),
+                    BinaryOp::Add => InstructionKind::Add(expr.ty.into()),
+                    BinaryOp::Subtract => InstructionKind::Subtract(expr.ty.into()),
+                    BinaryOp::Multiply => InstructionKind::Multiply(expr.ty.into()),
+                    BinaryOp::Divide => InstructionKind::Divide(expr.ty.into()),
                 };
 
-                self.instructions.push(instruction);
+                self.emit_source(instruction, expr.span);
             }
         }
+    }
+
+    fn emit_source(&mut self, kind: InstructionKind, span: Span) {
+        self.instructions.push(Instruction::source(kind, span));
     }
 }
 
@@ -203,53 +246,57 @@ impl From<ir::Type> for Type {
     }
 }
 
-fn format_instruction(instruction: &Instruction, program: &BytecodeProgram, output: &mut String) {
+fn format_instruction(
+    instruction: &InstructionKind,
+    program: &BytecodeProgram,
+    output: &mut String,
+) {
     match instruction {
-        Instruction::PushI64(value) => {
+        InstructionKind::PushI64(value) => {
             writeln!(output, "push.i64 {value}").unwrap();
         }
 
-        Instruction::PushF32(value) => {
+        InstructionKind::PushF32(value) => {
             writeln!(output, "push.f32 {value}").unwrap();
         }
 
-        Instruction::PushF64(value) => {
+        InstructionKind::PushF64(value) => {
             writeln!(output, "push.f64 {value}").unwrap();
         }
 
-        Instruction::Load(slot) => {
+        InstructionKind::Load(slot) => {
             writeln!(output, "load {slot}        ; {}", program.slots[*slot].name,).unwrap();
         }
 
-        Instruction::Store(slot) => {
+        InstructionKind::Store(slot) => {
             writeln!(output, "store {slot}       ; {}", program.slots[*slot].name,).unwrap();
         }
 
-        Instruction::Add(ty) => {
+        InstructionKind::Add(ty) => {
             writeln!(output, "add.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Subtract(ty) => {
+        InstructionKind::Subtract(ty) => {
             writeln!(output, "sub.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Multiply(ty) => {
+        InstructionKind::Multiply(ty) => {
             writeln!(output, "mul.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Divide(ty) => {
+        InstructionKind::Divide(ty) => {
             writeln!(output, "div.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Negate(ty) => {
+        InstructionKind::Negate(ty) => {
             writeln!(output, "neg.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Print(ty) => {
+        InstructionKind::Print(ty) => {
             writeln!(output, "print.{}", type_name(*ty),).unwrap();
         }
 
-        Instruction::Halt => {
+        InstructionKind::Halt => {
             writeln!(output, "halt").unwrap();
         }
     }
@@ -265,9 +312,9 @@ fn type_name(ty: Type) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use crate::compile_to_ir;
+    use crate::{compile_to_bytecode, compile_to_ir, source::Span};
 
-    use super::{format_program, lower};
+    use super::{BytecodeProgram, InstructionKind, InstructionOrigin, Type, format_program, lower};
 
     #[test]
     fn emits_typed_bytecode() {
@@ -282,5 +329,64 @@ mod tests {
         assert!(text.contains("store 0"));
         assert!(text.contains("print.f32"));
         assert!(text.contains("halt"));
+    }
+
+    #[test]
+    fn records_source_and_synthetic_instruction_origins() {
+        let bytecode = compile_to_bytecode("print(1 / 0);").unwrap();
+
+        assert!(matches!(
+            bytecode.instructions[0].kind,
+            InstructionKind::PushI64(1)
+        ));
+        assert!(matches!(
+            bytecode.instructions[1].kind,
+            InstructionKind::PushI64(0)
+        ));
+        assert!(matches!(
+            bytecode.instructions[2].kind,
+            InstructionKind::Divide(Type::I64)
+        ));
+        assert!(matches!(
+            bytecode.instructions[3].kind,
+            InstructionKind::Print(Type::I64)
+        ));
+        assert!(matches!(
+            bytecode.instructions[4].kind,
+            InstructionKind::Halt
+        ));
+
+        let origins: Vec<_> = bytecode
+            .instructions
+            .iter()
+            .map(|instruction| instruction.origin)
+            .collect();
+
+        assert_eq!(
+            origins,
+            vec![
+                InstructionOrigin::Source(Span::new(6, 7)),
+                InstructionOrigin::Source(Span::new(10, 11)),
+                InstructionOrigin::Source(Span::new(6, 11)),
+                InstructionOrigin::Source(Span::new(0, 13)),
+                InstructionOrigin::Synthetic,
+            ]
+        );
+    }
+
+    #[test]
+    fn instruction_origins_are_deterministic() {
+        let first = compile_to_bytecode("value: i64 = 1; print(value);").unwrap();
+        let second = compile_to_bytecode("value: i64 = 1; print(value);").unwrap();
+
+        let origins = |program: &BytecodeProgram| {
+            program
+                .instructions
+                .iter()
+                .map(|instruction| instruction.origin)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(origins(&first), origins(&second));
     }
 }

@@ -1,6 +1,6 @@
 pub mod render;
 
-use crate::bytecode::{BytecodeProgram, Instruction, Type};
+use crate::bytecode::{BytecodeProgram, InstructionKind, Type};
 
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,20 +97,20 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
             .get(pc)
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
-        match instruction {
-            Instruction::PushI64(value) => {
+        match &instruction.kind {
+            InstructionKind::PushI64(value) => {
                 stack.push(Value::I64(*value));
             }
 
-            Instruction::PushF32(value) => {
+            InstructionKind::PushF32(value) => {
                 stack.push(Value::F32(*value));
             }
 
-            Instruction::PushF64(value) => {
+            InstructionKind::PushF64(value) => {
                 stack.push(Value::F64(*value));
             }
 
-            Instruction::Load(slot) => {
+            InstructionKind::Load(slot) => {
                 let value = slots
                     .get(*slot)
                     .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?
@@ -122,7 +122,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                 stack.push(value);
             }
 
-            Instruction::Store(slot) => {
+            InstructionKind::Store(slot) => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
 
                 let destination = slots
@@ -139,27 +139,27 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                 *destination = Some(value);
             }
 
-            Instruction::Add(ty) => {
+            InstructionKind::Add(ty) => {
                 at_instruction(binary(*ty, &mut stack, BinaryOperation::Add), pc)?;
             }
 
-            Instruction::Subtract(ty) => {
+            InstructionKind::Subtract(ty) => {
                 at_instruction(binary(*ty, &mut stack, BinaryOperation::Subtract), pc)?;
             }
 
-            Instruction::Multiply(ty) => {
+            InstructionKind::Multiply(ty) => {
                 at_instruction(binary(*ty, &mut stack, BinaryOperation::Multiply), pc)?;
             }
 
-            Instruction::Divide(ty) => {
+            InstructionKind::Divide(ty) => {
                 at_instruction(binary(*ty, &mut stack, BinaryOperation::Divide), pc)?;
             }
 
-            Instruction::Negate(ty) => {
+            InstructionKind::Negate(ty) => {
                 at_instruction(negate(*ty, &mut stack), pc)?;
             }
 
-            Instruction::Print(ty) => {
+            InstructionKind::Print(ty) => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
 
                 let line = at_instruction(format_value(value, *ty), pc)?;
@@ -169,7 +169,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                 output.push('\n');
             }
 
-            Instruction::Halt => {
+            InstructionKind::Halt => {
                 break;
             }
         }
@@ -361,7 +361,7 @@ fn trim_decimal(mut text: String) -> String {
 #[cfg(test)]
 mod tests {
     use crate::{
-        bytecode::{self, BytecodeProgram, Instruction, Type},
+        bytecode::{self, BytecodeProgram, Instruction, InstructionKind, Type},
         compile_to_bytecode, compile_to_ir,
     };
 
@@ -394,10 +394,10 @@ mod tests {
         let program = BytecodeProgram {
             slots: Vec::new(),
             instructions: vec![
-                Instruction::PushI64(i64::MIN),
-                Instruction::PushI64(-1),
-                Instruction::Divide(Type::I64),
-                Instruction::Halt,
+                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
+                Instruction::synthetic(InstructionKind::PushI64(-1)),
+                Instruction::synthetic(InstructionKind::Divide(Type::I64)),
+                Instruction::synthetic(InstructionKind::Halt),
             ],
         };
 
@@ -405,5 +405,18 @@ mod tests {
 
         assert_eq!(error.kind(), VmErrorKind::DivisionOverflow);
         assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn reports_missing_instruction_without_panicking() {
+        let program = BytecodeProgram {
+            slots: Vec::new(),
+            instructions: Vec::new(),
+        };
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(error.kind(), VmErrorKind::InstructionOutOfBounds);
+        assert_eq!(error.instruction_index(), 0);
     }
 }

@@ -73,6 +73,14 @@ primer run <file>
 
 Runtime output is useful for validation and experiments, but it is distinct from the two compiler observation boundaries defined in the [compiler design](../design/architecture.en.md).
 
+When a runtime error occurs in a bytecode instruction derived from source, the diagnostic includes both the source location and the bytecode instruction index:
+
+```text
+primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
+```
+
+The bytecode instruction index is still displayed when no source location is available. Compact diagnostics do not include source text or the input file path.
+
 ## Version
 
 ```text
