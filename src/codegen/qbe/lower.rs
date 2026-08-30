@@ -30,8 +30,8 @@ struct Value {
 
 impl Lowerer {
     fn lower_statement(&mut self, statement: &primer_ir::Statement) {
-        match statement {
-            primer_ir::Statement::Binding {
+        match &statement.kind {
+            primer_ir::StatementKind::Binding {
                 name, ty, value, ..
             } => {
                 let value = self.lower_expr(value);
@@ -43,7 +43,7 @@ impl Lowerer {
                 });
             }
 
-            primer_ir::Statement::Print { value } => {
+            primer_ir::StatementKind::Print { value } => {
                 let value = self.lower_expr(value);
                 self.lower_print(value);
             }

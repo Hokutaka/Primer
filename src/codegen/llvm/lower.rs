@@ -9,7 +9,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     let mut slot_map = HashMap::new();
 
     for statement in &program.statements {
-        if let primer_ir::Statement::Binding { name, ty, .. } = statement {
+        if let primer_ir::StatementKind::Binding { name, ty, .. } = &statement.kind {
             let id = SlotId(slots.len());
 
             slots.push(Slot {
@@ -51,8 +51,8 @@ struct Value {
 
 impl Lowerer {
     fn lower_statement(&mut self, statement: &primer_ir::Statement) {
-        match statement {
-            primer_ir::Statement::Binding {
+        match &statement.kind {
+            primer_ir::StatementKind::Binding {
                 name, ty, value, ..
             } => {
                 let slot = self.slot(name);
@@ -69,7 +69,7 @@ impl Lowerer {
                 });
             }
 
-            primer_ir::Statement::Print { value } => {
+            primer_ir::StatementKind::Print { value } => {
                 let value = self.lower_expr(value);
                 self.lower_print(value);
             }

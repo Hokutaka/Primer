@@ -6,12 +6,12 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     let locals = program
         .statements
         .iter()
-        .filter_map(|statement| match statement {
-            primer_ir::Statement::Binding { name, ty, .. } => Some(Local {
+        .filter_map(|statement| match &statement.kind {
+            primer_ir::StatementKind::Binding { name, ty, .. } => Some(Local {
                 name: name.clone(),
                 ty: (*ty).into(),
             }),
-            primer_ir::Statement::Print { .. } => None,
+            primer_ir::StatementKind::Print { .. } => None,
         })
         .collect();
 
@@ -28,13 +28,13 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 }
 
 fn lower_statement(statement: &primer_ir::Statement, instructions: &mut Vec<Instruction>) {
-    match statement {
-        primer_ir::Statement::Binding { name, value, .. } => {
+    match &statement.kind {
+        primer_ir::StatementKind::Binding { name, value, .. } => {
             lower_expr(value, instructions);
             instructions.push(Instruction::LocalSet(name.clone()));
         }
 
-        primer_ir::Statement::Print { value } => {
+        primer_ir::StatementKind::Print { value } => {
             lower_expr(value, instructions);
             instructions.push(Instruction::CallPrint(value.ty.into()));
         }

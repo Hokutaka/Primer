@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Write};
 
-use crate::ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, UnaryOp};
+use crate::ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
@@ -47,7 +47,7 @@ pub fn lower(program: &Program) -> BytecodeProgram {
     let mut slot_map = HashMap::new();
 
     for statement in &program.statements {
-        if let Statement::Binding { name, ty, .. } = statement {
+        if let StatementKind::Binding { name, ty, .. } = &statement.kind {
             let index = slots.len();
 
             slots.push(Slot {
@@ -107,8 +107,8 @@ struct Compiler {
 
 impl Compiler {
     fn emit_statement(&mut self, statement: &Statement) {
-        match statement {
-            Statement::Binding { name, value, .. } => {
+        match &statement.kind {
+            StatementKind::Binding { name, value, .. } => {
                 self.emit_expr(value);
 
                 let slot = self
@@ -120,7 +120,7 @@ impl Compiler {
                 self.instructions.push(Instruction::Store(slot));
             }
 
-            Statement::Print { value } => {
+            StatementKind::Print { value } => {
                 self.emit_expr(value);
 
                 self.instructions.push(Instruction::Print(value.ty.into()));

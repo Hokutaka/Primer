@@ -46,8 +46,8 @@ struct Lowerer {
 
 impl Lowerer {
     fn lower_statement(&mut self, statement: &primer_ir::Statement) {
-        match statement {
-            primer_ir::Statement::Binding { name, ty, value } => {
+        match &statement.kind {
+            primer_ir::StatementKind::Binding { name, ty, value } => {
                 self.lower_expr(value, 0);
 
                 let offset = self.binding_offset(name);
@@ -67,7 +67,7 @@ impl Lowerer {
                 }
             }
 
-            primer_ir::Statement::Print { value } => {
+            primer_ir::StatementKind::Print { value } => {
                 self.lower_expr(value, 0);
 
                 self.lower_print(value.ty.into());
@@ -305,7 +305,7 @@ fn assign_binding_slots(program: &primer_ir::Program) -> HashMap<String, usize> 
     let mut next = 0;
 
     for statement in &program.statements {
-        if let primer_ir::Statement::Binding { name, .. } = statement {
+        if let primer_ir::StatementKind::Binding { name, .. } = &statement.kind {
             slots.insert(name.clone(), next);
             next += 1;
         }
@@ -318,10 +318,9 @@ fn count_program_expr_nodes(program: &primer_ir::Program) -> usize {
     program
         .statements
         .iter()
-        .map(|statement| match statement {
-            primer_ir::Statement::Binding { value, .. } | primer_ir::Statement::Print { value } => {
-                count_expr_nodes(value)
-            }
+        .map(|statement| match &statement.kind {
+            primer_ir::StatementKind::Binding { value, .. }
+            | primer_ir::StatementKind::Print { value } => count_expr_nodes(value),
         })
         .sum()
 }
