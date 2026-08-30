@@ -73,6 +73,14 @@ primer run <file>
 
 実行結果は検証や実験に利用できますが、[コンパイラ設計](../design/architecture.ja.md)で定める二つのコンパイラ観測境界とは区別します。
 
+実行時エラーがソースコードに由来するbytecode命令で発生した場合、診断にはソース位置とbytecode命令番号の両方を表示します。
+
+```text
+primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
+```
+
+対応するソース位置がない場合も、bytecode命令番号は表示します。簡潔な診断には、ソース本文や入力ファイルのパスを含めません。
+
 ## バージョン表示
 
 ```text

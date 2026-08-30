@@ -1,1 +1,1 @@
-primer: cannot divide an integer by zero at bytecode instruction 0002
+primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)

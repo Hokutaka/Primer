@@ -15,8 +15,16 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
+/// Primer IRの文と、その文が由来するソース範囲を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Statement {
+pub struct Statement {
+    pub kind: StatementKind,
+    pub span: Span,
+}
+
+/// Primer IRの文の種類を表します。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StatementKind {
     Binding { name: String, ty: Type, value: Expr },
     Print { value: Expr },
 }

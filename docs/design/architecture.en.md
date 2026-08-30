@@ -132,6 +132,19 @@ Examples include:
 
 These representations are not currently public serialization formats and are not part of the stable CLI contract.
 
+### Source locations and bytecode instruction provenance
+
+Primer IR statements and expressions retain their corresponding UTF-8 byte ranges in the source. A range includes its start and excludes its end. Line and column numbers are derived from this range when displayed.
+
+Each bytecode instruction stores one of the following origins separately from the instruction itself:
+
+- `Source(span)`: the instruction was lowered from a Primer IR statement or expression;
+- `Synthetic`: the compiler generated the instruction without a directly corresponding source range.
+
+`Synthetic` does not mean that provenance was lost. It explicitly identifies compiler-generated instructions.
+
+The VM reports an execution error using its bytecode instruction index. `run_vm` resolves that instruction's origin and associates a source location with the execution error when one is available. This provenance is currently an internal representation and is not included in the `emit-bytecode` text format.
+
 ## Observation boundaries
 
 Primer exposes two primary observation boundaries.

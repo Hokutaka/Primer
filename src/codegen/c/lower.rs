@@ -9,14 +9,14 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 }
 
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
-    match statement {
-        primer_ir::Statement::Binding { name, ty, value } => Statement::Binding {
+    match &statement.kind {
+        primer_ir::StatementKind::Binding { name, ty, value } => Statement::Binding {
             name: name.clone(),
             ty: (*ty).into(),
             value: lower_expr(value),
         },
 
-        primer_ir::Statement::Print { value } => Statement::Print {
+        primer_ir::StatementKind::Print { value } => Statement::Print {
             format: print_format(value.ty),
             value: lower_expr(value),
         },

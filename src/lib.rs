@@ -10,7 +10,29 @@ pub mod source;
 pub mod vm;
 
 use ast::Program;
+use bytecode::InstructionOrigin;
 use diagnostic::Diagnostic;
+
+/// VM実行エラーと、失敗したbytecode命令の出自を保持します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionError {
+    vm_error: vm::VmError,
+    origin: Option<InstructionOrigin>,
+}
+
+impl ExecutionError {
+    /// VMが報告した構造化エラーを返します。
+    pub const fn vm_error(self) -> vm::VmError {
+        self.vm_error
+    }
+
+    /// 失敗した命令の出自を返します。
+    ///
+    /// 命令番号がbytecodeの範囲外で、対応する命令自体が存在しない場合は`None`です。
+    pub const fn origin(self) -> Option<InstructionOrigin> {
+        self.origin
+    }
+}
 
 /// `run_vm`で発生したコンパイルエラーまたはVM実行エラーを表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +41,7 @@ pub enum RunError {
     Compilation(Diagnostic),
 
     /// 生成されたbytecodeをPrimer VMで実行中に見つかった問題です。
-    Execution(vm::VmError),
+    Execution(ExecutionError),
 }
 
 pub fn compile(source: &str) -> Result<Program, Diagnostic> {
@@ -94,13 +116,20 @@ pub fn compile_to_bytecode_text(source: &str) -> Result<String, Diagnostic> {
 pub fn run_vm(source: &str) -> Result<String, RunError> {
     let bytecode = compile_to_bytecode(source).map_err(RunError::Compilation)?;
 
-    vm::run(&bytecode).map_err(RunError::Execution)
+    vm::run(&bytecode).map_err(|vm_error| {
+        let origin = bytecode
+            .instructions
+            .get(vm_error.instruction_index())
+            .map(|instruction| instruction.origin);
+
+        RunError::Execution(ExecutionError { vm_error, origin })
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{RunError, compile_to_ir_text, run_vm};
-    use crate::vm::VmErrorKind;
+    use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
 
     #[test]
     fn emits_primer_ir_with_resolved_types() {
@@ -121,8 +150,12 @@ mod tests {
 
         match execution_error {
             RunError::Execution(error) => {
-                assert_eq!(error.kind(), VmErrorKind::DivisionByZero);
-                assert_eq!(error.instruction_index(), 2);
+                assert_eq!(error.vm_error().kind(), VmErrorKind::DivisionByZero);
+                assert_eq!(error.vm_error().instruction_index(), 2);
+                assert_eq!(
+                    error.origin(),
+                    Some(InstructionOrigin::Source(Span::new(6, 11)))
+                );
             }
             RunError::Compilation(diagnostic) => {
                 panic!("expected execution error, found {diagnostic:?}");

@@ -1,7 +1,11 @@
 use primer_lang::{
     RunError,
+    bytecode::InstructionOrigin,
     diagnostic::{Diagnostic, render::render_compact},
-    vm::render::render_compact as render_vm_error,
+    vm::render::{
+        render_compact as render_vm_error,
+        render_compact_with_source as render_vm_error_with_source,
+    },
 };
 use std::{env, fs, path::PathBuf, process};
 
@@ -184,7 +188,12 @@ fn render_compilation_result<T>(result: Result<T, Diagnostic>, source: &str) -> 
 fn render_run_error(error: RunError, source: &str) -> String {
     match error {
         RunError::Compilation(diagnostic) => render_compact(&diagnostic, source),
-        RunError::Execution(error) => render_vm_error(&error),
+        RunError::Execution(error) => match error.origin() {
+            Some(InstructionOrigin::Source(span)) => {
+                render_vm_error_with_source(&error.vm_error(), source, span)
+            }
+            Some(InstructionOrigin::Synthetic) | None => render_vm_error(&error.vm_error()),
+        },
     }
 }
 

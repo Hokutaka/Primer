@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
+use super::{BinaryOp, Expr, ExprKind, Program, StatementKind, Type, UnaryOp};
 
 pub fn emit(program: &Program) -> String {
     let mut output = String::new();
@@ -11,13 +11,13 @@ pub fn emit(program: &Program) -> String {
     }
 
     for statement in &program.statements {
-        match statement {
-            Statement::Binding { name, ty, value } => {
+        match &statement.kind {
+            StatementKind::Binding { name, ty, value } => {
                 write!(output, "%{name}: {} = ", type_name(*ty)).unwrap();
                 emit_expr(value, &mut output);
                 writeln!(output).unwrap();
             }
-            Statement::Print { value } => {
+            StatementKind::Print { value } => {
                 write!(output, "print.{} ", type_name(value.ty)).unwrap();
                 emit_expr(value, &mut output);
                 writeln!(output).unwrap();

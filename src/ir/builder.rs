@@ -4,7 +4,7 @@ use crate::{
     semantic::{self, Bindings},
 };
 
-use super::{BinaryOp, Expr, ExprKind, Program, Statement, Type, UnaryOp};
+use super::{BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp};
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     let bindings = semantic::check(program)?;
@@ -18,25 +18,31 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
 }
 
 fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Statement, Diagnostic> {
-    match &statement.kind {
+    let kind = match &statement.kind {
         ast::StmtKind::Binding { name, value, .. } => {
             let ty = bindings.get(name).copied().ok_or_else(|| {
                 Diagnostic::without_span(format!("missing resolved type for binding `{name}`"))
             })?;
 
-            Ok(Statement::Binding {
+            StatementKind::Binding {
                 name: name.clone(),
                 ty: ty.into(),
                 value: build_expr(value, Some(ty), bindings)?,
-            })
+            }
         }
         ast::StmtKind::Print { value } => {
             let ty = semantic::type_of_expr(value, bindings)?;
-            Ok(Statement::Print {
+
+            StatementKind::Print {
                 value: build_expr(value, Some(ty), bindings)?,
-            })
+            }
         }
-    }
+    };
+
+    Ok(Statement {
+        kind,
+        span: statement.span,
+    })
 }
 
 fn build_expr(
@@ -146,7 +152,7 @@ mod tests {
         };
 
         let ir = build(&ast).unwrap();
-        let Statement::Binding { ty, value, .. } = &ir.statements[0] else {
+        let StatementKind::Binding { ty, value, .. } = &ir.statements[0].kind else {
             panic!("expected binding")
         };
         assert_eq!(*ty, Type::F32);
@@ -173,7 +179,7 @@ mod tests {
         };
 
         let ir = build(&ast).unwrap();
-        let Statement::Binding { ty, value, .. } = &ir.statements[0] else {
+        let StatementKind::Binding { ty, value, .. } = &ir.statements[0].kind else {
             panic!("expected binding")
         };
         assert_eq!(*ty, Type::F64);
@@ -202,7 +208,7 @@ mod tests {
         };
 
         let ir = build(&ast).unwrap();
-        let Statement::Print { value } = &ir.statements[0] else {
+        let StatementKind::Print { value } = &ir.statements[0].kind else {
             panic!("expected print");
         };
 
@@ -214,5 +220,22 @@ mod tests {
 
         assert_eq!(left.span, Span::new(0, 1));
         assert_eq!(right.span, Span::new(4, 5));
+    }
+
+    #[test]
+    fn preserves_statement_spans() {
+        let statement_span = Span::new(0, 9);
+        let ast = AstProgram {
+            statements: vec![Stmt {
+                kind: AstStmtKind::Print {
+                    value: ast_expr(AstExprKind::Integer(1)),
+                },
+                span: statement_span,
+            }],
+        };
+
+        let ir = build(&ast).unwrap();
+
+        assert_eq!(ir.statements[0].span, statement_span);
     }
 }
