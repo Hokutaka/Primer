@@ -660,7 +660,7 @@ Emission Map
 
 - `if condition { ... } else { ... }`は文として実装済みです。`else`は省略できます。
 - `while condition { ... }`は文として実装済みです。条件は本文の実行前に毎回評価します。
-- `for binding condition; assignment { ... }`は文として実装済みです。初期化、条件、本文、更新はPrimer IRで区別して保持します。
+- `for (start; condition; update) { ... }`は文として実装済みです。開始文には束縛または再代入を書けます。開始文、継続条件、本文、更新文はPrimer IRで区別して保持します。
 - `break;`と`continue;`は実装済みで、最も内側のloopだけを対象にします。
 - blockはlexical scopeを作り、内側の束縛は外側から見えません。内側から外側の`mut`へは再代入できます。
 - ソース言語へ`goto`、任意位置のlabel、computed gotoを導入しません。

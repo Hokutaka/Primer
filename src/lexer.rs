@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn lexes_for_block() {
-        let tokens = lex("for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap();
+        let tokens = lex("for (mut i: i64 = 0; i < 3; i = i + 1) { print(i); }").unwrap();
 
         assert_eq!(tokens[0].kind, TokenKind::For);
         assert!(tokens.iter().any(|token| token.kind == TokenKind::Mut));

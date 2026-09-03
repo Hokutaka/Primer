@@ -196,14 +196,22 @@ impl Parser {
 
     fn parse_for(&mut self) -> ParseResult<Stmt> {
         let start = self.advance().span.start();
+        if !matches!(&self.peek().kind, TokenKind::LeftParen) {
+            return Err(Diagnostic::new(
+                "expected `(` after `for`",
+                self.peek().span,
+            ));
+        }
+        self.advance();
 
         let initializer = match (&self.peek().kind, &self.peek_next().kind) {
             (TokenKind::Mut, _) | (TokenKind::Identifier(_), TokenKind::Colon) => {
                 self.parse_binding()?
             }
+            (TokenKind::Identifier(_), TokenKind::Equal) => self.parse_assignment()?,
             _ => {
                 return Err(Diagnostic::new(
-                    "for initializer must be a binding",
+                    "expected a binding or assignment at the start of `for`",
                     self.peek().span,
                 ));
             }
@@ -221,6 +229,13 @@ impl Parser {
                 ));
             }
         };
+        if !matches!(&self.peek().kind, TokenKind::RightParen) {
+            return Err(Diagnostic::new(
+                "expected `)` after the `for` update",
+                self.peek().span,
+            ));
+        }
+        self.advance();
 
         let (body, end) = self.parse_block()?;
 
@@ -699,7 +714,7 @@ mod tests {
 
     #[test]
     fn parses_for_block() {
-        let source = "for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }";
+        let source = "for (mut i: i64 = 0; i < 3; i = i + 1) { print(i); }";
         let program = parse(lex(source).unwrap()).unwrap();
 
         let StmtKind::For {
@@ -717,6 +732,34 @@ mod tests {
         assert!(matches!(update.kind, StmtKind::Assignment { .. }));
         assert_eq!(body.len(), 1);
         assert_eq!(program.statements[0].span, Span::new(0, source.len()));
+    }
+
+    #[test]
+    fn parses_for_block_with_assignment_as_start() {
+        let source = "mut i: i64 = 3; for (i = 0; i < 3; i = i + 1) { print(i); }";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        let StmtKind::For { initializer, .. } = &program.statements[1].kind else {
+            panic!("expected for statement");
+        };
+
+        assert!(matches!(initializer.kind, StmtKind::Assignment { .. }));
+    }
+
+    #[test]
+    fn requires_parentheses_around_for_header() {
+        let error =
+            parse(lex("for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "expected `(` after `for`");
+    }
+
+    #[test]
+    fn reports_missing_closing_parenthesis_in_for_header() {
+        let error =
+            parse(lex("for (mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "expected `)` after the `for` update");
     }
 
     #[test]

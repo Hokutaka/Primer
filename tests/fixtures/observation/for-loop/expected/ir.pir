@@ -2,7 +2,7 @@
 
 mut %sum@0: i64 = 0i64
 for.loop {
-  init {
+  start {
     mut %i@1: i64 = 0i64
   }
   condition.bool lt.i64(%i@1:i64, 6i64)

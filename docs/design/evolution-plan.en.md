@@ -660,7 +660,7 @@ Functions, `void`, explicit `main`, and `Args` are not implemented.
 
 - `if condition { ... } else { ... }` is implemented as a statement. The `else` block is optional.
 - `while condition { ... }` is implemented as a statement. Its condition is evaluated before its body on every iteration.
-- `for binding condition; assignment { ... }` is implemented as a statement. Its initializer, condition, body, and update remain distinct in Primer IR.
+- `for (start; condition; update) { ... }` is implemented as a statement. The start statement may be a binding or an assignment. The start statement, continuation condition, body, and update statement remain distinct in Primer IR.
 - `break;` and `continue;` are implemented and target only the innermost loop.
 - Blocks create lexical scopes. Inner bindings are not visible outside, while an inner block may reassign an outer `mut` binding.
 - The source language never introduces `goto`, arbitrary-position labels, or computed goto.

@@ -128,19 +128,19 @@ while count < 3 {
 
 The condition of a `while` must also be `bool`. A `while` is a statement and does not produce a value.
 
-`for` groups a binding, a `bool` condition, an assignment, and a body:
+`for` groups a start statement, a `bool` continuation condition, an update statement, and a body. The start statement may declare a new binding or assign to an existing `mut` binding:
 
 ```primer
 mut sum: i64 = 0;
 
-for mut i: i64 = 0; i < 6; i = i + 1 {
+for (mut i: i64 = 0; i < 6; i = i + 1) {
     sum = sum + i;
 }
 ```
 
-The initializer runs once. Before every iteration, the condition is evaluated. After every completed iteration, the update runs and control returns to the condition. All three header parts are required in the current syntax.
+The start statement runs once. Before every iteration, the continuation condition is evaluated. After every completed iteration, the update statement runs and control returns to the condition. All three header parts are required in the current syntax.
 
-The initializer binding is visible in the condition, update, and body, but not after the `for`. The body creates a nested block scope.
+A binding declared by the start statement is visible in the condition, update, and body, but not after the `for`. When the start statement assigns to an existing binding, that binding remains visible after the `for`. The body creates a nested block scope.
 
 `break;` exits the innermost loop. In a `while`, `continue;` proceeds directly to its condition. In a `for`, it proceeds to the update and then the condition. Neither may be used outside a loop.
 

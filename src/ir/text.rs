@@ -92,7 +92,7 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             body,
         } => {
             writeln!(output, "{prefix}for.loop {{").unwrap();
-            writeln!(output, "{prefix}  init {{").unwrap();
+            writeln!(output, "{prefix}  start {{").unwrap();
             emit_statement(initializer, indent + 2, output);
             writeln!(output, "{prefix}  }}").unwrap();
             write!(output, "{prefix}  condition.bool ").unwrap();

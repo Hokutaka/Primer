@@ -1,6 +1,6 @@
 mut sum: i64 = 0;
 
-for mut i: i64 = 0; i < 6; i = i + 1 {
+for (mut i: i64 = 0; i < 6; i = i + 1) {
     if i < 2 {
         continue;
     }

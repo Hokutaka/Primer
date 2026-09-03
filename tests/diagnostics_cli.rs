@@ -62,6 +62,24 @@ fn parser_missing_semicolon_matches_expected_diagnostic() {
 }
 
 #[test]
+fn parser_for_missing_left_parenthesis_matches_expected_diagnostic() {
+    assert_diagnostic(
+        "parser-for-missing-left-parenthesis",
+        "check",
+        "check.stderr",
+    );
+}
+
+#[test]
+fn parser_for_missing_right_parenthesis_matches_expected_diagnostic() {
+    assert_diagnostic(
+        "parser-for-missing-right-parenthesis",
+        "check",
+        "check.stderr",
+    );
+}
+
+#[test]
 fn semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "check", "check.stderr");
 }
