@@ -43,6 +43,7 @@ The first product type has the following properties:
 - aggregates have value semantics at the language level;
 - physical copying, sharing, and decomposition are not fixed by the language;
 - type names are visible throughout the top level of the same file;
+- type names and value names use separate namespaces, while field names are scoped to their type;
 - backend-independent type and field meaning is resolved before Primer IR;
 - explicit aggregate literal values are evaluated in source order, followed by omitted defaults in type-definition order;
 - memory layout and ABI decisions happen during or after backend lowering.
@@ -166,7 +167,37 @@ The compiler resolves them in these stages:
 4. type-check default values;
 5. type-check executable statements.
 
-A scope cannot contain multiple definitions of the same type name. Whether type names and value names share one namespace remains open.
+Names are managed in separate namespaces according to their role. A namespace is the collection in which a name is registered and looked up.
+
+- type names are registered in the type namespace;
+- bindings and future function names are registered in the value namespace;
+- field names are managed within the type that owns them;
+- a scope cannot contain multiple definitions with the same name in the same namespace;
+- a type name and a value name may use the same spelling.
+
+The compiler chooses a namespace from the syntactic position of a name. `Point` in a type annotation and `Point` beginning an aggregate literal look in the type namespace. `point` in an expression looks in the value namespace.
+
+```primer
+type Point {
+    x: f64,
+}
+
+point: Point = Point {
+    x: 1.0,
+};
+```
+
+A type and value may use the same spelling, although names that remain easy for readers to distinguish are recommended. The language does not assign roles by requiring particular capitalization.
+
+Semantic analysis resolves every name reference to an entity kind and identifier. Conceptually, the retained information includes:
+
+```text
+type-ref Point -> TypeId 0
+value-ref point -> BindingId 3
+field-ref x -> FieldId 0
+```
+
+If a name is absent from the required namespace but exists in another namespace, the diagnostic explains the mismatch. For example, using a value named `Point` in a type position reports that a value exists but a type is required instead of only saying that the name was not found.
 
 ## Recursive types
 
@@ -398,8 +429,7 @@ The following are not rejected. They are separated into later design decisions:
 
 The following must be decided before code changes begin:
 
-1. whether type names and value names share a namespace;
-2. whether empty product types are accepted;
-3. the diagnostic used for a backend that is temporarily unsupported during development.
+1. whether empty product types are accepted;
+2. the diagnostic used for a backend that is temporarily unsupported during development.
 
 After these decisions, implementation proceeds through top-level AST items, type registration, semantic analysis, Primer IR, and each backend.

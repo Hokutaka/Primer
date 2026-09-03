@@ -43,6 +43,7 @@ Primerでは、単に値をまとめられることに加えて、次を観測�
 - aggregateは言語の意味として値として扱う
 - 物理的なコピー、共有、分解方法は言語仕様で固定しない
 - 型名は同じファイルのtop-level全体から参照できる
+- 型名と値名は別のnamespaceで管理し、field名は型ごとに管理する
 - backendに依存しない型とfieldの意味はPrimer IRより前に解決する
 - aggregate literalの明示値はソース記述順、省略されたfieldの既定値はその後に型定義順で評価する
 - memory layoutとABIはbackend lowering以降で決定する
@@ -166,7 +167,37 @@ type Point {
 4. 既定値を型検査する
 5. 実行されるstatementを型検査する
 
-同じscopeに同名の型を複数定義することはできません。型名と値名を同じnamespaceに置くかは未決定です。
+名前は、役割ごとに別のnamespaceで管理します。namespaceとは、名前を登録して探すための「名前の箱」です。
+
+- 型名は型namespaceへ登録する
+- 束縛と将来の関数名は値namespaceへ登録する
+- field名は、そのfieldを持つ型の中で管理する
+- 同じscopeの同じnamespaceに、同名の定義を複数置くことはできない
+- 型名と値名では、同じ綴りを使用できる
+
+コンパイラは名前が書かれた場所から、どのnamespaceを探すか判断します。型指定の`Point`とaggregate literalを始める`Point`は型namespaceを探し、式の中の`point`は値namespaceを探します。
+
+```primer
+type Point {
+    x: f64,
+}
+
+point: Point = Point {
+    x: 1.0,
+};
+```
+
+型と値に同じ綴りを使うこともできますが、読む人が区別しやすい名前を選ぶことを推奨します。言語仕様として大文字・小文字による役割の制限は設けません。
+
+名前参照は、意味解析で種類と識別子へ解決します。概念上は次の情報になります。
+
+```text
+type-ref Point -> TypeId 0
+value-ref point -> BindingId 3
+field-ref x -> FieldId 0
+```
+
+必要なnamespaceに名前がなく、別のnamespaceに同名の定義がある場合は、その違いを診断します。たとえば値として定義された`Point`を型の場所で使った場合、単に「見つからない」とせず、値は存在するが型が必要だと伝えます。
 
 ## 再帰的な型
 
@@ -398,8 +429,7 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 
 コード変更を始める前に、次を決めます。
 
-1. 型名と値名を同じnamespaceに置くか
-2. 空のproduct typeを許可するか
-3. 作業中に未対応backendを表す診断の形
+1. 空のproduct typeを許可するか
+2. 作業中に未対応backendを表す診断の形
 
 これらを決めた後、ASTのtop-level item、型登録、意味解析、Primer IR、各backendの順に実装します。
