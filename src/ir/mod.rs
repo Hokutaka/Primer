@@ -1,7 +1,6 @@
 pub mod builder;
 pub mod text;
 
-use crate::diagnostic::Diagnostic;
 use crate::source::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,17 +16,6 @@ pub enum Type {
 pub struct Program {
     pub type_definitions: Vec<TypeDefinition>,
     pub statements: Vec<Statement>,
-}
-
-impl Program {
-    pub(crate) fn unsupported_product_type(&self, route: &str) -> Option<Diagnostic> {
-        self.type_definitions.first().map(|definition| {
-            Diagnostic::new(
-                format!("output route `{route}` does not support product types yet"),
-                definition.span,
-            )
-        })
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

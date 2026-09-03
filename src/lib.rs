@@ -128,10 +128,7 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text,
-        compile_to_x86_64_win_asm, run_vm,
-    };
+    use super::{RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, run_vm};
     use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
 
     #[test]
@@ -189,18 +186,6 @@ mod tests {
                 "print.f64 field(%point@0:%Point@0, %x@0):f64\n",
             )
         );
-    }
-
-    #[test]
-    fn unsupported_backend_names_its_output_route() {
-        let source = "type Point { x: f64, } point: Point = Point { x: 1.0, };";
-        let error = compile_to_x86_64_win_asm(source).unwrap_err();
-
-        assert_eq!(
-            error.message(),
-            "output route `emit-asm` does not support product types yet"
-        );
-        assert_eq!(error.primary_span(), Some(Span::new(0, 22)));
     }
 
     #[test]

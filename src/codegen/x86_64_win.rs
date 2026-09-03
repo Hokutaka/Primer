@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_x86_64_win_asm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_product_type("emit-asm") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -114,5 +111,21 @@ mod tests {
         ] {
             assert!(asm.contains(instruction));
         }
+    }
+
+    #[test]
+    fn lowers_product_values_to_stack_fields() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let asm = emit_x86_64_win_asm(&program).unwrap();
+
+        assert!(asm.contains("movsd %xmm0, -8(%rbp)"));
+        assert!(asm.contains("movsd %xmm0, -16(%rbp)"));
+        assert!(asm.contains("movsd -8(%rbp), %xmm0"));
+        assert!(asm.contains("callq printf"));
     }
 }
