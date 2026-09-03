@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, Program, Stmt, StmtKind, Type, TypeSpec},
+    ast::{BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind, Type, TypeSpec},
     diagnostic::Diagnostic,
 };
 
@@ -16,7 +16,13 @@ pub struct BindingInfo {
 
 pub fn check(program: &Program) -> SemanticResult<Bindings> {
     let mut scopes = vec![HashMap::new()];
-    check_statements(&program.statements, &mut scopes, 0)?;
+    for item in &program.items {
+        match item {
+            Item::Statement(statement) => {
+                check_statements(std::slice::from_ref(statement), &mut scopes, 0)?;
+            }
+        }
+    }
     Ok(scopes.pop().expect("top-level scope must exist"))
 }
 

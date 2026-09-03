@@ -200,8 +200,8 @@ const fn is_comparison(op: BinaryOp) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
-        Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
+        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
     };
     use crate::ir::builder::build;
     use crate::source::Span;
@@ -225,8 +225,8 @@ mod tests {
     #[test]
     fn emits_resolved_types() {
         let ast = AstProgram {
-            statements: vec![
-                ast_stmt(AstStmtKind::Binding {
+            items: vec![
+                AstItem::Statement(ast_stmt(AstStmtKind::Binding {
                     mutable: false,
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(AstType::F32),
@@ -241,10 +241,10 @@ mod tests {
                             explicit_type: None,
                         })),
                     }),
-                }),
-                ast_stmt(AstStmtKind::Print {
+                })),
+                AstItem::Statement(ast_stmt(AstStmtKind::Print {
                     value: ast_expr(AstExprKind::Variable("x".into())),
-                }),
+                })),
             ],
         };
 

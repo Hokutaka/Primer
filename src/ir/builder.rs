@@ -18,9 +18,15 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
         next_binding_id: 0,
     };
 
-    Ok(Program {
-        statements: builder.build_statements(&program.statements)?,
-    })
+    let statements = program
+        .items
+        .iter()
+        .map(|item| match item {
+            ast::Item::Statement(statement) => builder.build_statement(statement),
+        })
+        .collect::<Result<_, _>>()?;
+
+    Ok(Program { statements })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -279,8 +285,8 @@ const fn is_comparison(op: ast::BinaryOp) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
-        Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
+        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
     };
     use crate::source::Span;
 
@@ -300,10 +306,14 @@ mod tests {
         }
     }
 
+    fn ast_item(kind: AstStmtKind) -> AstItem {
+        AstItem::Statement(ast_stmt(kind))
+    }
+
     #[test]
     fn resolves_contextual_f32_literals() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Binding {
+            items: vec![ast_item(AstStmtKind::Binding {
                 name: "x".into(),
                 mutable: false,
                 type_spec: TypeSpec::Explicit(AstType::F32),
@@ -338,7 +348,7 @@ mod tests {
     #[test]
     fn infer_defaults_unsuffixed_float_to_f64() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Binding {
+            items: vec![ast_item(AstStmtKind::Binding {
                 name: "x".into(),
                 mutable: false,
                 type_spec: TypeSpec::Infer,
@@ -360,7 +370,7 @@ mod tests {
     #[test]
     fn preserves_expression_spans() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Print {
+            items: vec![ast_item(AstStmtKind::Print {
                 value: AstExpr {
                     kind: AstExprKind::Binary {
                         op: AstBinaryOp::Add,
@@ -397,12 +407,12 @@ mod tests {
     fn preserves_statement_spans() {
         let statement_span = Span::new(0, 9);
         let ast = AstProgram {
-            statements: vec![Stmt {
+            items: vec![AstItem::Statement(Stmt {
                 kind: AstStmtKind::Print {
                     value: ast_expr(AstExprKind::Integer(1)),
                 },
                 span: statement_span,
-            }],
+            })],
         };
 
         let ir = build(&ast).unwrap();

@@ -1,4 +1,6 @@
-use crate::ast::{BinaryOp, Expr, ExprKind, Program, Stmt, StmtKind, Type, TypeSpec, UnaryOp};
+use crate::ast::{
+    BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind, Type, TypeSpec, UnaryOp,
+};
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
 use crate::source::Span;
@@ -16,13 +18,13 @@ struct Parser {
 
 impl Parser {
     fn parse_program(&mut self) -> ParseResult<Program> {
-        let mut statements = Vec::new();
+        let mut items = Vec::new();
 
         while !matches!(&self.peek().kind, TokenKind::Eof) {
-            statements.push(self.parse_statement()?);
+            items.push(Item::Statement(self.parse_statement()?));
         }
 
-        Ok(Program { statements })
+        Ok(Program { items })
     }
 
     fn parse_statement(&mut self) -> ParseResult<Stmt> {
@@ -529,7 +531,7 @@ mod tests {
             name,
             type_spec,
             value,
-        } = &program.statements[0].kind
+        } = &program.statement(0).kind
         else {
             panic!("expected binding");
         };
@@ -539,20 +541,20 @@ mod tests {
         assert_eq!(*type_spec, TypeSpec::Explicit(Type::I64));
         assert_eq!(value.kind, ExprKind::Integer(42));
         assert_eq!(value.span, Span::new(9, 11));
-        assert_eq!(program.statements[0].span, Span::new(0, 12));
+        assert_eq!(program.statement(0).span, Span::new(0, 12));
     }
 
     #[test]
     fn parses_mutable_binding() {
         let program = parse(lex("mut x: i64 = 1;").unwrap()).unwrap();
 
-        let StmtKind::Binding { mutable, name, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { mutable, name, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
         assert!(*mutable);
         assert_eq!(name, "x");
-        assert_eq!(program.statements[0].span, Span::new(0, 15));
+        assert_eq!(program.statement(0).span, Span::new(0, 15));
     }
 
     #[test]
@@ -563,7 +565,7 @@ mod tests {
             name,
             name_span,
             value,
-        } = &program.statements[0].kind
+        } = &program.statement(0).kind
         else {
             panic!("expected assignment");
         };
@@ -571,14 +573,14 @@ mod tests {
         assert_eq!(name, "x");
         assert_eq!(*name_span, Span::new(0, 1));
         assert_eq!(value.span, Span::new(4, 9));
-        assert_eq!(program.statements[0].span, Span::new(0, 10));
+        assert_eq!(program.statement(0).span, Span::new(0, 10));
     }
 
     #[test]
     fn parses_infer() {
         let program = parse(lex("x: infer = 1 + 2;").unwrap()).unwrap();
 
-        let StmtKind::Binding { type_spec, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { type_spec, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -589,7 +591,7 @@ mod tests {
     fn parses_float_without_explicit_type() {
         let program = parse(lex("x: f32 = 0.1;").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -606,7 +608,7 @@ mod tests {
     fn multiplication_has_higher_precedence() {
         let program = parse(lex("x: i64 = 1 + 2 * 3;").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -631,7 +633,7 @@ mod tests {
     fn comparison_has_lower_precedence_than_arithmetic() {
         let program = parse(lex("x: bool = 1 + 2 < 4;").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -653,7 +655,7 @@ mod tests {
     fn parses_boolean_literal_and_not() {
         let program = parse(lex("x: bool = !false;").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -674,7 +676,7 @@ mod tests {
             condition,
             then_body,
             else_body,
-        } = &program.statements[0].kind
+        } = &program.statement(0).kind
         else {
             panic!("expected if statement");
         };
@@ -682,27 +684,27 @@ mod tests {
         assert_eq!(condition.kind, ExprKind::Boolean(true));
         assert_eq!(then_body.len(), 1);
         assert_eq!(else_body.len(), 1);
-        assert_eq!(program.statements[0].span, Span::new(0, 40));
+        assert_eq!(program.statement(0).span, Span::new(0, 40));
     }
 
     #[test]
     fn parses_while_block() {
         let program = parse(lex("while true { print(1); }").unwrap()).unwrap();
 
-        let StmtKind::While { condition, body } = &program.statements[0].kind else {
+        let StmtKind::While { condition, body } = &program.statement(0).kind else {
             panic!("expected while statement");
         };
 
         assert_eq!(condition.kind, ExprKind::Boolean(true));
         assert_eq!(body.len(), 1);
-        assert_eq!(program.statements[0].span, Span::new(0, 24));
+        assert_eq!(program.statement(0).span, Span::new(0, 24));
     }
 
     #[test]
     fn parses_break_and_continue() {
         let program = parse(lex("while true { continue; break; }").unwrap()).unwrap();
 
-        let StmtKind::While { body, .. } = &program.statements[0].kind else {
+        let StmtKind::While { body, .. } = &program.statement(0).kind else {
             panic!("expected while statement");
         };
 
@@ -722,7 +724,7 @@ mod tests {
             condition,
             update,
             body,
-        } = &program.statements[0].kind
+        } = &program.statement(0).kind
         else {
             panic!("expected for statement");
         };
@@ -731,7 +733,7 @@ mod tests {
         assert!(matches!(condition.kind, ExprKind::Binary { .. }));
         assert!(matches!(update.kind, StmtKind::Assignment { .. }));
         assert_eq!(body.len(), 1);
-        assert_eq!(program.statements[0].span, Span::new(0, source.len()));
+        assert_eq!(program.statement(0).span, Span::new(0, source.len()));
     }
 
     #[test]
@@ -739,7 +741,7 @@ mod tests {
         let source = "mut i: i64 = 3; for (i = 0; i < 3; i = i + 1) { print(i); }";
         let program = parse(lex(source).unwrap()).unwrap();
 
-        let StmtKind::For { initializer, .. } = &program.statements[1].kind else {
+        let StmtKind::For { initializer, .. } = &program.statement(1).kind else {
             panic!("expected for statement");
         };
 
@@ -766,7 +768,7 @@ mod tests {
     fn unary_span_includes_operator() {
         let program = parse(lex("x: i64 = -1;").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -777,7 +779,7 @@ mod tests {
     fn parenthesized_span_includes_parentheses() {
         let program = parse(lex("x: i64 = (1 + 2);").unwrap()).unwrap();
 
-        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
             panic!("expected binding");
         };
 
@@ -795,7 +797,7 @@ mod tests {
     #[test]
     fn print_span_covers_keyword_through_semicolon() {
         let program = parse(lex("  print(1);").unwrap()).unwrap();
-        let statement = &program.statements[0];
+        let statement = program.statement(0);
 
         let StmtKind::Print { value } = &statement.kind else {
             panic!("expected print");

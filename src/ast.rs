@@ -16,7 +16,24 @@ pub enum TypeSpec {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
-    pub statements: Vec<Stmt>,
+    pub items: Vec<Item>,
+}
+
+impl Program {
+    pub fn statement(&self, index: usize) -> &Stmt {
+        self.items
+            .iter()
+            .map(|item| match item {
+                Item::Statement(statement) => statement,
+            })
+            .nth(index)
+            .expect("statement index must exist")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Item {
+    Statement(Stmt),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
