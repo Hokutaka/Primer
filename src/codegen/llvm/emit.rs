@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use super::ir::{
-    BinaryOp, CompareOp, Instruction, Label, Module, Operand, PrintFormat, SlotId, Temp, Type,
+    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId,
+    Temp, Type,
 };
 
 pub fn emit(module: &Module) -> String {
@@ -42,8 +43,12 @@ pub fn emit(module: &Module) -> String {
 
     output.push('\n');
 
-    output.push_str("define i32 @main() {\n");
-    output.push_str("entry:\n");
+    for function in &module.functions {
+        emit_function(function, module, &mut output);
+        output.push('\n');
+    }
+
+    output.push_str("define i32 @main() {\nentry:\n");
 
     for slot in &module.slots {
         writeln!(
@@ -56,7 +61,12 @@ pub fn emit(module: &Module) -> String {
     }
 
     for instruction in &module.instructions {
-        emit_instruction(instruction, module, &mut output);
+        emit_instruction(instruction, &module.slots, module, &mut output);
+    }
+
+    if let Some(function_id) = module.explicit_main {
+        let function = &module.functions[function_id];
+        writeln!(output, "  call void @{}()", function_name(function)).unwrap();
     }
 
     output.push_str("  ret i32 0\n");
@@ -65,7 +75,54 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut String) {
+fn emit_function(function: &Function, module: &Module, output: &mut String) {
+    write!(
+        output,
+        "define {} @{}(",
+        function
+            .return_type
+            .map_or_else(|| "void".into(), |ty| type_name(ty, module)),
+        function_name(function)
+    )
+    .unwrap();
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        write!(output, "{} %arg{index}", type_name(parameter.ty, module)).unwrap();
+    }
+    output.push_str(") {\nentry:\n");
+
+    for slot in &function.slots {
+        writeln!(
+            output,
+            "  %primer_{} = alloca {}",
+            slot.name,
+            type_name(slot.ty, module),
+        )
+        .unwrap();
+    }
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        writeln!(
+            output,
+            "  store {} %arg{index}, ptr %primer_{}",
+            type_name(parameter.ty, module),
+            slot_by_id(&function.slots, parameter.slot).name,
+        )
+        .unwrap();
+    }
+    for instruction in &function.instructions {
+        emit_instruction(instruction, &function.slots, module, output);
+    }
+    output.push_str("}\n");
+}
+
+fn emit_instruction(
+    instruction: &Instruction,
+    slots: &[Slot],
+    module: &Module,
+    output: &mut String,
+) {
     match instruction {
         Instruction::Label { id, name } => {
             writeln!(output, "{}: ; {name}", label(*id)).unwrap();
@@ -96,7 +153,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  store {} {}, ptr %primer_{}",
                 type_name(*ty, module),
                 operand(*value),
-                slot_by_id(module, *slot).name,
+                slot_by_id(slots, *slot).name,
             )
             .unwrap();
         }
@@ -107,7 +164,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} = load {}, ptr %primer_{}",
                 temp(*dest),
                 type_name(*ty, module),
-                slot_by_id(module, *slot).name,
+                slot_by_id(slots, *slot).name,
             )
             .unwrap();
         }
@@ -149,6 +206,46 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             )
             .unwrap();
         }
+
+        Instruction::Call {
+            dest,
+            function_id,
+            return_type,
+            arguments,
+        } => {
+            output.push_str("  ");
+            if let Some(dest) = dest {
+                write!(output, "{} = ", temp(*dest)).unwrap();
+            }
+            let function = &module.functions[*function_id];
+            write!(
+                output,
+                "call {} @{}(",
+                return_type.map_or_else(|| "void".into(), |ty| type_name(ty, module)),
+                function_name(function)
+            )
+            .unwrap();
+            for (index, (ty, argument)) in arguments.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                write!(output, "{} {}", type_name(*ty, module), operand(*argument)).unwrap();
+            }
+            output.push_str(")\n");
+        }
+
+        Instruction::Return { value } => match value {
+            Some((ty, value)) => {
+                writeln!(
+                    output,
+                    "  ret {} {}",
+                    type_name(*ty, module),
+                    operand(*value)
+                )
+                .unwrap();
+            }
+            None => output.push_str("  ret void\n"),
+        },
 
         Instruction::Binary {
             dest,
@@ -240,8 +337,12 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
     }
 }
 
-fn slot_by_id(module: &Module, id: SlotId) -> &super::ir::Slot {
-    &module.slots[id.0]
+fn slot_by_id(slots: &[Slot], id: SlotId) -> &Slot {
+    &slots[id.0]
+}
+
+fn function_name(function: &Function) -> String {
+    format!("primer.fn.{}.{}", function.name, function.id)
 }
 
 fn temp(temp: Temp) -> String {
@@ -339,5 +440,11 @@ fn uses_bool_print(module: &Module) -> bool {
     module
         .instructions
         .iter()
+        .chain(
+            module
+                .functions
+                .iter()
+                .flat_map(|function| function.instructions.iter()),
+        )
         .any(|instruction| matches!(instruction, Instruction::CallPuts { .. }))
 }

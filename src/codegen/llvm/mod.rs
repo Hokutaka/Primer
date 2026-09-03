@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_llvm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_functions("emit-llvm") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -125,5 +122,21 @@ mod tests {
             llvm.find("%primer_marker = alloca i1").unwrap()
                 < llvm.find("while_condition").unwrap()
         );
+    }
+
+    #[test]
+    fn emits_typed_functions_and_calls() {
+        let program = compile_to_ir(
+            "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);
+             print(answer);",
+        )
+        .unwrap();
+        let llvm = emit_llvm(&program).unwrap();
+
+        assert!(llvm.contains("define i64 @primer.fn.add.0(i64 %arg0, i64 %arg1)"));
+        assert!(llvm.contains("store i64 %arg0, ptr %primer_left"));
+        assert!(llvm.contains("call i64 @primer.fn.add.0(i64 20, i64 22)"));
+        assert!(llvm.contains("ret i64"));
     }
 }
