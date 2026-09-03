@@ -3,14 +3,17 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_x86_64_win_asm(program: &primer_ir::Program) -> String {
+pub fn emit_x86_64_win_asm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_product_type("emit-asm") {
+        return Err(diagnostic);
+    }
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -55,7 +58,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addq %rcx, %rax"));
 
@@ -70,7 +73,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addss %xmm1, %xmm0"));
 
@@ -85,7 +88,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addsd %xmm1, %xmm0"));
 
@@ -99,7 +102,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         for instruction in [
             "sete %al",

@@ -3,14 +3,17 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_qbe(program: &primer_ir::Program) -> String {
+pub fn emit_qbe(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_product_type("emit-qbe") {
+        return Err(diagnostic);
+    }
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -38,7 +41,7 @@ mod tests {
     #[test]
     fn emits_i64_add() {
         let program = compile_to_ir("x: i64 = 1 + 2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let qbe = emit_qbe(&program).unwrap();
 
         assert!(qbe.contains("=l add 1, 2"));
         assert!(qbe.contains("storel %tmp0, %slot_x"));
@@ -48,7 +51,7 @@ mod tests {
     #[test]
     fn emits_f32_add() {
         let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let qbe = emit_qbe(&program).unwrap();
 
         assert!(qbe.contains("=s add s_0.1, s_0.2"));
         assert!(qbe.contains("=d exts %tmp"));
@@ -58,7 +61,7 @@ mod tests {
     #[test]
     fn emits_f64_add() {
         let program = compile_to_ir("x: f64 = 0.1 + 0.2; print(x);").unwrap();
-        let qbe = emit_qbe(&program);
+        let qbe = emit_qbe(&program).unwrap();
 
         assert!(qbe.contains("=d add d_0.1, d_0.2"));
         assert!(qbe.contains("call $printf(l $fmt_f64"));
@@ -67,7 +70,7 @@ mod tests {
     #[test]
     fn inferred_f32_uses_single() {
         let program = compile_to_ir("a: f32 = 0.1 + 0.2; b: infer = a + a;").unwrap();
-        let qbe = emit_qbe(&program);
+        let qbe = emit_qbe(&program).unwrap();
 
         assert!(qbe.contains("stores %tmp"));
     }
@@ -79,7 +82,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let qbe = emit_qbe(&program);
+        let qbe = emit_qbe(&program).unwrap();
 
         for instruction in ["ceql", "cnel", "csltl", "cslel", "csgtl", "csgel"] {
             assert!(qbe.contains(instruction));

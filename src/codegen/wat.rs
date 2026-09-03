@@ -3,14 +3,17 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_wat(program: &primer_ir::Program) -> String {
+pub fn emit_wat(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_product_type("emit-wat") {
+        return Err(diagnostic);
+    }
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -59,7 +62,7 @@ mod tests {
         )
         .unwrap();
 
-        let wat = emit_wat(&program);
+        let wat = emit_wat(&program).unwrap();
 
         assert!(wat.contains("i64.add"));
 
@@ -76,7 +79,7 @@ mod tests {
         )
         .unwrap();
 
-        let wat = emit_wat(&program);
+        let wat = emit_wat(&program).unwrap();
 
         assert!(wat.contains("f32.const 0.1"));
 
@@ -95,7 +98,7 @@ mod tests {
         )
         .unwrap();
 
-        let wat = emit_wat(&program);
+        let wat = emit_wat(&program).unwrap();
 
         assert!(wat.contains("f64.add"));
 
@@ -110,7 +113,7 @@ mod tests {
         )
         .unwrap();
 
-        let wat = emit_wat(&program);
+        let wat = emit_wat(&program).unwrap();
 
         assert!(wat.contains("(local $primer_b f32)"));
 
@@ -124,7 +127,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let wat = emit_wat(&program);
+        let wat = emit_wat(&program).unwrap();
 
         for instruction in [
             "i64.eq", "i64.ne", "i64.lt_s", "i64.le_s", "i64.gt_s", "i64.ge_s",

@@ -416,6 +416,9 @@ impl Lowerer {
 
                 expr.ty.into()
             }
+            primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
+                unreachable!("product types are rejected before x86-64 lowering")
+            }
         }
     }
 
@@ -608,6 +611,9 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
         primer_ir::ExprKind::Binary { left, right, .. } => {
             1 + count_expr_nodes(left) + count_expr_nodes(right)
         }
+        primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
+            unreachable!("product types are rejected before x86-64 lowering")
+        }
     }
 }
 
@@ -626,6 +632,9 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::F32,
             primer_ir::Type::F64 => Self::F64,
+            primer_ir::Type::Named(_) => {
+                unreachable!("product types are rejected before x86-64 lowering")
+            }
         }
     }
 }

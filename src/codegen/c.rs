@@ -3,14 +3,17 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_c(program: &primer_ir::Program) -> String {
+pub fn emit_c(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_product_type("emit-c") {
+        return Err(diagnostic);
+    }
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -41,7 +44,7 @@ mod tests {
         )
         .unwrap();
 
-        let c = emit_c(&program);
+        let c = emit_c(&program).unwrap();
 
         assert!(c.contains("float primer_x = (0.1f + 0.2f);"));
     }
@@ -54,7 +57,7 @@ mod tests {
         )
         .unwrap();
 
-        let c = emit_c(&program);
+        let c = emit_c(&program).unwrap();
 
         assert!(c.contains("double primer_x = (0.1 + 0.2);"));
     }
@@ -67,7 +70,7 @@ mod tests {
         )
         .unwrap();
 
-        let c = emit_c(&program);
+        let c = emit_c(&program).unwrap();
 
         assert!(c.contains("double primer_x = (0.1 + 0.2);"));
     }
@@ -79,7 +82,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let c = emit_c(&program);
+        let c = emit_c(&program).unwrap();
 
         for operator in ["==", "!=", "<", "<=", ">", ">="] {
             assert!(c.contains(operator));

@@ -7,24 +7,24 @@ use crate::{
 };
 
 use super::{
-    BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp,
+    BinaryOp, BindingId, Expr, ExprKind, FieldDefinition, FieldId, FieldValue, FieldValueOrigin,
+    Program, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     let model = semantic::analyze(program)?;
-
-    if let Some(definition) = model.type_definitions.first() {
-        return Err(Diagnostic::new(
-            "output route `emit-ir` does not support product types yet",
-            definition.span,
-        ));
-    }
 
     let mut builder = Builder {
         scopes: vec![HashMap::new()],
         next_binding_id: 0,
         model: &model,
     };
+
+    let type_definitions = model
+        .type_definitions
+        .iter()
+        .map(|definition| builder.build_type_definition(definition))
+        .collect::<Result<_, _>>()?;
 
     let statements = program
         .items
@@ -35,7 +35,10 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
         })
         .collect::<Result<_, _>>()?;
 
-    Ok(Program { statements })
+    Ok(Program {
+        type_definitions,
+        statements,
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,6 +54,37 @@ struct Builder<'a> {
 }
 
 impl Builder<'_> {
+    fn build_type_definition(
+        &self,
+        definition: &semantic::TypeDefinition,
+    ) -> Result<TypeDefinition, Diagnostic> {
+        let bindings = HashMap::new();
+        let fields = definition
+            .fields
+            .iter()
+            .map(|field| {
+                Ok(FieldDefinition {
+                    id: FieldId(field.id.0),
+                    name: field.name.clone(),
+                    ty: ir_type(field.ty),
+                    default: field
+                        .default
+                        .as_ref()
+                        .map(|value| self.build_expr(value, Some(field.ty), &bindings))
+                        .transpose()?,
+                    span: field.span,
+                })
+            })
+            .collect::<Result<_, Diagnostic>>()?;
+
+        Ok(TypeDefinition {
+            id: TypeId(definition.id.0),
+            name: definition.name.clone(),
+            fields,
+            span: definition.span,
+        })
+    }
+
     fn build_statements(&mut self, statements: &[ast::Stmt]) -> Result<Vec<Statement>, Diagnostic> {
         statements
             .iter()
@@ -94,7 +128,7 @@ impl Builder<'_> {
                     id,
                     mutable: *mutable,
                     name: name.clone(),
-                    ty: scalar_ir_type(ty)?,
+                    ty: ir_type(ty),
                     value,
                 }
             }
@@ -106,7 +140,7 @@ impl Builder<'_> {
                 StatementKind::Assignment {
                     id: binding.id,
                     name: name.clone(),
-                    ty: scalar_ir_type(binding.info.ty)?,
+                    ty: ir_type(binding.info.ty),
                     value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
                 }
             }
@@ -190,11 +224,80 @@ impl Builder<'_> {
                     name: name.clone(),
                 }
             }
-            ast::ExprKind::Construct { .. } | ast::ExprKind::FieldAccess { .. } => {
-                return Err(Diagnostic::new(
-                    "output route `emit-ir` does not support product types yet",
-                    expr.span,
-                ));
+            ast::ExprKind::Construct {
+                type_name,
+                type_name_span,
+                fields,
+            } => {
+                let type_id = self.model.resolve_type_name(type_name, *type_name_span)?;
+                let definition = self.model.type_definition(type_id);
+                let mut supplied = vec![false; definition.fields.len()];
+                let mut values = Vec::with_capacity(definition.fields.len());
+
+                // 明示値は、ソースに書かれた順番のまま評価順として保存します。
+                for field_value in fields {
+                    let field = definition
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_value.name)
+                        .expect("semantic analysis must resolve aggregate fields");
+                    supplied[field.id.0] = true;
+                    values.push(FieldValue {
+                        id: FieldId(field.id.0),
+                        name: field.name.clone(),
+                        value: self.build_expr(&field_value.value, Some(field.ty), bindings)?,
+                        origin: FieldValueOrigin::Explicit {
+                            span: field_value.span,
+                        },
+                    });
+                }
+
+                // 省略された既定値は、その後に型定義順で評価します。
+                let default_bindings = HashMap::new();
+                for field in &definition.fields {
+                    if supplied[field.id.0] {
+                        continue;
+                    }
+                    let default = field
+                        .default
+                        .as_ref()
+                        .expect("semantic analysis requires every omitted field to have a default");
+                    values.push(FieldValue {
+                        id: FieldId(field.id.0),
+                        name: field.name.clone(),
+                        value: self.build_expr(default, Some(field.ty), &default_bindings)?,
+                        origin: FieldValueOrigin::Default {
+                            definition_span: field.span,
+                        },
+                    });
+                }
+
+                ExprKind::Construct {
+                    type_id: TypeId(type_id.0),
+                    type_name: type_name.clone(),
+                    fields: values,
+                }
+            }
+            ast::ExprKind::FieldAccess {
+                base, field_name, ..
+            } => {
+                let semantic::Type::Named(type_id) = self.model.type_of_expr(base, bindings)?
+                else {
+                    unreachable!("semantic analysis must reject field access on scalar values")
+                };
+                let field = self
+                    .model
+                    .type_definition(type_id)
+                    .fields
+                    .iter()
+                    .find(|field| field.name == *field_name)
+                    .expect("semantic analysis must resolve field access");
+                ExprKind::FieldAccess {
+                    type_id: TypeId(type_id.0),
+                    field_id: FieldId(field.id.0),
+                    field_name: field.name.clone(),
+                    base: Box::new(self.build_expr(base, None, bindings)?),
+                }
             }
             ast::ExprKind::Unary { op, value } => ExprKind::Unary {
                 op: (*op).into(),
@@ -216,7 +319,7 @@ impl Builder<'_> {
         };
 
         Ok(Expr {
-            ty: scalar_ir_type(ty)?,
+            ty: ir_type(ty),
             kind,
             span: expr.span,
         })
@@ -252,18 +355,14 @@ impl Builder<'_> {
     }
 }
 
-fn scalar_ir_type(value: semantic::Type) -> Result<Type, Diagnostic> {
-    Ok(match value {
+fn ir_type(value: semantic::Type) -> Type {
+    match value {
         semantic::Type::Bool => Type::Bool,
         semantic::Type::I64 => Type::I64,
         semantic::Type::F32 => Type::F32,
         semantic::Type::F64 => Type::F64,
-        semantic::Type::Named(_) => {
-            return Err(Diagnostic::without_span(
-                "output route `emit-ir` does not support product types yet",
-            ));
-        }
-    })
+        semantic::Type::Named(id) => Type::Named(TypeId(id.0)),
+    }
 }
 
 impl From<ast::UnaryOp> for UnaryOp {

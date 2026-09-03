@@ -1,23 +1,48 @@
 use std::fmt::Write;
 
-use super::{BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp};
+use super::{
+    BinaryOp, Expr, ExprKind, FieldValueOrigin, Program, Statement, StatementKind, Type, UnaryOp,
+};
 
 pub fn emit(program: &Program) -> String {
     let mut output = String::new();
     writeln!(output, "; Primer IR v0.1").unwrap();
 
-    if !program.statements.is_empty() {
+    if !program.type_definitions.is_empty() || !program.statements.is_empty() {
         writeln!(output).unwrap();
     }
 
+    for definition in &program.type_definitions {
+        writeln!(output, "type %{}@{} {{", definition.name, definition.id.0).unwrap();
+        for field in &definition.fields {
+            write!(
+                output,
+                "  field %{}@{}: {}",
+                field.name,
+                field.id.0,
+                type_name(field.ty, program)
+            )
+            .unwrap();
+            if let Some(default) = &field.default {
+                output.push_str(" = ");
+                emit_expr(default, program, &mut output);
+            }
+            writeln!(output).unwrap();
+        }
+        writeln!(output, "}}").unwrap();
+        if !program.statements.is_empty() {
+            writeln!(output).unwrap();
+        }
+    }
+
     for statement in &program.statements {
-        emit_statement(statement, 0, &mut output);
+        emit_statement(statement, 0, program, &mut output);
     }
 
     output
 }
 
-fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
+fn emit_statement(statement: &Statement, indent: usize, program: &Program, output: &mut String) {
     let prefix = "  ".repeat(indent);
 
     match &statement.kind {
@@ -34,8 +59,8 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             } else {
                 output.push_str(&prefix);
             }
-            write!(output, "%{name}@{}: {} = ", id.0, type_name(*ty)).unwrap();
-            emit_expr(value, output);
+            write!(output, "%{name}@{}: {} = ", id.0, type_name(*ty, program)).unwrap();
+            emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
         StatementKind::Assignment {
@@ -44,13 +69,19 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             ty,
             value,
         } => {
-            write!(output, "{prefix}set %{name}@{}:{} = ", id.0, type_name(*ty)).unwrap();
-            emit_expr(value, output);
+            write!(
+                output,
+                "{prefix}set %{name}@{}:{} = ",
+                id.0,
+                type_name(*ty, program)
+            )
+            .unwrap();
+            emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
         StatementKind::Print { value } => {
-            write!(output, "{prefix}print.{} ", type_name(value.ty)).unwrap();
-            emit_expr(value, output);
+            write!(output, "{prefix}print.{} ", type_name(value.ty, program)).unwrap();
+            emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
         StatementKind::If {
@@ -59,10 +90,10 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             else_body,
         } => {
             write!(output, "{prefix}if.bool ").unwrap();
-            emit_expr(condition, output);
+            emit_expr(condition, program, output);
             writeln!(output, " {{").unwrap();
             for statement in then_body {
-                emit_statement(statement, indent + 1, output);
+                emit_statement(statement, indent + 1, program, output);
             }
             write!(output, "{prefix}}}").unwrap();
 
@@ -71,17 +102,17 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             } else {
                 writeln!(output, " else {{").unwrap();
                 for statement in else_body {
-                    emit_statement(statement, indent + 1, output);
+                    emit_statement(statement, indent + 1, program, output);
                 }
                 writeln!(output, "{prefix}}}").unwrap();
             }
         }
         StatementKind::While { condition, body } => {
             write!(output, "{prefix}while.bool ").unwrap();
-            emit_expr(condition, output);
+            emit_expr(condition, program, output);
             writeln!(output, " {{").unwrap();
             for statement in body {
-                emit_statement(statement, indent + 1, output);
+                emit_statement(statement, indent + 1, program, output);
             }
             writeln!(output, "{prefix}}}").unwrap();
         }
@@ -93,18 +124,18 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
         } => {
             writeln!(output, "{prefix}for.loop {{").unwrap();
             writeln!(output, "{prefix}  start {{").unwrap();
-            emit_statement(initializer, indent + 2, output);
+            emit_statement(initializer, indent + 2, program, output);
             writeln!(output, "{prefix}  }}").unwrap();
             write!(output, "{prefix}  condition.bool ").unwrap();
-            emit_expr(condition, output);
+            emit_expr(condition, program, output);
             writeln!(output).unwrap();
             writeln!(output, "{prefix}  body {{").unwrap();
             for statement in body {
-                emit_statement(statement, indent + 2, output);
+                emit_statement(statement, indent + 2, program, output);
             }
             writeln!(output, "{prefix}  }}").unwrap();
             writeln!(output, "{prefix}  update {{").unwrap();
-            emit_statement(update, indent + 2, output);
+            emit_statement(update, indent + 2, program, output);
             writeln!(output, "{prefix}  }}").unwrap();
             writeln!(output, "{prefix}}}").unwrap();
         }
@@ -117,7 +148,7 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
     }
 }
 
-fn emit_expr(expr: &Expr, output: &mut String) {
+fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
     match &expr.kind {
         ExprKind::Boolean(value) => {
             write!(output, "{value}:bool").unwrap();
@@ -126,14 +157,53 @@ fn emit_expr(expr: &Expr, output: &mut String) {
             write!(output, "{value}i64").unwrap();
         }
         ExprKind::Float { text } => {
-            write!(output, "{text}{}", type_name(expr.ty)).unwrap();
+            write!(output, "{text}{}", type_name(expr.ty, program)).unwrap();
         }
         ExprKind::Variable { id, name } => {
-            write!(output, "%{name}@{}:{}", id.0, type_name(expr.ty)).unwrap();
+            write!(output, "%{name}@{}:{}", id.0, type_name(expr.ty, program)).unwrap();
+        }
+        ExprKind::Construct {
+            type_id,
+            type_name,
+            fields,
+        } => {
+            write!(output, "construct %{type_name}@{} {{", type_id.0).unwrap();
+            for field in fields {
+                write!(output, " field %{}@{} = ", field.name, field.id.0).unwrap();
+                emit_expr(&field.value, program, output);
+                match field.origin {
+                    FieldValueOrigin::Explicit { .. } => output.push_str(" [explicit]"),
+                    FieldValueOrigin::Default { .. } => output.push_str(" [default]"),
+                }
+                output.push(';');
+            }
+            output.push_str(" }");
+        }
+        ExprKind::FieldAccess {
+            field_id,
+            field_name,
+            base,
+            ..
+        } => {
+            output.push_str("field(");
+            emit_expr(base, program, output);
+            write!(
+                output,
+                ", %{field_name}@{}):{}",
+                field_id.0,
+                type_name(expr.ty, program)
+            )
+            .unwrap();
         }
         ExprKind::Unary { op, value } => {
-            write!(output, "{}.{}(", unary_name(*op), type_name(expr.ty)).unwrap();
-            emit_expr(value, output);
+            write!(
+                output,
+                "{}.{}(",
+                unary_name(*op),
+                type_name(expr.ty, program)
+            )
+            .unwrap();
+            emit_expr(value, program, output);
             output.push(')');
         }
         ExprKind::Binary { op, left, right } => {
@@ -143,23 +213,27 @@ fn emit_expr(expr: &Expr, output: &mut String) {
                 output,
                 "{}.{}(",
                 binary_name(*op),
-                type_name(operation_type)
+                type_name(operation_type, program)
             )
             .unwrap();
-            emit_expr(left, output);
+            emit_expr(left, program, output);
             output.push_str(", ");
-            emit_expr(right, output);
+            emit_expr(right, program, output);
             output.push(')');
         }
     }
 }
 
-fn type_name(ty: Type) -> &'static str {
+fn type_name(ty: Type, program: &Program) -> String {
     match ty {
-        Type::Bool => "bool",
-        Type::I64 => "i64",
-        Type::F32 => "f32",
-        Type::F64 => "f64",
+        Type::Bool => "bool".into(),
+        Type::I64 => "i64".into(),
+        Type::F32 => "f32".into(),
+        Type::F64 => "f64".into(),
+        Type::Named(id) => {
+            let definition = &program.type_definitions[id.0];
+            format!("%{}@{}", definition.name, id.0)
+        }
     }
 }
 

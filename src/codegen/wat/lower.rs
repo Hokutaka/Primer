@@ -191,6 +191,9 @@ fn lower_expr(
             primer_ir::Type::Bool => {
                 unreachable!("boolean cannot be lowered as float");
             }
+            primer_ir::Type::Named(_) => {
+                unreachable!("a float literal cannot have a product type");
+            }
         },
 
         primer_ir::ExprKind::Variable { id, .. } => {
@@ -225,12 +228,18 @@ fn lower_expr(
             | (primer_ir::UnaryOp::Not, primer_ir::Type::F64) => {
                 unreachable!("semantic analysis rejects invalid unary operands");
             }
+            (_, primer_ir::Type::Named(_)) => {
+                unreachable!("product types are rejected before WAT lowering");
+            }
         },
 
         primer_ir::ExprKind::Binary { op, left, right } => {
             lower_expr(left, local_names, instructions);
             lower_expr(right, local_names, instructions);
             instructions.push(lower_binary(*op, left.ty));
+        }
+        primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
+            unreachable!("product types are rejected before WAT lowering");
         }
     }
 }
@@ -285,6 +294,9 @@ fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
         | (primer_ir::BinaryOp::Greater, primer_ir::Type::Bool)
         | (primer_ir::BinaryOp::GreaterEqual, primer_ir::Type::Bool) => {
             unreachable!("semantic analysis rejects invalid binary operands")
+        }
+        (_, primer_ir::Type::Named(_)) => {
+            unreachable!("product types are rejected before WAT lowering")
         }
     }
 }
@@ -357,6 +369,9 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::F32,
             primer_ir::Type::F64 => Self::F64,
+            primer_ir::Type::Named(_) => {
+                unreachable!("product types are rejected before WAT lowering")
+            }
         }
     }
 }

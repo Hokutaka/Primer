@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod text;
 
+use crate::diagnostic::Diagnostic;
 use crate::source::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,11 +10,47 @@ pub enum Type {
     I64,
     F32,
     F64,
+    Named(TypeId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
+    pub type_definitions: Vec<TypeDefinition>,
     pub statements: Vec<Statement>,
+}
+
+impl Program {
+    pub(crate) fn unsupported_product_type(&self, route: &str) -> Option<Diagnostic> {
+        self.type_definitions.first().map(|definition| {
+            Diagnostic::new(
+                format!("output route `{route}` does not support product types yet"),
+                definition.span,
+            )
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FieldId(pub usize);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinition {
+    pub id: TypeId,
+    pub name: String,
+    pub fields: Vec<FieldDefinition>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    pub id: FieldId,
+    pub name: String,
+    pub ty: Type,
+    pub default: Option<Expr>,
+    pub span: Span,
 }
 
 /// ソース上の名前がどの束縛を指すかを一意に識別します。
@@ -83,6 +120,17 @@ pub enum ExprKind {
         id: BindingId,
         name: String,
     },
+    Construct {
+        type_id: TypeId,
+        type_name: String,
+        fields: Vec<FieldValue>,
+    },
+    FieldAccess {
+        type_id: TypeId,
+        field_id: FieldId,
+        field_name: String,
+        base: Box<Expr>,
+    },
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
@@ -92,6 +140,20 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldValue {
+    pub id: FieldId,
+    pub name: String,
+    pub value: Expr,
+    pub origin: FieldValueOrigin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldValueOrigin {
+    Explicit { span: Span },
+    Default { definition_span: Span },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

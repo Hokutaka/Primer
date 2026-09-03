@@ -322,6 +322,9 @@ impl Lowerer {
                 primer_ir::Type::Bool => {
                     unreachable!("boolean cannot be lowered as float")
                 }
+                primer_ir::Type::Named(_) => {
+                    unreachable!("a float literal cannot have a product type")
+                }
             },
 
             primer_ir::ExprKind::Variable { id, .. } => {
@@ -407,6 +410,9 @@ impl Lowerer {
                     ty: expr.ty.into(),
                     operand: Operand::Temp(dest),
                 }
+            }
+            primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
+                unreachable!("product types are rejected before LLVM lowering")
             }
         }
     }
@@ -543,6 +549,9 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
+            primer_ir::Type::Named(_) => {
+                unreachable!("product types are rejected before LLVM lowering")
+            }
         }
     }
 }

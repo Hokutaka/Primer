@@ -83,6 +83,10 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
             left: Box::new(lower_expr(left)),
             right: Box::new(lower_expr(right)),
         },
+
+        primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
+            unreachable!("product types are rejected before C lowering")
+        }
     };
 
     Expr {
@@ -97,6 +101,9 @@ fn print_format(ty: primer_ir::Type) -> PrintFormat {
         primer_ir::Type::I64 => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
+        primer_ir::Type::Named(_) => {
+            unreachable!("product types are rejected before C lowering")
+        }
     }
 }
 
@@ -107,6 +114,9 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
+            primer_ir::Type::Named(_) => {
+                unreachable!("product types are rejected before C lowering")
+            }
         }
     }
 }

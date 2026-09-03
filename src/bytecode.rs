@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Write};
 
 use crate::{
+    diagnostic::Diagnostic,
     ir::{self, BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp},
     source::Span,
 };
@@ -94,7 +95,10 @@ pub enum InstructionKind {
     Halt,
 }
 
-pub fn lower(program: &Program) -> BytecodeProgram {
+pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_product_type("emit-bytecode") {
+        return Err(diagnostic);
+    }
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
 
@@ -112,10 +116,10 @@ pub fn lower(program: &Program) -> BytecodeProgram {
         .instructions
         .push(Instruction::synthetic(InstructionKind::Halt));
 
-    BytecodeProgram {
+    Ok(BytecodeProgram {
         slots,
         instructions: compiler.instructions,
-    }
+    })
 }
 
 pub fn format_program(program: &BytecodeProgram) -> String {
@@ -364,6 +368,9 @@ impl Compiler {
                 ir::Type::Bool => {
                     unreachable!("boolean cannot be emitted as float");
                 }
+                ir::Type::Named(_) => {
+                    unreachable!("a float literal cannot have a product type");
+                }
             },
 
             ExprKind::Variable { id, .. } => {
@@ -407,6 +414,9 @@ impl Compiler {
                 };
 
                 self.emit_source(instruction, expr.span);
+            }
+            ExprKind::Construct { .. } | ExprKind::FieldAccess { .. } => {
+                unreachable!("product types are rejected before bytecode lowering");
             }
         }
     }
@@ -479,6 +489,9 @@ impl From<ir::Type> for Type {
             ir::Type::I64 => Self::I64,
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
+            ir::Type::Named(_) => {
+                unreachable!("product types are rejected before bytecode lowering")
+            }
         }
     }
 }
@@ -602,7 +615,7 @@ mod tests {
     fn emits_typed_bytecode() {
         let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
 
-        let bytecode = lower(&program);
+        let bytecode = lower(&program).unwrap();
 
         let text = format_program(&bytecode);
 

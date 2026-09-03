@@ -579,7 +579,7 @@ mod tests {
         let program =
             compile_to_ir("a: f32 = 0.1 + 0.2; b: f64 = 0.1 + 0.2; print(a); print(b);").unwrap();
 
-        let bytecode = bytecode::lower(&program);
+        let bytecode = bytecode::lower(&program).unwrap();
 
         let output = run(&bytecode).unwrap();
 
