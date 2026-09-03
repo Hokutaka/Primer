@@ -7,6 +7,7 @@ pub enum TokenKind {
     If,
     Else,
     While,
+    For,
     Break,
     Continue,
     True,
@@ -260,6 +261,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "while" => TokenKind::While,
+                    "for" => TokenKind::For,
                     "break" => TokenKind::Break,
                     "continue" => TokenKind::Continue,
                     "true" => TokenKind::True,
@@ -385,6 +387,14 @@ mod tests {
                 .iter()
                 .any(|token| token.kind == TokenKind::RightBrace)
         );
+    }
+
+    #[test]
+    fn lexes_for_block() {
+        let tokens = lex("for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap();
+
+        assert_eq!(tokens[0].kind, TokenKind::For);
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Mut));
     }
 
     #[test]

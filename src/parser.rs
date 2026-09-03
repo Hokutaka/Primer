@@ -39,6 +39,7 @@ impl Parser {
             TokenKind::Print => self.parse_print(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
+            TokenKind::For => self.parse_for(),
             TokenKind::Break => self.parse_loop_control(StmtKind::Break),
             TokenKind::Continue => self.parse_loop_control(StmtKind::Continue),
             other => Err(self.error(format!("expected statement, found {other:?}"))),
@@ -82,6 +83,13 @@ impl Parser {
     }
 
     fn parse_assignment(&mut self) -> ParseResult<Stmt> {
+        let mut statement = self.parse_assignment_clause()?;
+        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
+        statement.span = Span::new(statement.span.start(), semicolon.end());
+        Ok(statement)
+    }
+
+    fn parse_assignment_clause(&mut self) -> ParseResult<Stmt> {
         let token = self.advance().clone();
         let start = token.span.start();
         let name_span = token.span;
@@ -98,7 +106,7 @@ impl Parser {
 
         self.expect_simple(TokenKind::Equal)?;
         let value = self.parse_expression()?;
-        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
+        let end = value.span.end();
 
         Ok(Stmt {
             kind: StmtKind::Assignment {
@@ -106,7 +114,7 @@ impl Parser {
                 name_span,
                 value,
             },
-            span: Span::new(start, semicolon.end()),
+            span: Span::new(start, end),
         })
     }
 
@@ -182,6 +190,47 @@ impl Parser {
 
         Ok(Stmt {
             kind: StmtKind::While { condition, body },
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_for(&mut self) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+
+        let initializer = match (&self.peek().kind, &self.peek_next().kind) {
+            (TokenKind::Mut, _) | (TokenKind::Identifier(_), TokenKind::Colon) => {
+                self.parse_binding()?
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "for initializer must be a binding",
+                    self.peek().span,
+                ));
+            }
+        };
+
+        let condition = self.parse_expression()?;
+        self.expect_simple(TokenKind::Semicolon)?;
+
+        let update = match (&self.peek().kind, &self.peek_next().kind) {
+            (TokenKind::Identifier(_), TokenKind::Equal) => self.parse_assignment_clause()?,
+            _ => {
+                return Err(Diagnostic::new(
+                    "for update must be an assignment",
+                    self.peek().span,
+                ));
+            }
+        };
+
+        let (body, end) = self.parse_block()?;
+
+        Ok(Stmt {
+            kind: StmtKind::For {
+                initializer: Box::new(initializer),
+                condition,
+                update: Box::new(update),
+                body,
+            },
             span: Span::new(start, end),
         })
     }
@@ -646,6 +695,28 @@ mod tests {
         assert_eq!(body[1].kind, StmtKind::Break);
         assert_eq!(body[0].span, Span::new(13, 22));
         assert_eq!(body[1].span, Span::new(23, 29));
+    }
+
+    #[test]
+    fn parses_for_block() {
+        let source = "for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        let StmtKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } = &program.statements[0].kind
+        else {
+            panic!("expected for statement");
+        };
+
+        assert!(matches!(initializer.kind, StmtKind::Binding { .. }));
+        assert!(matches!(condition.kind, ExprKind::Binary { .. }));
+        assert!(matches!(update.kind, StmtKind::Assignment { .. }));
+        assert_eq!(body.len(), 1);
+        assert_eq!(program.statements[0].span, Span::new(0, source.len()));
     }
 
     #[test]

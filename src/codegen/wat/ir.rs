@@ -18,6 +18,12 @@ pub struct Local {
     pub ty: Type,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopKind {
+    While,
+    For,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
     I32Const(i32),
@@ -32,13 +38,21 @@ pub enum Instruction {
         then_instructions: Vec<Instruction>,
         else_instructions: Vec<Instruction>,
     },
-    While {
+    Loop {
+        kind: LoopKind,
         id: usize,
         condition_instructions: Vec<Instruction>,
         body_instructions: Vec<Instruction>,
+        update_instructions: Vec<Instruction>,
     },
-    Break(usize),
-    Continue(usize),
+    Break {
+        kind: LoopKind,
+        id: usize,
+    },
+    Continue {
+        kind: LoopKind,
+        id: usize,
+    },
 
     I64Add,
     I64Sub,

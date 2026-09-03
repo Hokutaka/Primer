@@ -81,3 +81,10 @@ fn loop_control_example_runs() {
 
     assert_eq!(output, "12\n6\n");
 }
+
+#[test]
+fn for_sum_example_runs() {
+    let output = run_vm(include_str!("../examples/for_sum.prim")).unwrap();
+
+    assert_eq!(output, "14\n");
+}

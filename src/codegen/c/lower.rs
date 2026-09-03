@@ -43,6 +43,18 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
             body: body.iter().map(lower_statement).collect(),
         },
 
+        primer_ir::StatementKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => Statement::For {
+            initializer: Box::new(lower_statement(initializer)),
+            condition: lower_expr(condition),
+            update: Box::new(lower_statement(update)),
+            body: body.iter().map(lower_statement).collect(),
+        },
+
         primer_ir::StatementKind::Break => Statement::Break,
         primer_ir::StatementKind::Continue => Statement::Continue,
     }

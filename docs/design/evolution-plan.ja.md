@@ -660,15 +660,16 @@ Emission Map
 
 - `if condition { ... } else { ... }`は文として実装済みです。`else`は省略できます。
 - `while condition { ... }`は文として実装済みです。条件は本文の実行前に毎回評価します。
+- `for binding condition; assignment { ... }`は文として実装済みです。初期化、条件、本文、更新はPrimer IRで区別して保持します。
 - `break;`と`continue;`は実装済みで、最も内側のloopだけを対象にします。
 - blockはlexical scopeを作り、内側の束縛は外側から見えません。内側から外側の`mut`へは再代入できます。
 - ソース言語へ`goto`、任意位置のlabel、computed gotoを導入しません。
-- `for`、`foreach`、`switch` / `case` / `default`を将来の基本制御構文とします。
+- `foreach`、`switch` / `case` / `default`を将来の基本制御構文とします。
 - `foreach`が導入する名前にも`: type_spec`を要求します。
 - `switch`のcase間に暗黙のfallthroughを認めず、case終了用の`break;`を要求しません。
 - backend内部のbranchとjumpは許可しますが、元となった構造化制御との対応を保持します。
 
-`for`、`foreach`、`switch`は未実装です。`if`を将来、値を作る式としても追加するかは引き続き検討します。
+`foreach`と`switch`は未実装です。`if`を将来、値を作る式としても追加するかは引き続き検討します。
 
 ## Issue #2で決めること
 

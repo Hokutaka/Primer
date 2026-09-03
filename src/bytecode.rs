@@ -155,8 +155,8 @@ struct Compiler {
 }
 
 struct LoopContext {
-    continue_target: usize,
     break_jumps: Vec<usize>,
+    continue_jumps: Vec<usize>,
 }
 
 impl Compiler {
@@ -249,8 +249,8 @@ impl Compiler {
                 self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
 
                 self.loops.push(LoopContext {
-                    continue_target: condition_start,
                     break_jumps: Vec::new(),
+                    continue_jumps: Vec::new(),
                 });
                 let body_terminates = self.emit_statements(body);
                 let loop_context = self.loops.pop().expect("while loop context must exist");
@@ -258,6 +258,45 @@ impl Compiler {
                 if !body_terminates {
                     self.emit_source(InstructionKind::Jump(condition_start), statement.span);
                 }
+                for continue_jump in loop_context.continue_jumps {
+                    self.patch_jump(continue_jump, condition_start);
+                }
+                let end = self.instructions.len();
+                self.patch_jump(end_jump, end);
+                for break_jump in loop_context.break_jumps {
+                    self.patch_jump(break_jump, end);
+                }
+
+                false
+            }
+
+            StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                self.emit_statement(initializer);
+
+                let condition_start = self.instructions.len();
+                self.emit_expr(condition);
+                let end_jump = self.instructions.len();
+                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+
+                self.loops.push(LoopContext {
+                    break_jumps: Vec::new(),
+                    continue_jumps: Vec::new(),
+                });
+                self.emit_statements(body);
+                let loop_context = self.loops.pop().expect("for loop context must exist");
+
+                let update_start = self.instructions.len();
+                for continue_jump in loop_context.continue_jumps {
+                    self.patch_jump(continue_jump, update_start);
+                }
+                self.emit_statement(update);
+                self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+
                 let end = self.instructions.len();
                 self.patch_jump(end_jump, end);
                 for break_jump in loop_context.break_jumps {
@@ -279,12 +318,13 @@ impl Compiler {
             }
 
             StatementKind::Continue => {
-                let target = self
-                    .loops
-                    .last()
+                let jump = self.instructions.len();
+                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.loops
+                    .last_mut()
                     .expect("semantic analysis rejects continue outside a loop")
-                    .continue_target;
-                self.emit_source(InstructionKind::Jump(target), statement.span);
+                    .continue_jumps
+                    .push(jump);
                 true
             }
         }
@@ -416,6 +456,12 @@ fn collect_slots(
                 collect_slots(else_body, slots, slot_map);
             }
             StatementKind::While { body, .. } => {
+                collect_slots(body, slots, slot_map);
+            }
+            StatementKind::For {
+                initializer, body, ..
+            } => {
+                collect_slots(std::slice::from_ref(initializer), slots, slot_map);
                 collect_slots(body, slots, slot_map);
             }
             StatementKind::Assignment { .. }

@@ -121,6 +121,25 @@ impl Builder {
 
                 StatementKind::While { condition, body }
             }
+            ast::StmtKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => self.with_scope(|builder| {
+                let initializer = Box::new(builder.build_statement(initializer)?);
+                let bindings = builder.visible_bindings();
+                let condition = builder.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let update = Box::new(builder.build_statement(update)?);
+                let body = builder.with_scope(|builder| builder.build_statements(body))?;
+
+                Ok(StatementKind::For {
+                    initializer,
+                    condition,
+                    update,
+                    body,
+                })
+            })?,
             ast::StmtKind::Break => StatementKind::Break,
             ast::StmtKind::Continue => StatementKind::Continue,
         };

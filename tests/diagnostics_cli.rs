@@ -87,6 +87,16 @@ fn semantic_while_condition_matches_expected_diagnostic() {
 }
 
 #[test]
+fn semantic_for_condition_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-for-condition", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_for_scope_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-for-scope", "check", "check.stderr");
+}
+
+#[test]
 fn semantic_break_outside_loop_matches_expected_diagnostic() {
     assert_diagnostic("semantic-break-outside-loop", "check", "check.stderr");
 }

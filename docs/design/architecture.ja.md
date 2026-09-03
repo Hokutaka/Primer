@@ -71,7 +71,7 @@ Backend Artifact
 6. 公開する観測結果は、Primer IRのテキストと出力されたバックエンド成果物です。
 7. 最適化を暗黙に行いません。将来最適化を導入する場合は、明示的で観測可能なパスにします。
 8. Primer IRは束縛へcompilation-localな決定的IDを付け、名前がshadowingされても参照先を明示します。
-9. 構造化された`if`、`while`、`break`、`continue`はPrimer IRに保持し、branch、合流点、後方経路、loop exitはBytecodeおよび各バックエンドIRへのloweringで導入します。
+9. 構造化された`if`、`while`、`for`、`break`、`continue`はPrimer IRに保持します。`for`の初期化、条件、本文、更新は区別して保持し、branch、合流点、更新経路、後方経路、loop exitはBytecodeおよび各バックエンドIRへのloweringで導入します。
 
 概念上、すべてのバックエンドは同じ構造に従います。
 

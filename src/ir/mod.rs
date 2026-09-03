@@ -55,6 +55,12 @@ pub enum StatementKind {
         condition: Expr,
         body: Vec<Statement>,
     },
+    For {
+        initializer: Box<Statement>,
+        condition: Expr,
+        update: Box<Statement>,
+        body: Vec<Statement>,
+    },
     Break,
     Continue,
 }

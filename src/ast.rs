@@ -50,6 +50,12 @@ pub enum StmtKind {
         condition: Expr,
         body: Vec<Stmt>,
     },
+    For {
+        initializer: Box<Stmt>,
+        condition: Expr,
+        update: Box<Stmt>,
+        body: Vec<Stmt>,
+    },
     Break,
     Continue,
 }

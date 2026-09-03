@@ -171,6 +171,58 @@ impl Lowerer {
                 false
             }
 
+            primer_ir::StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                self.lower_statement(initializer);
+
+                let condition_label = self.next_label();
+                let body_label = self.next_label();
+                let update_label = self.next_label();
+                let end_label = self.next_label();
+
+                self.instructions.push(Instruction::Jump(condition_label));
+                self.instructions.push(Instruction::Label {
+                    id: condition_label,
+                    name: "for_condition",
+                });
+                let condition = self.lower_expr(condition);
+                self.instructions.push(Instruction::Branch {
+                    condition: condition.operand,
+                    then_label: body_label,
+                    else_label: end_label,
+                });
+                self.instructions.push(Instruction::Label {
+                    id: body_label,
+                    name: "for_body",
+                });
+
+                self.loops.push(LoopContext {
+                    continue_label: update_label,
+                    break_label: end_label,
+                });
+                let body_terminates = self.lower_statements(body);
+                self.loops.pop().expect("for loop context must exist");
+
+                if !body_terminates {
+                    self.instructions.push(Instruction::Jump(update_label));
+                }
+                self.instructions.push(Instruction::Label {
+                    id: update_label,
+                    name: "for_update",
+                });
+                self.lower_statement(update);
+                self.instructions.push(Instruction::Jump(condition_label));
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "for_end",
+                });
+                false
+            }
+
             primer_ir::StatementKind::Break => {
                 let target = self
                     .loops
@@ -407,6 +459,21 @@ fn collect_slots(
                 collect_slots(else_body, slots, slot_map, name_counts);
             }
             primer_ir::StatementKind::While { body, .. } => {
+                collect_slots(body, slots, slot_map, name_counts);
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                update,
+                body,
+                ..
+            } => {
+                collect_slots(
+                    std::slice::from_ref(initializer),
+                    slots,
+                    slot_map,
+                    name_counts,
+                );
+                collect_slots(std::slice::from_ref(update), slots, slot_map, name_counts);
                 collect_slots(body, slots, slot_map, name_counts);
             }
             primer_ir::StatementKind::Assignment { .. }

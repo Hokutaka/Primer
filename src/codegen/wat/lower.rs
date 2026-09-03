@@ -1,6 +1,6 @@
 use crate::ir as primer_ir;
 
-use super::ir::{Instruction, Local, Module, Type};
+use super::ir::{Instruction, Local, LoopKind, Module, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     let mut locals = Vec::new();
@@ -31,7 +31,13 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 
 struct ControlContext {
     next_loop_id: usize,
-    loops: Vec<usize>,
+    loops: Vec<LoopTarget>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LoopTarget {
+    kind: LoopKind,
+    id: usize,
 }
 
 fn lower_statement(
@@ -82,32 +88,75 @@ fn lower_statement(
             let mut condition_instructions = Vec::new();
             let mut body_instructions = Vec::new();
             lower_expr(condition, local_names, &mut condition_instructions);
-            control.loops.push(id);
+            control.loops.push(LoopTarget {
+                kind: LoopKind::While,
+                id,
+            });
             for statement in body {
                 lower_statement(statement, local_names, &mut body_instructions, control);
             }
             control.loops.pop().expect("while loop context must exist");
-            instructions.push(Instruction::While {
+            instructions.push(Instruction::Loop {
+                kind: LoopKind::While,
                 id,
                 condition_instructions,
                 body_instructions,
+                update_instructions: Vec::new(),
+            });
+        }
+
+        primer_ir::StatementKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => {
+            lower_statement(initializer, local_names, instructions, control);
+
+            let id = control.next_loop_id;
+            control.next_loop_id += 1;
+            let mut condition_instructions = Vec::new();
+            let mut body_instructions = Vec::new();
+            let mut update_instructions = Vec::new();
+            lower_expr(condition, local_names, &mut condition_instructions);
+            control.loops.push(LoopTarget {
+                kind: LoopKind::For,
+                id,
+            });
+            for statement in body {
+                lower_statement(statement, local_names, &mut body_instructions, control);
+            }
+            control.loops.pop().expect("for loop context must exist");
+            lower_statement(update, local_names, &mut update_instructions, control);
+            instructions.push(Instruction::Loop {
+                kind: LoopKind::For,
+                id,
+                condition_instructions,
+                body_instructions,
+                update_instructions,
             });
         }
 
         primer_ir::StatementKind::Break => {
-            let id = *control
+            let target = *control
                 .loops
                 .last()
                 .expect("semantic analysis rejects break outside a loop");
-            instructions.push(Instruction::Break(id));
+            instructions.push(Instruction::Break {
+                kind: target.kind,
+                id: target.id,
+            });
         }
 
         primer_ir::StatementKind::Continue => {
-            let id = *control
+            let target = *control
                 .loops
                 .last()
                 .expect("semantic analysis rejects continue outside a loop");
-            instructions.push(Instruction::Continue(id));
+            instructions.push(Instruction::Continue {
+                kind: target.kind,
+                id: target.id,
+            });
         }
     }
 }
@@ -271,6 +320,26 @@ fn collect_locals(
                 collect_locals(else_body, locals, local_names, name_counts);
             }
             primer_ir::StatementKind::While { body, .. } => {
+                collect_locals(body, locals, local_names, name_counts);
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                update,
+                body,
+                ..
+            } => {
+                collect_locals(
+                    std::slice::from_ref(initializer),
+                    locals,
+                    local_names,
+                    name_counts,
+                );
+                collect_locals(
+                    std::slice::from_ref(update),
+                    locals,
+                    local_names,
+                    name_counts,
+                );
                 collect_locals(body, locals, local_names, name_counts);
             }
             primer_ir::StatementKind::Assignment { .. }

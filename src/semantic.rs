@@ -158,6 +158,36 @@ fn check_statements(
                 scopes.pop();
             }
 
+            StmtKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                scopes.push(HashMap::new());
+                check_statements(std::slice::from_ref(initializer), scopes, loop_depth)?;
+
+                let bindings = visible_bindings(scopes);
+                let condition_ty = type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
+
+                if condition_ty != Type::Bool {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "for condition must be bool, found {}",
+                            type_name(condition_ty)
+                        ),
+                        condition.span,
+                    ));
+                }
+
+                check_statements(std::slice::from_ref(update), scopes, loop_depth)?;
+
+                scopes.push(HashMap::new());
+                check_statements(body, scopes, loop_depth + 1)?;
+                scopes.pop();
+                scopes.pop();
+            }
+
             StmtKind::Break => {
                 if loop_depth == 0 {
                     return Err(Diagnostic::new(

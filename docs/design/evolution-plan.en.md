@@ -660,15 +660,16 @@ Functions, `void`, explicit `main`, and `Args` are not implemented.
 
 - `if condition { ... } else { ... }` is implemented as a statement. The `else` block is optional.
 - `while condition { ... }` is implemented as a statement. Its condition is evaluated before its body on every iteration.
+- `for binding condition; assignment { ... }` is implemented as a statement. Its initializer, condition, body, and update remain distinct in Primer IR.
 - `break;` and `continue;` are implemented and target only the innermost loop.
 - Blocks create lexical scopes. Inner bindings are not visible outside, while an inner block may reassign an outer `mut` binding.
 - The source language never introduces `goto`, arbitrary-position labels, or computed goto.
-- `for`, `foreach`, and `switch` / `case` / `default` are future basic control constructs.
+- `foreach` and `switch` / `case` / `default` are future basic control constructs.
 - A name introduced by `foreach` also requires `: type_spec`.
 - Cases do not fall through implicitly, and no case-ending `break;` is required.
 - Backend branches and jumps are permitted, but retain their relationship to the structured control that produced them.
 
-`for`, `foreach`, and `switch` are not implemented. Whether a value-producing form of `if` should be added later remains open.
+`foreach` and `switch` are not implemented. Whether a value-producing form of `if` should be added later remains open.
 
 ## Decisions for Issue #2
 

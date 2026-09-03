@@ -1,0 +1,39 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %slot_sum =l alloc8 8
+  %slot_i =l alloc8 8
+  storel 0, %slot_sum
+  storel 0, %slot_i
+  jmp @block0
+@block0 # for_condition
+  %tmp0 =l loadl %slot_i
+  %tmp1 =w csltl %tmp0, 6
+  jnz %tmp1, @block1, @block3
+@block1 # for_body
+  %tmp2 =l loadl %slot_i
+  %tmp3 =w csltl %tmp2, 2
+  jnz %tmp3, @block4, @block5
+@block4 # if_then
+  jmp @block2
+@block5 # if_else
+  jmp @block6
+@block6 # if_end
+  %tmp4 =l loadl %slot_sum
+  %tmp5 =l loadl %slot_i
+  %tmp6 =l add %tmp4, %tmp5
+  storel %tmp6, %slot_sum
+  jmp @block2
+@block2 # for_update
+  %tmp7 =l loadl %slot_i
+  %tmp8 =l add %tmp7, 1
+  storel %tmp8, %slot_i
+  jmp @block0
+@block3 # for_end
+  %tmp9 =l loadl %slot_sum
+  %tmp10 =w call $printf(l $fmt_i64, ..., l %tmp9)
+  ret 0
+}

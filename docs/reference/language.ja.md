@@ -14,6 +14,7 @@ statement   := binding
              | "print" "(" expression ")" ";"
              | if_statement
              | while_statement
+             | for_statement
              | "break" ";"
              | "continue" ";"
 
@@ -21,11 +22,15 @@ if_statement := "if" expression block ("else" block)?
 
 while_statement := "while" expression block
 
+for_statement := "for" binding expression ";" assignment_clause block
+
 block       := "{" statement* "}"
 
 binding     := "mut"? IDENT ":" type_spec "=" expression ";"
 
-assignment  := IDENT "=" expression ";"
+assignment  := assignment_clause ";"
+
+assignment_clause := IDENT "=" expression
 
 type_spec   := "i64"
              | "f32"
@@ -123,7 +128,21 @@ while count < 3 {
 
 `while`の条件にも`bool`が必要です。`while`も値を作る式ではありません。
 
-`break;`は最も内側のループを終了し、`continue;`は最も内側のループの条件評価へ進みます。ループの外では使用できません。
+`for`は、束縛、`bool`の条件、再代入、本文を一つにまとめます。
+
+```primer
+mut sum: i64 = 0;
+
+for mut i: i64 = 0; i < 6; i = i + 1 {
+    sum = sum + i;
+}
+```
+
+初期化は最初に一度だけ実行します。各回の本文を実行する前に条件を評価し、本文を最後まで実行した後に更新を行ってから、もう一度条件を評価します。現在の構文では、初期化、条件、更新をすべて省略できません。
+
+初期化で宣言した束縛は、条件、更新、本文から参照できますが、`for`の後からは参照できません。本文は、その内側に別のブロックスコープを作ります。
+
+`break;`は最も内側のループを終了します。`while`内の`continue;`は条件評価へ直接進みます。`for`内では更新を実行してから条件評価へ進みます。どちらもループの外では使用できません。
 
 ```primer
 while value < 10 {
@@ -157,7 +176,7 @@ if true {
 print(value);           // i64のvalue
 ```
 
-Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言を参照したか区別します。構造化された`if`、`while`、`break`、`continue`はPrimer IRに残ります。Bytecodeと各バックエンドIRへのlowering時に、`if`は分岐と合流へ、`while`は条件分岐と本文から条件へ戻る経路へ、`break`と`continue`は対象ループへのジャンプへ変換されます。
+Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言を参照したか区別します。構造化された`if`、`while`、`for`、`break`、`continue`はPrimer IRに残ります。`for`は初期化、条件、本文、更新を別々に保持します。Bytecodeと各バックエンドIRへのlowering時に、構造化されたループは条件、本文、必要な更新、終了の経路へ変換されます。`break`と`continue`は、対象ループ内の正しい経路へのジャンプへ変換されます。
 
 ## 型
 

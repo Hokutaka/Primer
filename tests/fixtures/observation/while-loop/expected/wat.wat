@@ -20,23 +20,25 @@
         i64.lt_s
         i32.eqz
         br_if $while_end_0
-        local.get $primer_sum
-        local.get $primer_count
-        i64.add
-        local.set $primer_sum
-        local.get $primer_count
-        i64.const 2
-        i64.eq
-        if
-          i32.const 1
-          local.set $primer_marker
-          local.get $primer_marker
-          call $print_bool
+        block $while_continue_0
+          local.get $primer_sum
+          local.get $primer_count
+          i64.add
+          local.set $primer_sum
+          local.get $primer_count
+          i64.const 2
+          i64.eq
+          if
+            i32.const 1
+            local.set $primer_marker
+            local.get $primer_marker
+            call $print_bool
+          end
+          local.get $primer_count
+          i64.const 1
+          i64.add
+          local.set $primer_count
         end
-        local.get $primer_count
-        i64.const 1
-        i64.add
-        local.set $primer_count
         br $while_condition_0
       end
     end

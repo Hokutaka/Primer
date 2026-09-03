@@ -14,6 +14,7 @@ statement   := binding
              | "print" "(" expression ")" ";"
              | if_statement
              | while_statement
+             | for_statement
              | "break" ";"
              | "continue" ";"
 
@@ -21,11 +22,15 @@ if_statement := "if" expression block ("else" block)?
 
 while_statement := "while" expression block
 
+for_statement := "for" binding expression ";" assignment_clause block
+
 block       := "{" statement* "}"
 
 binding     := "mut"? IDENT ":" type_spec "=" expression ";"
 
-assignment  := IDENT "=" expression ";"
+assignment  := assignment_clause ";"
+
+assignment_clause := IDENT "=" expression
 
 type_spec   := "i64"
              | "f32"
@@ -123,7 +128,21 @@ while count < 3 {
 
 The condition of a `while` must also be `bool`. A `while` is a statement and does not produce a value.
 
-`break;` exits the innermost loop. `continue;` proceeds to the condition evaluation of the innermost loop. Neither may be used outside a loop.
+`for` groups a binding, a `bool` condition, an assignment, and a body:
+
+```primer
+mut sum: i64 = 0;
+
+for mut i: i64 = 0; i < 6; i = i + 1 {
+    sum = sum + i;
+}
+```
+
+The initializer runs once. Before every iteration, the condition is evaluated. After every completed iteration, the update runs and control returns to the condition. All three header parts are required in the current syntax.
+
+The initializer binding is visible in the condition, update, and body, but not after the `for`. The body creates a nested block scope.
+
+`break;` exits the innermost loop. In a `while`, `continue;` proceeds directly to its condition. In a `for`, it proceeds to the update and then the condition. Neither may be used outside a loop.
 
 ```primer
 while value < 10 {
@@ -157,7 +176,7 @@ if true {
 print(value);           // the i64 value
 ```
 
-Primer IR assigns deterministic IDs to bindings so references remain unambiguous when names are reused. Structured `if`, `while`, `break`, and `continue` statements remain visible in Primer IR. During lowering into Bytecode and backend IRs, an `if` becomes branches and a merge point, a `while` becomes a conditional branch and a path from its body back to its condition, and `break` and `continue` become jumps to their target loop.
+Primer IR assigns deterministic IDs to bindings so references remain unambiguous when names are reused. Structured `if`, `while`, `for`, `break`, and `continue` statements remain visible in Primer IR. A `for` keeps its initializer, condition, body, and update as distinct parts. During lowering into Bytecode and backend IRs, structured loops become condition, body, update when applicable, and exit paths. `break` and `continue` become jumps to the correct path of their target loop.
 
 ## Types
 

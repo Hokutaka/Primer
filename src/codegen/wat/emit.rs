@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::ir::{Instruction, Module, Type};
+use super::ir::{Instruction, LoopKind, Module, Type};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -110,32 +110,40 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
             writeln!(output, "{prefix}end").unwrap();
         }
 
-        Instruction::While {
+        Instruction::Loop {
+            kind,
             id,
             condition_instructions,
             body_instructions,
+            update_instructions,
         } => {
-            writeln!(output, "{prefix}block $while_end_{id}").unwrap();
-            writeln!(output, "{prefix}  loop $while_condition_{id}").unwrap();
+            let name = loop_name(*kind);
+            writeln!(output, "{prefix}block ${name}_end_{id}").unwrap();
+            writeln!(output, "{prefix}  loop ${name}_condition_{id}").unwrap();
             for instruction in condition_instructions {
                 emit_instruction(instruction, indent + 2, output);
             }
             writeln!(output, "{prefix}    i32.eqz").unwrap();
-            writeln!(output, "{prefix}    br_if $while_end_{id}").unwrap();
+            writeln!(output, "{prefix}    br_if ${name}_end_{id}").unwrap();
+            writeln!(output, "{prefix}    block ${name}_continue_{id}").unwrap();
             for instruction in body_instructions {
+                emit_instruction(instruction, indent + 3, output);
+            }
+            writeln!(output, "{prefix}    end").unwrap();
+            for instruction in update_instructions {
                 emit_instruction(instruction, indent + 2, output);
             }
-            writeln!(output, "{prefix}    br $while_condition_{id}").unwrap();
+            writeln!(output, "{prefix}    br ${name}_condition_{id}").unwrap();
             writeln!(output, "{prefix}  end").unwrap();
             writeln!(output, "{prefix}end").unwrap();
         }
 
-        Instruction::Break(id) => {
-            writeln!(output, "{prefix}br $while_end_{id}").unwrap();
+        Instruction::Break { kind, id } => {
+            writeln!(output, "{prefix}br ${}_end_{id}", loop_name(*kind)).unwrap();
         }
 
-        Instruction::Continue(id) => {
-            writeln!(output, "{prefix}br $while_condition_{id}").unwrap();
+        Instruction::Continue { kind, id } => {
+            writeln!(output, "{prefix}br ${}_continue_{id}", loop_name(*kind)).unwrap();
         }
 
         Instruction::I64Add => emit_simple("i64.add", &prefix, output),
@@ -213,16 +221,25 @@ fn instruction_uses_bool_print(instruction: &Instruction) -> bool {
             then_instructions.iter().any(instruction_uses_bool_print)
                 || else_instructions.iter().any(instruction_uses_bool_print)
         }
-        Instruction::While {
+        Instruction::Loop {
             condition_instructions,
             body_instructions,
+            update_instructions,
             ..
         } => {
             condition_instructions
                 .iter()
                 .any(instruction_uses_bool_print)
                 || body_instructions.iter().any(instruction_uses_bool_print)
+                || update_instructions.iter().any(instruction_uses_bool_print)
         }
         _ => false,
+    }
+}
+
+fn loop_name(kind: LoopKind) -> &'static str {
+    match kind {
+        LoopKind::While => "while",
+        LoopKind::For => "for",
     }
 }

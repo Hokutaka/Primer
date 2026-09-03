@@ -18,26 +18,28 @@
         i64.lt_s
         i32.eqz
         br_if $while_end_0
-        local.get $primer_value
-        i64.const 1
-        i64.add
-        local.set $primer_value
-        local.get $primer_value
-        i64.const 3
-        i64.lt_s
-        if
-          br $while_condition_0
+        block $while_continue_0
+          local.get $primer_value
+          i64.const 1
+          i64.add
+          local.set $primer_value
+          local.get $primer_value
+          i64.const 3
+          i64.lt_s
+          if
+            br $while_continue_0
+          end
+          local.get $primer_value
+          i64.const 5
+          i64.gt_s
+          if
+            br $while_end_0
+          end
+          local.get $primer_sum
+          local.get $primer_value
+          i64.add
+          local.set $primer_sum
         end
-        local.get $primer_value
-        i64.const 5
-        i64.gt_s
-        if
-          br $while_end_0
-        end
-        local.get $primer_sum
-        local.get $primer_value
-        i64.add
-        local.set $primer_sum
         br $while_condition_0
       end
     end

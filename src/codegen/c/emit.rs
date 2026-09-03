@@ -95,6 +95,29 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             output.push_str("}\n");
         }
 
+        Statement::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => {
+            output.push_str(&prefix);
+            output.push_str("for (");
+            emit_for_clause(initializer, output);
+            output.push_str("; ");
+            emit_expr(condition, output);
+            output.push_str("; ");
+            emit_for_clause(update, output);
+            output.push_str(") {\n");
+
+            for statement in body {
+                emit_statement(statement, indent + 1, output);
+            }
+
+            output.push_str(&prefix);
+            output.push_str("}\n");
+        }
+
         Statement::Break => {
             output.push_str(&prefix);
             output.push_str("break;\n");
@@ -104,6 +127,25 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             output.push_str(&prefix);
             output.push_str("continue;\n");
         }
+    }
+}
+
+fn emit_for_clause(statement: &Statement, output: &mut String) {
+    match statement {
+        Statement::Binding { name, ty, value } => {
+            output.push_str(c_type(*ty));
+            output.push_str(" primer_");
+            output.push_str(name);
+            output.push_str(" = ");
+            emit_expr(value, output);
+        }
+        Statement::Assignment { name, value } => {
+            output.push_str("primer_");
+            output.push_str(name);
+            output.push_str(" = ");
+            emit_expr(value, output);
+        }
+        _ => unreachable!("for clauses are validated by the parser"),
     }
 }
 
@@ -257,6 +299,17 @@ fn statement_uses_bool(statement: &Statement) -> bool {
         }
         Statement::While { condition, body } => {
             condition.ty == Type::Bool || body.iter().any(statement_uses_bool)
+        }
+        Statement::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => {
+            statement_uses_bool(initializer)
+                || condition.ty == Type::Bool
+                || statement_uses_bool(update)
+                || body.iter().any(statement_uses_bool)
         }
         Statement::Break | Statement::Continue => false,
     }

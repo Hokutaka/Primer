@@ -85,6 +85,29 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             }
             writeln!(output, "{prefix}}}").unwrap();
         }
+        StatementKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => {
+            writeln!(output, "{prefix}for.loop {{").unwrap();
+            writeln!(output, "{prefix}  init {{").unwrap();
+            emit_statement(initializer, indent + 2, output);
+            writeln!(output, "{prefix}  }}").unwrap();
+            write!(output, "{prefix}  condition.bool ").unwrap();
+            emit_expr(condition, output);
+            writeln!(output).unwrap();
+            writeln!(output, "{prefix}  body {{").unwrap();
+            for statement in body {
+                emit_statement(statement, indent + 2, output);
+            }
+            writeln!(output, "{prefix}  }}").unwrap();
+            writeln!(output, "{prefix}  update {{").unwrap();
+            emit_statement(update, indent + 2, output);
+            writeln!(output, "{prefix}  }}").unwrap();
+            writeln!(output, "{prefix}}}").unwrap();
+        }
         StatementKind::Break => {
             writeln!(output, "{prefix}break").unwrap();
         }
