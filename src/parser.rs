@@ -109,6 +109,10 @@ impl Parser {
             TokenKind::Identifier(_) => match &self.peek_next().kind {
                 TokenKind::Colon => self.parse_binding(),
                 TokenKind::Equal => self.parse_assignment(),
+                TokenKind::Dot => Err(Diagnostic::new(
+                    "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding",
+                    self.peek_next().span,
+                )),
                 other => Err(Diagnostic::new(
                     format!("expected `:` or `=` after identifier, found {other:?}"),
                     self.peek_next().span,
@@ -791,6 +795,20 @@ mod tests {
         assert_eq!(*name_span, Span::new(0, 1));
         assert_eq!(value.span, Span::new(4, 9));
         assert_eq!(program.statement(0).span, Span::new(0, 10));
+    }
+
+    #[test]
+    fn explains_that_fields_cannot_be_assigned_directly() {
+        let tokens = lex("type Point { x: f64, }
+             point: Point = Point { x: 1.0, };
+             point.x = 2.0;")
+        .unwrap();
+        let error = parse(tokens).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding"
+        );
     }
 
     #[test]

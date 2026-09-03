@@ -2,11 +2,11 @@
 
 [English](product-types.en.md)
 
-**状態: Draft**
+**状態: 実装済み**
 
-この文書は、Primerへ最初に導入するユーザー定義型として、名前付きproduct typeの意味、構文、可観測性、実装境界を整理します。
+この文書は、Primerへ最初に導入したユーザー定義型として、名前付きproduct typeの意味、構文、可観測性、実装境界を整理します。
 
-ここで扱う内容は設計案です。現在のPrimer言語仕様は[言語リファレンス](../reference/language.ja.md)で定義します。
+言語として利用するための規則は[言語リファレンス](../reference/language.ja.md)で定義します。この文書では、その規則を選んだ理由と生成物への変換も説明します。
 
 全体のコンパイラ構成は[コンパイラ設計](architecture.ja.md)、将来の開発順序は[コンパイラ進化計画](evolution-plan.ja.md)、秘密を含む値は[Secret値の設計](secrets.ja.md)で扱います。
 
@@ -48,7 +48,7 @@ Primerでは、単に値をまとめられることに加えて、次を観測�
 - aggregate literalの明示値はソース記述順、省略されたfieldの既定値はその後に型定義順で評価する
 - memory layoutとABIはbackend lowering以降で決定する
 
-## 構文案
+## 構文
 
 ```text
 type_definition :=
@@ -71,7 +71,7 @@ field_access :=
     postfix "." IDENT
 ```
 
-最初の実装では、fieldを一つも持たないproduct typeと空のaggregate literalを許可しません。型定義の`{}`を指して、少なくとも一つのfieldが必要だと診断します。
+現在の実装では、fieldを一つも持たないproduct typeと空のaggregate literalを許可しません。型定義の`{}`を指して、少なくとも一つのfieldが必要だと診断します。
 
 空の型には、値を持たない目印や状態を表す用途があります。しかし、Cには標準的な空structがなく、backendごとにゼロサイズ値の物理表現が異なります。必要な用途と観測方法を別に設計してから追加します。将来、空の型を許可する変更は、現在有効なプログラムの意味を変えません。
 
@@ -285,6 +285,14 @@ print(line.start.y);
 
 field accessは、意味解析で型とfieldへ解決します。文字列としてfield名をbackendへ渡し、backend側で再解決することはしません。
 
+`if`と`while`では、条件の直後の`{`を本文の開始として読みます。構築直後のfieldを条件に使う場合は、構築式を丸括弧で囲みます。
+
+```primer
+if (Flags { enabled: true, }).enabled {
+    print(true);
+}
+```
+
 ## 不変性と再代入
 
 aggregateのfieldは作成後に直接書き換えません。
@@ -348,7 +356,7 @@ FieldValueOrigin
 
 `TypeId`は型のidentityを、`FieldId`は型内で解決されたfieldを表します。どちらもcompilation-localで決定的な識別子とします。
 
-概念上のテキスト表現は次のようになります。最終的な綴りは実装時にsnapshotで確定します。
+テキスト表現は次の形で、実際の綴りをsnapshotで固定します。
 
 ```text
 type %Point@0 {
@@ -377,7 +385,9 @@ Primer IRでは、型名、field名、型、構築、field accessを保持しま
 - 値のコピーまたは共有方法
 - ABI上の受け渡し方法
 
-同じPrimer IRでも、C struct、LLVM aggregate、QBEのメモリ表現、WATのlocalまたはlinear memory、x86-64のstackやregister、Primer VMの値表現は異なる場合があります。その違いは出力成果物で観測できます。
+現在は、C struct、LLVMの名前付きaggregate、QBEの`alloc8`領域、WATのlinear memory、x86-64のstack、Primer VMの構造化された値へ変換します。QBEでは`blit`、WATとx86-64ではfieldごとのload/storeにより値をコピーします。その違いは出力成果物で観測できます。
+
+WAT、QBE、x86-64の現在の内部layoutでは、各scalar fieldへ8バイトの場所を割り当てます。これは外部ABIや将来のlayoutを固定する言語仕様ではありません。
 
 Primerソースから物理layoutを固定する構文と、外部ABI互換性は今回の設計範囲に含めません。
 
@@ -393,9 +403,9 @@ field token = <secret> [default]
 
 aggregateを実装することと、`Secret`の最終的な構文や解除方法を決めることは別の作業です。
 
-## 最初の実装範囲
+## 現在の実装範囲
 
-最初の縦方向の実装では、次を対象にします。
+現在、次の範囲を実装しています。
 
 - `type`によるtop-levelの名前付きproduct type
 - nominalな型identity
@@ -410,23 +420,7 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 - 正常系、診断、各観測成果物のsnapshot
 - 日本語と英語の仕様同期
 
-すべての出力経路が完成するまで、この機能を含むPRはmainへmergeしません。作業中の未対応経路もpanic、不正な成果物、暗黙のfallbackを起こさず、明示的な診断を返します。
-
-作業中に特定の出力経路だけがproduct typeへ未対応の場合、backend loweringの入口で次の情報を持つ診断を返します。
-
-- 未対応の機能名
-- `emit-qbe`など要求された出力経路
-- 最初に対応できないproduct typeのソース範囲
-
-概念上のメッセージは次の形です。
-
-```text
-output route `emit-qbe` does not support product types yet
-```
-
-この診断は対象のbackend出力だけを止めます。ソースとPrimer IRまで正しく扱える段階では、`check`と`emit-ir`を成功させます。一つのbackendが未対応であることを理由に、別の表現へ暗黙に変換したり、値を失った成果物を生成したりしません。
-
-この`yet`を含む診断は開発中の状態を説明するもので、永続的な言語互換性の契約にはしません。PRをmainへmergeする前にすべての出力経路を完成させ、この診断が正常なproduct typeに対して発生しないことをtestで確認します。
+`check`、Primer IR、bytecode、VM、C、LLVM、WAT、QBE、Windows x86-64のすべてで同じ言語上の意味を扱います。正常系、診断、八つの観測成果物をtestで固定しています。
 
 ## 後続で検討する機能
 
@@ -443,6 +437,6 @@ output route `emit-qbe` does not support product types yet
 - custom layoutと外部ABI
 - `Secret`の具体的な型表現と伝播
 
-## 実装開始条件
+## 検証
 
-最初の実装に必要な判断は確定しました。ASTのtop-level item、型登録、意味解析、Primer IR、bytecodeとVM、各backendの順に実装します。
+積型の観測fixtureでは、既定値、値コピー、束縛全体の再代入、入れ子のfield accessを同じソースから各成果物へ変換します。C、LLVM、Windows x86-64については、生成物を`clang`でも検査できます。WATとQBEの実行系がない環境では、構造化IRとsnapshotで生成結果を検査します。

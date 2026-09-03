@@ -1,0 +1,7 @@
+type Left {
+    right: Right,
+}
+
+type Right {
+    left: Left,
+}

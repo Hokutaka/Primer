@@ -1,0 +1,38 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %slot_current =l alloc8 16
+  %slot_saved =l alloc8 16
+  %slot_segment =l alloc8 32
+  %slot_aggregate_tmp0 =l alloc8 16
+  %slot_aggregate_tmp1 =l alloc8 16
+  %slot_aggregate_tmp2 =l alloc8 32
+  %tmp0 =l add %slot_aggregate_tmp0, 8
+  stored d_2.0, %tmp0
+  stored d_0.0, %slot_aggregate_tmp0
+  blit %slot_aggregate_tmp0, %slot_current, 16
+  blit %slot_current, %slot_saved, 16
+  stored d_4.0, %slot_aggregate_tmp1
+  %tmp1 =l add %slot_aggregate_tmp1, 8
+  stored d_5.0, %tmp1
+  blit %slot_aggregate_tmp1, %slot_current, 16
+  blit %slot_saved, %slot_aggregate_tmp2, 16
+  %tmp2 =l add %slot_aggregate_tmp2, 16
+  blit %slot_current, %tmp2, 16
+  blit %slot_aggregate_tmp2, %slot_segment, 32
+  %tmp3 =d loadd %slot_saved
+  %tmp4 =w call $printf(l $fmt_f64, ..., d %tmp3)
+  %tmp5 =l add %slot_saved, 8
+  %tmp6 =d loadd %tmp5
+  %tmp7 =w call $printf(l $fmt_f64, ..., d %tmp6)
+  %tmp8 =l add %slot_segment, 8
+  %tmp9 =d loadd %tmp8
+  %tmp10 =w call $printf(l $fmt_f64, ..., d %tmp9)
+  %tmp11 =l add %slot_segment, 16
+  %tmp12 =d loadd %tmp11
+  %tmp13 =w call $printf(l $fmt_f64, ..., d %tmp12)
+  ret 0
+}

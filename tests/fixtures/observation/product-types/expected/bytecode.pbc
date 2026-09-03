@@ -1,0 +1,43 @@
+; Primer bytecode v0.1
+
+.type 0 Point
+.field 0.0 x f64
+.field 0.1 y f64
+
+.type 1 Segment
+.field 1.0 start %Point@0
+.field 1.1 end %Point@0
+
+.slot 0 mut current %Point@0
+.slot 1 saved %Point@0
+.slot 2 segment %Segment@1
+
+0000  push.f64 2
+0001  push.f64 0
+0002  construct %Point@0 [%y@1:explicit, %x@0:default]
+0003  store 0       ; current
+0004  load 0        ; current
+0005  store 1       ; saved
+0006  push.f64 4
+0007  push.f64 5
+0008  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0009  assign 0      ; current
+0010  load 1        ; saved
+0011  load 0        ; current
+0012  construct %Segment@1 [%start@0:explicit, %end@1:explicit]
+0013  store 2       ; segment
+0014  load 1        ; saved
+0015  field.get %Point@0.%x@0
+0016  print.f64
+0017  load 1        ; saved
+0018  field.get %Point@0.%y@1
+0019  print.f64
+0020  load 2        ; segment
+0021  field.get %Segment@1.%start@0
+0022  field.get %Point@0.%y@1
+0023  print.f64
+0024  load 2        ; segment
+0025  field.get %Segment@1.%end@1
+0026  field.get %Point@0.%x@0
+0027  print.f64
+0028  halt

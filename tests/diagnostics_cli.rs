@@ -62,6 +62,11 @@ fn parser_missing_semicolon_matches_expected_diagnostic() {
 }
 
 #[test]
+fn parser_product_field_assignment_matches_expected_diagnostic() {
+    assert_diagnostic("parser-product-field-assignment", "check", "check.stderr");
+}
+
+#[test]
 fn parser_for_missing_left_parenthesis_matches_expected_diagnostic() {
     assert_diagnostic(
         "parser-for-missing-left-parenthesis",
@@ -82,6 +87,31 @@ fn parser_for_missing_right_parenthesis_matches_expected_diagnostic() {
 #[test]
 fn semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_unknown_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-unknown-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_unknown_product_field_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-unknown-product-field", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_missing_product_field_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-missing-product-field", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_duplicate_product_field_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-duplicate-product-field", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_recursive_product_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-recursive-product-type", "check", "check.stderr");
 }
 
 #[test]

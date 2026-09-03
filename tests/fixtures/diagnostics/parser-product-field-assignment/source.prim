@@ -1,0 +1,9 @@
+type Point {
+    x: f64,
+}
+
+mut point: Point = Point {
+    x: 1.0,
+};
+
+point.x = 2.0;

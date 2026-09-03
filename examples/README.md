@@ -14,6 +14,7 @@
 | [conditional.prim](conditional.prim) | `if` / `else`とscope |
 | [loop_control.prim](loop_control.prim) | `while`、`break`、`continue` |
 | [for_sum.prim](for_sum.prim) | `for`と開始文の再代入 |
+| [product-point.prim](product-point.prim) | 名前付きproduct type、既定値、field access |
 
 ## 数値計算
 
@@ -38,6 +39,6 @@
 
 ## 現在の範囲
 
-これらは、数値、真偽値、束縛、条件分岐、ループだけで表現できるアルゴリズムです。
+これらは、数値、真偽値、束縛、条件分岐、ループ、名前付きproduct typeで表現できるプログラムです。
 
-現在は配列、文字列、関数、再帰、ユーザー定義型がないため、ソート、配列の探索、木やグラフの探索、一般的な動的計画法などはまだ自然に表現できません。将来それらの機能が入ったとき、対応するサンプルを追加します。
+現在は配列、文字列、関数、再帰がないため、ソート、配列の探索、木やグラフの探索、一般的な動的計画法などはまだ自然に表現できません。将来それらの機能が入ったとき、対応するサンプルを追加します。
