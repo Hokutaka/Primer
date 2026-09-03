@@ -79,15 +79,20 @@ The existing `emit-*` commands are the observation surface. Backend-specific Rus
 Primer currently supports:
 
 - static typing;
-- `i64`, `f32`, and `f64`;
+- `bool`, `i64`, `f32`, and `f64`;
 - explicit type declarations;
 - explicit type inference with `infer`;
 - immutable bindings;
 - `+`, `-`, `*`, `/`;
 - unary `-`;
+- `==`, `!=`, `<`, `<=`, `>`, and `>=`;
+- unary `!`;
+- `if` / `else` and block scope;
 - parentheses;
 - `print(expr);`;
 - `//` line comments;
+- mutable bindings with `mut`;
+- type-preserving reassignment;
 - Primer IR emission;
 - C code generation;
 - LLVM IR generation;
@@ -112,6 +117,8 @@ print(single);
 print(double);
 print(inferred);
 ```
+
+Examples that run using the current language include [square-root approximation](examples/square_root.prim), [square-root approximation with `while`](examples/while_square_root.prim), [an f32/f64 logistic map](examples/logistic_map.prim), [booleans and comparisons](examples/boolean_comparisons.prim), and [conditionals and scope](examples/conditional.prim).
 
 The type field is always required. `infer` explicitly requests inference rather than omitting the type:
 
@@ -270,6 +277,9 @@ Primer documentation is organized by purpose:
 - [compiler design](docs/design/architecture.en.md);
 - [observability contract](docs/design/observability.en.md);
 - [output routes and targets](docs/design/targets.en.md);
+- [compiler evolution plan (Draft)](docs/design/evolution-plan.en.md);
+- [use cases for design decisions (Draft)](docs/design/use-case-analysis.en.md);
+- [Secret value design (Draft)](docs/design/secrets.en.md);
 - [language reference](docs/reference/language.en.md);
 - [CLI reference](docs/reference/cli.en.md).
 

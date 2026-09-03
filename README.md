@@ -79,15 +79,20 @@ emit-bytecode  → .pbc
 Primerは現在、次の機能を備えています。
 
 - 静的型付け
-- `i64`、`f32`、`f64`
+- `bool`、`i64`、`f32`、`f64`
 - 明示的な型宣言
 - `infer`による明示的な型推論
 - 不変な変数束縛
 - `+`、`-`、`*`、`/`
 - 単項`-`
+- `==`、`!=`、`<`、`<=`、`>`、`>=`
+- 単項`!`
+- `if` / `else`とブロックスコープ
 - 丸括弧
 - `print(expr);`
 - `//`による行コメント
+- `mut`による可変な束縛
+- 型を保った再代入
 - Primer IRの出力
 - Cコード生成
 - LLVM IR生成
@@ -112,6 +117,8 @@ print(single);
 print(double);
 print(inferred);
 ```
+
+現在の機能だけで動く例として、[平方根の近似](examples/square_root.prim)、[`while`による平方根の近似](examples/while_square_root.prim)、[f32・f64のロジスティック写像](examples/logistic_map.prim)、[真偽値と比較演算](examples/boolean_comparisons.prim)、[条件分岐とスコープ](examples/conditional.prim)があります。
 
 型の指定は常に必要です。型を省略する代わりに、`infer`で型推論を明示的に要求します。
 
@@ -270,6 +277,9 @@ Primerの文書は、目的ごとに整理されています。
 - [コンパイラ設計](docs/design/architecture.ja.md)
 - [可観測性の契約](docs/design/observability.ja.md)
 - [出力経路とターゲット](docs/design/targets.ja.md)
+- [コンパイラ進化計画（Draft）](docs/design/evolution-plan.ja.md)
+- [設計判断のための利用シナリオ（Draft）](docs/design/use-case-analysis.ja.md)
+- [Secret値の設計（Draft）](docs/design/secrets.ja.md)
 - [言語リファレンス](docs/reference/language.ja.md)
 - [CLIリファレンス](docs/reference/cli.ja.md)
 
