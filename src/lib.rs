@@ -128,7 +128,10 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, run_vm};
+    use super::{
+        RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, compile_to_qbe,
+        run_vm,
+    };
     use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
 
     #[test]
@@ -191,13 +194,28 @@ mod tests {
     #[test]
     fn unsupported_backend_names_its_output_route() {
         let source = "type Point { x: f64, } point: Point = Point { x: 1.0, };";
-        let error = compile_to_c(source).unwrap_err();
+        let error = compile_to_qbe(source).unwrap_err();
 
         assert_eq!(
             error.message(),
-            "output route `emit-c` does not support product types yet"
+            "output route `emit-qbe` does not support product types yet"
         );
         assert_eq!(error.primary_span(), Some(Span::new(0, 22)));
+    }
+
+    #[test]
+    fn c_backend_emits_product_layout_and_field_access() {
+        let source = "
+            type Point { x: f64 = 0.0, y: f64, }
+            point: Point = Point { y: 2.0, };
+            print(point.x);
+        ";
+        let c = compile_to_c(source).unwrap();
+
+        assert!(c.contains("typedef struct primer_type_Point_0"));
+        assert!(c.contains("primer_type_Point_0 primer_point"));
+        assert!(c.contains(".y = 2.0, .x = 0.0"));
+        assert!(c.contains("(primer_point).x"));
     }
 
     #[test]

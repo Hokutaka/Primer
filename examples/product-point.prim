@@ -1,0 +1,11 @@
+type Point {
+    x: f64 = 0.0,
+    y: f64,
+}
+
+point: Point = Point {
+    y: 2.0,
+};
+
+print(point.x);
+print(point.y);

@@ -4,11 +4,26 @@ pub enum Type {
     I64,
     Float,
     Double,
+    Named(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub type_definitions: Vec<TypeDefinition>,
     pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinition {
+    pub id: usize,
+    pub name: String,
+    pub fields: Vec<FieldDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    pub name: String,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +83,14 @@ pub enum ExprKind {
         suffix_f32: bool,
     },
     Variable(String),
+    Construct {
+        type_id: usize,
+        fields: Vec<FieldValue>,
+    },
+    FieldAccess {
+        field_name: String,
+        base: Box<Expr>,
+    },
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
@@ -77,6 +100,12 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldValue {
+    pub name: String,
+    pub value: Expr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
