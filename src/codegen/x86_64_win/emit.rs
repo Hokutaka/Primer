@@ -1,4 +1,4 @@
-use super::ir::{BinaryOp, CompareOp, FloatConstant, Instruction, Module};
+use super::ir::{BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type};
 
 pub fn emit(module: &Module) -> String {
     let mut output = initial_data(uses_bool_print(module));
@@ -8,6 +8,11 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push_str("\n.text\n");
+
+    for function in &module.functions {
+        emit_function(function, module, &mut output);
+        output.push('\n');
+    }
 
     output.push_str(".globl main\n");
 
@@ -22,18 +27,49 @@ pub fn emit(module: &Module) -> String {
     output.push_str(&format!("  subq ${}, %rsp\n", module.frame_size,));
 
     for instruction in &module.instructions {
-        emit_instruction(instruction, &mut output);
+        emit_instruction(instruction, module.frame_size, "main", module, &mut output);
     }
 
-    output.push_str("  xorl %eax, %eax\n");
+    if let Some(function_id) = module.explicit_main {
+        output.push_str(&format!(
+            "  callq {}\n",
+            function_name(&module.functions[function_id])
+        ));
+    }
 
-    output.push_str(&format!("  addq ${}, %rsp\n", module.frame_size,));
-
-    output.push_str("  popq %rbp\n");
-
-    output.push_str("  retq\n");
+    emit_epilogue(module.frame_size, true, &mut output);
 
     output
+}
+
+fn emit_function(function: &Function, module: &Module, output: &mut String) {
+    output.push_str(".p2align 4\n");
+    output.push_str(&format!("{}:\n", function_name(function)));
+    output.push_str("  pushq %rbp\n");
+    output.push_str("  movq %rsp, %rbp\n");
+    output.push_str(&format!("  subq ${}, %rsp\n", function.frame_size));
+    for instruction in &function.instructions {
+        emit_instruction(
+            instruction,
+            function.frame_size,
+            &format!("fn_{}", function.id),
+            module,
+            output,
+        );
+    }
+}
+
+fn function_name(function: &Function) -> String {
+    format!("primer_fn_{}_{}", function.name, function.id)
+}
+
+fn emit_epilogue(frame_size: usize, zero_result: bool, output: &mut String) {
+    if zero_result {
+        output.push_str("  xorl %eax, %eax\n");
+    }
+    output.push_str(&format!("  addq ${frame_size}, %rsp\n"));
+    output.push_str("  popq %rbp\n");
+    output.push_str("  retq\n");
 }
 
 fn emit_float_constant(constant: &FloatConstant, output: &mut String) {
@@ -56,19 +92,25 @@ fn emit_float_constant(constant: &FloatConstant, output: &mut String) {
     }
 }
 
-fn emit_instruction(instruction: &Instruction, output: &mut String) {
+fn emit_instruction(
+    instruction: &Instruction,
+    frame_size: usize,
+    label_prefix: &str,
+    module: &Module,
+    output: &mut String,
+) {
     match instruction {
         Instruction::Label { id, name } => {
-            output.push_str(&format!(".Lprimer_block_{id}: # {name}\n"));
+            output.push_str(&format!("{}: # {name}\n", block_label(label_prefix, *id)));
         }
 
         Instruction::JumpIfZero(label) => {
             output.push_str("  testq %rax, %rax\n");
-            output.push_str(&format!("  je .Lprimer_block_{label}\n"));
+            output.push_str(&format!("  je {}\n", block_label(label_prefix, *label)));
         }
 
         Instruction::Jump(label) => {
-            output.push_str(&format!("  jmp .Lprimer_block_{label}\n"));
+            output.push_str(&format!("  jmp {}\n", block_label(label_prefix, *label)));
         }
 
         Instruction::MovI64ImmediateToRax(value) => {
@@ -98,6 +140,25 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
         Instruction::StoreF64ToStack(offset) => {
             output.push_str(&format!("  movsd %xmm0, {offset}(%rbp)\n"));
         }
+
+        Instruction::StoreParameter { index, ty, offset } => {
+            emit_store_parameter(*index, *ty, *offset, output);
+        }
+
+        Instruction::Call {
+            function_id,
+            arguments,
+        } => {
+            for (index, (ty, offset)) in arguments.iter().enumerate() {
+                emit_load_argument(index, *ty, *offset, output);
+            }
+            output.push_str(&format!(
+                "  callq {}\n",
+                function_name(&module.functions[*function_id])
+            ));
+        }
+
+        Instruction::Return => emit_epilogue(frame_size, false, output),
 
         Instruction::LoadF32Constant(id) => {
             output.push_str(&format!("  movss .Lprimer_f32_{id}(%rip), %xmm0\n"));
@@ -230,6 +291,44 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
     }
 }
 
+fn block_label(prefix: &str, id: usize) -> String {
+    if prefix == "main" {
+        format!(".Lprimer_block_{id}")
+    } else {
+        format!(".Lprimer_{prefix}_block_{id}")
+    }
+}
+
+fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut String) {
+    match ty {
+        Type::Bool | Type::I64 => {
+            let register = ["%rcx", "%rdx", "%r8", "%r9"][index];
+            output.push_str(&format!("  movq {register}, {offset}(%rbp)\n"));
+        }
+        Type::F32 => {
+            output.push_str(&format!("  movss %xmm{index}, {offset}(%rbp)\n"));
+        }
+        Type::F64 => {
+            output.push_str(&format!("  movsd %xmm{index}, {offset}(%rbp)\n"));
+        }
+    }
+}
+
+fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String) {
+    match ty {
+        Type::Bool | Type::I64 => {
+            let register = ["%rcx", "%rdx", "%r8", "%r9"][index];
+            output.push_str(&format!("  movq {offset}(%rbp), {register}\n"));
+        }
+        Type::F32 => {
+            output.push_str(&format!("  movss {offset}(%rbp), %xmm{index}\n"));
+        }
+        Type::F64 => {
+            output.push_str(&format!("  movsd {offset}(%rbp), %xmm{index}\n"));
+        }
+    }
+}
+
 fn initial_data(include_bool_text: bool) -> String {
     let mut output = String::new();
 
@@ -322,5 +421,11 @@ fn uses_bool_print(module: &Module) -> bool {
     module
         .instructions
         .iter()
+        .chain(
+            module
+                .functions
+                .iter()
+                .flat_map(|function| function.instructions.iter()),
+        )
         .any(|instruction| matches!(instruction, Instruction::CallPrintBool))
 }

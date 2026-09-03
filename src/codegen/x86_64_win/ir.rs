@@ -26,8 +26,18 @@ pub enum CompareOp {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub functions: Vec<Function>,
+    pub explicit_main: Option<usize>,
     pub frame_size: usize,
     pub float_constants: Vec<FloatConstant>,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    pub id: usize,
+    pub name: String,
+    pub frame_size: usize,
     pub instructions: Vec<Instruction>,
 }
 
@@ -39,7 +49,10 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
-    Label { id: usize, name: &'static str },
+    Label {
+        id: usize,
+        name: &'static str,
+    },
     JumpIfZero(usize),
     Jump(usize),
 
@@ -53,6 +66,17 @@ pub enum Instruction {
 
     LoadF64FromStack(isize),
     StoreF64ToStack(isize),
+
+    StoreParameter {
+        index: usize,
+        ty: Type,
+        offset: isize,
+    },
+    Call {
+        function_id: usize,
+        arguments: Vec<(Type, isize)>,
+    },
+    Return,
 
     LoadF32Constant(usize),
     LoadF64Constant(usize),

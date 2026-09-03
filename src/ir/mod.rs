@@ -19,20 +19,6 @@ pub struct Program {
     pub statements: Vec<Statement>,
 }
 
-impl Program {
-    pub(crate) fn unsupported_functions(
-        &self,
-        route: &str,
-    ) -> Option<crate::diagnostic::Diagnostic> {
-        self.function_definitions.first().map(|definition| {
-            crate::diagnostic::Diagnostic::new(
-                format!("output route `{route}` does not support functions yet"),
-                definition.span,
-            )
-        })
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeId(pub usize);
 
