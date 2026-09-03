@@ -88,3 +88,10 @@ fn for_sum_example_runs() {
 
     assert_eq!(output, "14\n");
 }
+
+#[test]
+fn euclidean_gcd_example_runs() {
+    let output = run_vm(include_str!("../examples/euclidean_gcd.prim")).unwrap();
+
+    assert_eq!(output, "21\n");
+}
