@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ast,
     diagnostic::Diagnostic,
-    semantic::{self, BindingInfo, Bindings},
+    semantic::{self, BindingInfo, Bindings, SemanticModel},
 };
 
 use super::{
@@ -11,18 +11,27 @@ use super::{
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
-    semantic::check(program)?;
+    let model = semantic::analyze(program)?;
+
+    if let Some(definition) = model.type_definitions.first() {
+        return Err(Diagnostic::new(
+            "output route `emit-ir` does not support product types yet",
+            definition.span,
+        ));
+    }
 
     let mut builder = Builder {
         scopes: vec![HashMap::new()],
         next_binding_id: 0,
+        model: &model,
     };
 
     let statements = program
         .items
         .iter()
-        .map(|item| match item {
-            ast::Item::Statement(statement) => builder.build_statement(statement),
+        .filter_map(|item| match item {
+            ast::Item::TypeDefinition(_) => None,
+            ast::Item::Statement(statement) => Some(builder.build_statement(statement)),
         })
         .collect::<Result<_, _>>()?;
 
@@ -35,12 +44,13 @@ struct ResolvedBinding {
     info: BindingInfo,
 }
 
-struct Builder {
+struct Builder<'a> {
     scopes: Vec<HashMap<String, ResolvedBinding>>,
     next_binding_id: usize,
+    model: &'a SemanticModel,
 }
 
-impl Builder {
+impl Builder<'_> {
     fn build_statements(&mut self, statements: &[ast::Stmt]) -> Result<Vec<Statement>, Diagnostic> {
         statements
             .iter()
@@ -59,8 +69,8 @@ impl Builder {
                 value,
             } => {
                 let ty = match type_spec {
-                    ast::TypeSpec::Explicit(ty) => *ty,
-                    ast::TypeSpec::Infer => semantic::type_of_expr(value, &bindings)?,
+                    ast::TypeSpec::Explicit(ty) => self.model.resolve_type_ref(ty)?,
+                    ast::TypeSpec::Infer => self.model.type_of_expr(value, &bindings)?,
                 };
                 let value = self.build_expr(value, Some(ty), &bindings)?;
                 let id = BindingId(self.next_binding_id);
@@ -84,7 +94,7 @@ impl Builder {
                     id,
                     mutable: *mutable,
                     name: name.clone(),
-                    ty: ty.into(),
+                    ty: scalar_ir_type(ty)?,
                     value,
                 }
             }
@@ -96,12 +106,12 @@ impl Builder {
                 StatementKind::Assignment {
                     id: binding.id,
                     name: name.clone(),
-                    ty: binding.info.ty.into(),
+                    ty: scalar_ir_type(binding.info.ty)?,
                     value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
                 }
             }
             ast::StmtKind::Print { value } => {
-                let ty = semantic::type_of_expr(value, &bindings)?;
+                let ty = self.model.type_of_expr(value, &bindings)?;
                 StatementKind::Print {
                     value: self.build_expr(value, Some(ty), &bindings)?,
                 }
@@ -111,7 +121,8 @@ impl Builder {
                 then_body,
                 else_body,
             } => {
-                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    self.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let then_body = self.with_scope(|builder| builder.build_statements(then_body))?;
                 let else_body = self.with_scope(|builder| builder.build_statements(else_body))?;
 
@@ -122,7 +133,8 @@ impl Builder {
                 }
             }
             ast::StmtKind::While { condition, body } => {
-                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    self.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let body = self.with_scope(|builder| builder.build_statements(body))?;
 
                 StatementKind::While { condition, body }
@@ -135,7 +147,8 @@ impl Builder {
             } => self.with_scope(|builder| {
                 let initializer = Box::new(builder.build_statement(initializer)?);
                 let bindings = builder.visible_bindings();
-                let condition = builder.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    builder.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let update = Box::new(builder.build_statement(update)?);
                 let body = builder.with_scope(|builder| builder.build_statements(body))?;
 
@@ -159,10 +172,10 @@ impl Builder {
     fn build_expr(
         &self,
         expr: &ast::Expr,
-        expected: Option<ast::Type>,
+        expected: Option<semantic::Type>,
         bindings: &Bindings,
     ) -> Result<Expr, Diagnostic> {
-        let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
+        let ty = self.model.type_of_expr_expected(expr, bindings, expected)?;
 
         let kind = match &expr.kind {
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
@@ -177,13 +190,19 @@ impl Builder {
                     name: name.clone(),
                 }
             }
+            ast::ExprKind::Construct { .. } | ast::ExprKind::FieldAccess { .. } => {
+                return Err(Diagnostic::new(
+                    "output route `emit-ir` does not support product types yet",
+                    expr.span,
+                ));
+            }
             ast::ExprKind::Unary { op, value } => ExprKind::Unary {
                 op: (*op).into(),
                 value: Box::new(self.build_expr(value, Some(ty), bindings)?),
             },
             ast::ExprKind::Binary { op, left, right } => {
                 let (left_expected, right_expected) = if is_comparison(*op) {
-                    semantic::comparison_operand_types(left, right, bindings)?
+                    semantic::comparison_operand_types(left, right, bindings, self.model)?
                 } else {
                     (ty, ty)
                 };
@@ -197,7 +216,7 @@ impl Builder {
         };
 
         Ok(Expr {
-            ty: ty.into(),
+            ty: scalar_ir_type(ty)?,
             kind,
             span: expr.span,
         })
@@ -233,15 +252,18 @@ impl Builder {
     }
 }
 
-impl From<ast::Type> for Type {
-    fn from(value: ast::Type) -> Self {
-        match value {
-            ast::Type::Bool => Self::Bool,
-            ast::Type::I64 => Self::I64,
-            ast::Type::F32 => Self::F32,
-            ast::Type::F64 => Self::F64,
+fn scalar_ir_type(value: semantic::Type) -> Result<Type, Diagnostic> {
+    Ok(match value {
+        semantic::Type::Bool => Type::Bool,
+        semantic::Type::I64 => Type::I64,
+        semantic::Type::F32 => Type::F32,
+        semantic::Type::F64 => Type::F64,
+        semantic::Type::Named(_) => {
+            return Err(Diagnostic::without_span(
+                "output route `emit-ir` does not support product types yet",
+            ));
         }
-    }
+    })
 }
 
 impl From<ast::UnaryOp> for UnaryOp {
@@ -286,7 +308,7 @@ const fn is_comparison(op: ast::BinaryOp) -> bool {
 mod tests {
     use crate::ast::{
         BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
-        Program as AstProgram, Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeSpec,
     };
     use crate::source::Span;
 
@@ -310,13 +332,20 @@ mod tests {
         AstItem::Statement(ast_stmt(kind))
     }
 
+    fn explicit_type(name: &str) -> TypeSpec {
+        TypeSpec::Explicit(TypeRef {
+            name: name.into(),
+            span: Span::empty(0),
+        })
+    }
+
     #[test]
     fn resolves_contextual_f32_literals() {
         let ast = AstProgram {
             items: vec![ast_item(AstStmtKind::Binding {
                 name: "x".into(),
                 mutable: false,
-                type_spec: TypeSpec::Explicit(AstType::F32),
+                type_spec: explicit_type("f32"),
                 value: ast_expr(AstExprKind::Binary {
                     op: AstBinaryOp::Add,
                     left: Box::new(ast_expr(AstExprKind::Float {

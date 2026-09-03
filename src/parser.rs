@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind, Type, TypeSpec, UnaryOp,
+    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Item, Program, Stmt, StmtKind, Type,
+    TypeDefinition, TypeRef, TypeSpec, UnaryOp,
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
@@ -8,12 +9,18 @@ use crate::source::Span;
 type ParseResult<T> = Result<T, Diagnostic>;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Program, Diagnostic> {
-    Parser { tokens, current: 0 }.parse_program()
+    Parser {
+        tokens,
+        current: 0,
+        allow_construct: true,
+    }
+    .parse_program()
 }
 
 struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    allow_construct: bool,
 }
 
 impl Parser {
@@ -21,10 +28,79 @@ impl Parser {
         let mut items = Vec::new();
 
         while !matches!(&self.peek().kind, TokenKind::Eof) {
-            items.push(Item::Statement(self.parse_statement()?));
+            if matches!(&self.peek().kind, TokenKind::Type) {
+                items.push(Item::TypeDefinition(self.parse_type_definition()?));
+            } else {
+                items.push(Item::Statement(self.parse_statement()?));
+            }
         }
 
         Ok(Program { items })
+    }
+
+    fn parse_type_definition(&mut self) -> ParseResult<TypeDefinition> {
+        let start = self.advance().span.start();
+        let (name, name_span) = self.expect_identifier()?;
+        let opening = self.expect_simple(TokenKind::LeftBrace)?;
+
+        if matches!(&self.peek().kind, TokenKind::RightBrace) {
+            let closing = self.advance().span;
+            return Err(Diagnostic::new(
+                "product type must have at least one field",
+                Span::new(opening.start(), closing.end()),
+            ));
+        }
+
+        let mut fields = Vec::new();
+
+        loop {
+            let (field_name, field_name_span) = self.expect_identifier()?;
+            self.expect_simple(TokenKind::Colon)?;
+            let type_ref = self.parse_type_ref()?;
+
+            if type_ref.name == "infer" {
+                return Err(Diagnostic::new(
+                    "product type fields require an explicit type",
+                    type_ref.span,
+                ));
+            }
+
+            let default = if matches!(&self.peek().kind, TokenKind::Equal) {
+                self.advance();
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            let end = default
+                .as_ref()
+                .map_or(type_ref.span.end(), |value| value.span.end());
+
+            fields.push(FieldDefinition {
+                name: field_name,
+                name_span: field_name_span,
+                type_ref,
+                default,
+                span: Span::new(field_name_span.start(), end),
+            });
+
+            if matches!(&self.peek().kind, TokenKind::Comma) {
+                self.advance();
+                if matches!(&self.peek().kind, TokenKind::RightBrace) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        let closing = self.expect_simple(TokenKind::RightBrace)?;
+
+        Ok(TypeDefinition {
+            name,
+            name_span,
+            fields,
+            span: Span::new(start, closing.end()),
+        })
     }
 
     fn parse_statement(&mut self) -> ParseResult<Stmt> {
@@ -121,27 +197,18 @@ impl Parser {
     }
 
     fn parse_type_spec(&mut self) -> ParseResult<TypeSpec> {
-        let token = self.advance().clone();
+        let type_ref = self.parse_type_ref()?;
 
-        match token.kind {
-            TokenKind::Identifier(name) => match name.as_str() {
-                "i64" => Ok(TypeSpec::Explicit(Type::I64)),
-                "f32" => Ok(TypeSpec::Explicit(Type::F32)),
-                "f64" => Ok(TypeSpec::Explicit(Type::F64)),
-                "bool" => Ok(TypeSpec::Explicit(Type::Bool)),
-                "infer" => Ok(TypeSpec::Infer),
-
-                _ => Err(Diagnostic::new(
-                    format!("unknown type `{name}`"),
-                    token.span,
-                )),
-            },
-
-            other => Err(Diagnostic::new(
-                format!("expected type, found {other:?}"),
-                token.span,
-            )),
+        if type_ref.name == "infer" {
+            Ok(TypeSpec::Infer)
+        } else {
+            Ok(TypeSpec::Explicit(type_ref))
         }
+    }
+
+    fn parse_type_ref(&mut self) -> ParseResult<TypeRef> {
+        let (name, span) = self.expect_identifier()?;
+        Ok(TypeRef { name, span })
     }
 
     fn parse_print(&mut self) -> ParseResult<Stmt> {
@@ -162,9 +229,17 @@ impl Parser {
         self.parse_equality()
     }
 
+    fn parse_block_condition(&mut self) -> ParseResult<Expr> {
+        let previous = self.allow_construct;
+        self.allow_construct = false;
+        let result = self.parse_expression();
+        self.allow_construct = previous;
+        result
+    }
+
     fn parse_if(&mut self) -> ParseResult<Stmt> {
         let start = self.advance().span.start();
-        let condition = self.parse_expression()?;
+        let condition = self.parse_block_condition()?;
         let (then_body, then_end) = self.parse_block()?;
 
         let (else_body, end) = if matches!(&self.peek().kind, TokenKind::Else) {
@@ -187,7 +262,7 @@ impl Parser {
 
     fn parse_while(&mut self) -> ParseResult<Stmt> {
         let start = self.advance().span.start();
-        let condition = self.parse_expression()?;
+        let condition = self.parse_block_condition()?;
         let (body, end) = self.parse_block()?;
 
         Ok(Stmt {
@@ -410,7 +485,27 @@ impl Parser {
             });
         }
 
-        self.parse_primary()
+        self.parse_postfix()
+    }
+
+    fn parse_postfix(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_primary()?;
+
+        while matches!(&self.peek().kind, TokenKind::Dot) {
+            self.advance();
+            let (field_name, field_name_span) = self.expect_identifier()?;
+            let span = Span::new(expr.span.start(), field_name_span.end());
+            expr = Expr {
+                kind: ExprKind::FieldAccess {
+                    base: Box::new(expr),
+                    field_name,
+                    field_name_span,
+                },
+                span,
+            };
+        }
+
+        Ok(expr)
     }
 
     fn parse_primary(&mut self) -> ParseResult<Expr> {
@@ -435,13 +530,23 @@ impl Parser {
 
             TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 
-            TokenKind::Identifier(name) => Ok(Expr {
-                kind: ExprKind::Variable(name),
-                span,
-            }),
+            TokenKind::Identifier(name) => {
+                if self.starts_construct() {
+                    self.parse_construct(name, span)
+                } else {
+                    Ok(Expr {
+                        kind: ExprKind::Variable(name),
+                        span,
+                    })
+                }
+            }
 
             TokenKind::LeftParen => {
-                let expr = self.parse_expression()?;
+                let previous = self.allow_construct;
+                self.allow_construct = true;
+                let result = self.parse_expression();
+                self.allow_construct = previous;
+                let expr = result?;
                 let closing_span = self.expect_simple(TokenKind::RightParen)?;
                 let span = Span::new(span.start(), closing_span.end());
 
@@ -453,6 +558,53 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn parse_construct(&mut self, type_name: String, type_name_span: Span) -> ParseResult<Expr> {
+        let opening = self.expect_simple(TokenKind::LeftBrace)?;
+
+        if matches!(&self.peek().kind, TokenKind::RightBrace) {
+            let closing = self.advance().span;
+            return Err(Diagnostic::new(
+                "aggregate literal must have at least one field",
+                Span::new(opening.start(), closing.end()),
+            ));
+        }
+
+        let mut fields = Vec::new();
+
+        loop {
+            let (name, name_span) = self.expect_identifier()?;
+            self.expect_simple(TokenKind::Colon)?;
+            let value = self.parse_expression()?;
+            let span = Span::new(name_span.start(), value.span.end());
+            fields.push(FieldValue {
+                name,
+                name_span,
+                value,
+                span,
+            });
+
+            if matches!(&self.peek().kind, TokenKind::Comma) {
+                self.advance();
+                if matches!(&self.peek().kind, TokenKind::RightBrace) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        let closing = self.expect_simple(TokenKind::RightBrace)?;
+
+        Ok(Expr {
+            kind: ExprKind::Construct {
+                type_name,
+                type_name_span,
+                fields,
+            },
+            span: Span::new(type_name_span.start(), closing.end()),
+        })
     }
 
     fn expect_simple(&mut self, expected: TokenKind) -> ParseResult<Span> {
@@ -468,14 +620,37 @@ impl Parser {
         }
     }
 
+    fn expect_identifier(&mut self) -> ParseResult<(String, Span)> {
+        let token = self.advance().clone();
+
+        match token.kind {
+            TokenKind::Identifier(name) => Ok((name, token.span)),
+            other => Err(Diagnostic::new(
+                format!("expected identifier, found {other:?}"),
+                token.span,
+            )),
+        }
+    }
+
     fn peek(&self) -> &Token {
         &self.tokens[self.current]
     }
 
     fn peek_next(&self) -> &Token {
+        self.peek_n(1)
+    }
+
+    fn peek_n(&self, distance: usize) -> &Token {
         self.tokens
-            .get(self.current + 1)
+            .get(self.current + distance)
             .unwrap_or_else(|| self.peek())
+    }
+
+    fn starts_construct(&self) -> bool {
+        self.allow_construct
+            && matches!(&self.peek().kind, TokenKind::LeftBrace)
+            && matches!(&self.peek_n(1).kind, TokenKind::Identifier(_))
+            && matches!(&self.peek_n(2).kind, TokenKind::Colon)
     }
 
     fn advance(&mut self) -> &Token {
@@ -516,7 +691,7 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, ExprKind, StmtKind, Type, TypeSpec, UnaryOp};
+    use crate::ast::{BinaryOp, ExprKind, Item, StmtKind, TypeRef, TypeSpec, UnaryOp};
     use crate::lexer::lex;
     use crate::source::Span;
 
@@ -538,10 +713,52 @@ mod tests {
 
         assert!(!mutable);
         assert_eq!(name, "x");
-        assert_eq!(*type_spec, TypeSpec::Explicit(Type::I64));
+        assert_eq!(
+            *type_spec,
+            TypeSpec::Explicit(TypeRef {
+                name: "i64".into(),
+                span: Span::new(3, 6),
+            })
+        );
         assert_eq!(value.kind, ExprKind::Integer(42));
         assert_eq!(value.span, Span::new(9, 11));
         assert_eq!(program.statement(0).span, Span::new(0, 12));
+    }
+
+    #[test]
+    fn parses_product_type_construction_and_field_access() {
+        let source = "type Point { x: f64, y: f64 = 0.0, } point: Point = Point { x: 1.0, }; print(point.y);";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        let Item::TypeDefinition(definition) = &program.items[0] else {
+            panic!("expected type definition");
+        };
+        assert_eq!(definition.name, "Point");
+        assert_eq!(definition.fields.len(), 2);
+        assert!(definition.fields[0].default.is_none());
+        assert!(definition.fields[1].default.is_some());
+
+        let StmtKind::Binding {
+            type_spec, value, ..
+        } = &program.statement(0).kind
+        else {
+            panic!("expected binding");
+        };
+        assert!(matches!(type_spec, TypeSpec::Explicit(ty) if ty.name == "Point"));
+        assert!(matches!(value.kind, ExprKind::Construct { .. }));
+
+        let StmtKind::Print { value } = &program.statement(1).kind else {
+            panic!("expected print");
+        };
+        assert!(matches!(value.kind, ExprKind::FieldAccess { .. }));
+    }
+
+    #[test]
+    fn rejects_empty_product_type() {
+        let error = parse(lex("type Empty {}").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "product type must have at least one field");
+        assert_eq!(error.primary_span(), Some(Span::new(11, 13)));
     }
 
     #[test]

@@ -201,7 +201,7 @@ const fn is_comparison(op: BinaryOp) -> bool {
 mod tests {
     use crate::ast::{
         BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
-        Program as AstProgram, Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeSpec,
     };
     use crate::ir::builder::build;
     use crate::source::Span;
@@ -229,7 +229,10 @@ mod tests {
                 AstItem::Statement(ast_stmt(AstStmtKind::Binding {
                     mutable: false,
                     name: "x".into(),
-                    type_spec: TypeSpec::Explicit(AstType::F32),
+                    type_spec: TypeSpec::Explicit(TypeRef {
+                        name: "f32".into(),
+                        span: Span::empty(0),
+                    }),
                     value: ast_expr(AstExprKind::Binary {
                         op: AstBinaryOp::Add,
                         left: Box::new(ast_expr(AstExprKind::Float {
