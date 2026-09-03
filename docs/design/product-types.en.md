@@ -71,7 +71,9 @@ field_access :=
     postfix "." IDENT
 ```
 
-Whether empty types and empty aggregate literals are accepted remains open.
+The first implementation rejects product types with no fields and empty aggregate literals. A diagnostic points to the `{}` in the type definition and explains that at least one field is required.
+
+Empty types can represent markers and states that carry no data. However, C has no standard empty struct, and physical representations of zero-sized values differ by backend. Primer will add them only after their use and observation behavior are designed separately. Allowing empty types later does not change the meaning of programs accepted today.
 
 ## Type definitions
 
@@ -410,6 +412,22 @@ The first vertical implementation includes:
 
 The feature is not merged into main until every output route is complete. During development, an unsupported route must return an explicit diagnostic rather than panic, emit an invalid artifact, or silently fall back.
 
+While a particular output route does not yet support product types, its backend lowering entry point returns a diagnostic containing:
+
+- the unsupported feature name;
+- the requested output route, such as `emit-qbe`;
+- the source range of the first product type construct it cannot handle.
+
+The conceptual message is:
+
+```text
+output route `emit-qbe` does not support product types yet
+```
+
+This diagnostic stops only the affected backend output. Once source and Primer IR support are complete, `check` and `emit-ir` continue to succeed. An unsupported backend must not silently select another representation or emit an artifact that loses the value.
+
+The diagnostic containing `yet` describes development state and is not a permanent language compatibility contract. Before the PR is merged into main, every output route is completed and tests confirm that normal product types no longer produce this diagnostic.
+
 ## Deferred features
 
 The following are not rejected. They are separated into later design decisions:
@@ -425,11 +443,6 @@ The following are not rejected. They are separated into later design decisions:
 - custom layout and external ABI;
 - concrete `Secret` representation and propagation.
 
-## Decisions remaining before implementation
+## Implementation readiness
 
-The following must be decided before code changes begin:
-
-1. whether empty product types are accepted;
-2. the diagnostic used for a backend that is temporarily unsupported during development.
-
-After these decisions, implementation proceeds through top-level AST items, type registration, semantic analysis, Primer IR, and each backend.
+The decisions required for the first implementation are complete. Implementation proceeds through top-level AST items, type registration, semantic analysis, Primer IR, bytecode and the VM, and then each backend.

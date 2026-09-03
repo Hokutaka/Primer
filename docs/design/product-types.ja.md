@@ -71,7 +71,9 @@ field_access :=
     postfix "." IDENT
 ```
 
-空の型と空のaggregate literalを許可するかは未決定です。
+最初の実装では、fieldを一つも持たないproduct typeと空のaggregate literalを許可しません。型定義の`{}`を指して、少なくとも一つのfieldが必要だと診断します。
+
+空の型には、値を持たない目印や状態を表す用途があります。しかし、Cには標準的な空structがなく、backendごとにゼロサイズ値の物理表現が異なります。必要な用途と観測方法を別に設計してから追加します。将来、空の型を許可する変更は、現在有効なプログラムの意味を変えません。
 
 ## 型定義
 
@@ -410,6 +412,22 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 
 すべての出力経路が完成するまで、この機能を含むPRはmainへmergeしません。作業中の未対応経路もpanic、不正な成果物、暗黙のfallbackを起こさず、明示的な診断を返します。
 
+作業中に特定の出力経路だけがproduct typeへ未対応の場合、backend loweringの入口で次の情報を持つ診断を返します。
+
+- 未対応の機能名
+- `emit-qbe`など要求された出力経路
+- 最初に対応できないproduct typeのソース範囲
+
+概念上のメッセージは次の形です。
+
+```text
+output route `emit-qbe` does not support product types yet
+```
+
+この診断は対象のbackend出力だけを止めます。ソースとPrimer IRまで正しく扱える段階では、`check`と`emit-ir`を成功させます。一つのbackendが未対応であることを理由に、別の表現へ暗黙に変換したり、値を失った成果物を生成したりしません。
+
+この`yet`を含む診断は開発中の状態を説明するもので、永続的な言語互換性の契約にはしません。PRをmainへmergeする前にすべての出力経路を完成させ、この診断が正常なproduct typeに対して発生しないことをtestで確認します。
+
 ## 後続で検討する機能
 
 次は今回の仕様から排除せず、別の設計判断として後続へ分けます。
@@ -425,11 +443,6 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 - custom layoutと外部ABI
 - `Secret`の具体的な型表現と伝播
 
-## 実装前に残る判断
+## 実装開始条件
 
-コード変更を始める前に、次を決めます。
-
-1. 空のproduct typeを許可するか
-2. 作業中に未対応backendを表す診断の形
-
-これらを決めた後、ASTのtop-level item、型登録、意味解析、Primer IR、各backendの順に実装します。
+最初の実装に必要な判断は確定しました。ASTのtop-level item、型登録、意味解析、Primer IR、bytecodeとVM、各backendの順に実装します。
