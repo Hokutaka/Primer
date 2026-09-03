@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId, Temp, Type,
+    BinaryOp, CompareOp, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId, Temp,
+    Type, TypeDefinition,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -28,6 +29,19 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     lowerer.lower_statements(&program.statements);
 
     Module {
+        type_definitions: program
+            .type_definitions
+            .iter()
+            .map(|definition| TypeDefinition {
+                id: definition.id.0,
+                name: definition.name.clone(),
+                fields: definition
+                    .fields
+                    .iter()
+                    .map(|field| field.ty.into())
+                    .collect(),
+            })
+            .collect(),
         slots,
         instructions: lowerer.instructions,
     }
@@ -375,6 +389,9 @@ impl Lowerer {
                     | (primer_ir::UnaryOp::Not, Type::I64 | Type::Float | Type::Double) => {
                         unreachable!("semantic analysis rejects invalid unary operands");
                     }
+                    (_, Type::Named(_)) => {
+                        unreachable!("semantic analysis rejects aggregate unary operands");
+                    }
                 }
 
                 Value {
@@ -411,8 +428,47 @@ impl Lowerer {
                     operand: Operand::Temp(dest),
                 }
             }
-            primer_ir::ExprKind::Construct { .. } | primer_ir::ExprKind::FieldAccess { .. } => {
-                unreachable!("product types are rejected before LLVM lowering")
+            primer_ir::ExprKind::Construct {
+                type_id, fields, ..
+            } => {
+                let ty = Type::Named(type_id.0);
+                let mut aggregate = Operand::Poison;
+                for field in fields {
+                    let value = self.lower_expr(&field.value);
+                    let dest = self.next_temp();
+                    self.instructions.push(Instruction::InsertValue {
+                        dest,
+                        ty,
+                        aggregate,
+                        value_ty: value.ty,
+                        value: value.operand,
+                        field: field.id.0,
+                    });
+                    aggregate = Operand::Temp(dest);
+                }
+                Value {
+                    ty,
+                    operand: aggregate,
+                }
+            }
+            primer_ir::ExprKind::FieldAccess {
+                type_id,
+                field_id,
+                base,
+                ..
+            } => {
+                let aggregate = self.lower_expr(base);
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::ExtractValue {
+                    dest,
+                    ty: Type::Named(type_id.0),
+                    aggregate: aggregate.operand,
+                    field: field_id.0,
+                });
+                Value {
+                    ty: expr.ty.into(),
+                    operand: Operand::Temp(dest),
+                }
             }
         }
     }
@@ -461,6 +517,7 @@ impl Lowerer {
                     value: value.operand,
                 });
             }
+            Type::Named(_) => unreachable!("semantic analysis rejects aggregate printing"),
         }
     }
 
@@ -549,9 +606,7 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
-            primer_ir::Type::Named(_) => {
-                unreachable!("product types are rejected before LLVM lowering")
-            }
+            primer_ir::Type::Named(id) => Self::Named(id.0),
         }
     }
 }
@@ -572,6 +627,13 @@ fn binary_op(op: primer_ir::BinaryOp, ty: Type) -> BinaryOp {
         | (primer_ir::BinaryOp::Subtract, Type::Bool)
         | (primer_ir::BinaryOp::Multiply, Type::Bool)
         | (primer_ir::BinaryOp::Divide, Type::Bool)
+        | (
+            primer_ir::BinaryOp::Add
+            | primer_ir::BinaryOp::Subtract
+            | primer_ir::BinaryOp::Multiply
+            | primer_ir::BinaryOp::Divide,
+            Type::Named(_),
+        )
         | (primer_ir::BinaryOp::Equal, _)
         | (primer_ir::BinaryOp::NotEqual, _)
         | (primer_ir::BinaryOp::Less, _)

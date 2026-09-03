@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_llvm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_product_type("emit-llvm") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -90,6 +87,21 @@ mod tests {
         ] {
             assert!(llvm.contains(instruction));
         }
+    }
+
+    #[test]
+    fn emits_product_construction_and_field_access() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let llvm = emit_llvm(&program).unwrap();
+
+        assert!(llvm.contains("%primer.type.Point.0 = type { double, double }"));
+        assert!(llvm.contains("insertvalue %primer.type.Point.0 poison, double"));
+        assert!(llvm.contains("extractvalue %primer.type.Point.0"));
     }
 
     #[test]
