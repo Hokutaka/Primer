@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_wat(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_product_type("emit-wat") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -134,5 +131,21 @@ mod tests {
         ] {
             assert!(wat.contains(instruction));
         }
+    }
+
+    #[test]
+    fn lowers_product_values_to_linear_memory() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let wat = emit_wat(&program).unwrap();
+
+        assert!(wat.contains("(memory 1)"));
+        assert!(wat.contains("f64.store"));
+        assert!(wat.contains("f64.load"));
+        assert!(wat.contains("call $print_f64"));
     }
 }

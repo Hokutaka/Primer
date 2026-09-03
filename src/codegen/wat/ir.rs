@@ -8,6 +8,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub memory_pages: u32,
     pub locals: Vec<Local>,
     pub instructions: Vec<Instruction>,
 }
@@ -33,6 +34,31 @@ pub enum Instruction {
 
     LocalGet(String),
     LocalSet(String),
+
+    I32Load {
+        offset: u32,
+    },
+    I64Load {
+        offset: u32,
+    },
+    F32Load {
+        offset: u32,
+    },
+    F64Load {
+        offset: u32,
+    },
+    I32Store {
+        offset: u32,
+    },
+    I64Store {
+        offset: u32,
+    },
+    F32Store {
+        offset: u32,
+    },
+    F64Store {
+        offset: u32,
+    },
 
     If {
         then_instructions: Vec<Instruction>,

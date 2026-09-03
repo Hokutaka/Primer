@@ -36,6 +36,11 @@ pub fn emit(module: &Module) -> String {
 
     writeln!(output).unwrap();
 
+    if module.memory_pages > 0 {
+        writeln!(output, "  (memory {})", module.memory_pages).unwrap();
+        writeln!(output).unwrap();
+    }
+
     writeln!(output, "  (func $main").unwrap();
 
     for local in &module.locals {
@@ -92,6 +97,15 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
         Instruction::LocalSet(name) => {
             writeln!(output, "{prefix}local.set $primer_{name}").unwrap();
         }
+
+        Instruction::I32Load { offset } => emit_memory("i32.load", *offset, &prefix, output),
+        Instruction::I64Load { offset } => emit_memory("i64.load", *offset, &prefix, output),
+        Instruction::F32Load { offset } => emit_memory("f32.load", *offset, &prefix, output),
+        Instruction::F64Load { offset } => emit_memory("f64.load", *offset, &prefix, output),
+        Instruction::I32Store { offset } => emit_memory("i32.store", *offset, &prefix, output),
+        Instruction::I64Store { offset } => emit_memory("i64.store", *offset, &prefix, output),
+        Instruction::F32Store { offset } => emit_memory("f32.store", *offset, &prefix, output),
+        Instruction::F64Store { offset } => emit_memory("f64.store", *offset, &prefix, output),
 
         Instruction::If {
             then_instructions,
@@ -200,6 +214,14 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
 
 fn emit_simple(instruction: &str, prefix: &str, output: &mut String) {
     writeln!(output, "{prefix}{instruction}").unwrap();
+}
+
+fn emit_memory(instruction: &str, offset: u32, prefix: &str, output: &mut String) {
+    if offset == 0 {
+        writeln!(output, "{prefix}{instruction}").unwrap();
+    } else {
+        writeln!(output, "{prefix}{instruction} offset={offset}").unwrap();
+    }
 }
 
 fn wat_type(ty: Type) -> &'static str {
