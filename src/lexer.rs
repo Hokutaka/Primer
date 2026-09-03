@@ -3,6 +3,12 @@ use crate::{diagnostic::Diagnostic, source::Span};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Print,
+    Mut,
+    If,
+    Else,
+    While,
+    True,
+    False,
 
     Identifier(String),
 
@@ -10,6 +16,13 @@ pub enum TokenKind {
     Float(String),
 
     Equal,
+    EqualEqual,
+    Bang,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
     Colon,
 
     Plus,
@@ -19,6 +32,8 @@ pub enum TokenKind {
 
     LeftParen,
     RightParen,
+    LeftBrace,
+    RightBrace,
     Semicolon,
 
     Eof,
@@ -65,7 +80,46 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
 
             b'=' => {
                 i += 1;
-                TokenKind::Equal
+
+                if bytes.get(i) == Some(&b'=') {
+                    i += 1;
+                    TokenKind::EqualEqual
+                } else {
+                    TokenKind::Equal
+                }
+            }
+
+            b'!' => {
+                i += 1;
+
+                if bytes.get(i) == Some(&b'=') {
+                    i += 1;
+                    TokenKind::BangEqual
+                } else {
+                    TokenKind::Bang
+                }
+            }
+
+            b'<' => {
+                i += 1;
+
+                if bytes.get(i) == Some(&b'=') {
+                    i += 1;
+                    TokenKind::LessEqual
+                } else {
+                    TokenKind::Less
+                }
+            }
+
+            b'>' => {
+                i += 1;
+
+                if bytes.get(i) == Some(&b'=') {
+                    i += 1;
+                    TokenKind::GreaterEqual
+                } else {
+                    TokenKind::Greater
+                }
             }
 
             b'+' => {
@@ -96,6 +150,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b')' => {
                 i += 1;
                 TokenKind::RightParen
+            }
+
+            b'{' => {
+                i += 1;
+                TokenKind::LeftBrace
+            }
+
+            b'}' => {
+                i += 1;
+                TokenKind::RightBrace
             }
 
             b';' => {
@@ -190,6 +254,12 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
 
                 match &source[start..i] {
                     "print" => TokenKind::Print,
+                    "mut" => TokenKind::Mut,
+                    "if" => TokenKind::If,
+                    "else" => TokenKind::Else,
+                    "while" => TokenKind::While,
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
                     name => TokenKind::Identifier(name.to_owned()),
                 }
             }
@@ -235,6 +305,80 @@ mod tests {
         assert_eq!(tokens[5].kind, TokenKind::Plus);
         assert_eq!(tokens[6].kind, TokenKind::Integer(2));
         assert_eq!(tokens[8].kind, TokenKind::Print);
+    }
+
+    #[test]
+    fn lexes_mutable_binding() {
+        let tokens = lex("mut x: i64 = 1;").unwrap();
+
+        assert_eq!(tokens[0].kind, TokenKind::Mut);
+        assert_eq!(tokens[1].kind, TokenKind::Identifier("x".into()));
+    }
+
+    #[test]
+    fn lexes_boolean_literals_and_comparisons() {
+        let tokens = lex("true == false != !false; 1 < 2 <= 3 > 2 >= 1;").unwrap();
+
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::True));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::False));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::EqualEqual)
+        );
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::BangEqual)
+        );
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Bang));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Less));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::LessEqual)
+        );
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Greater));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::GreaterEqual)
+        );
+    }
+
+    #[test]
+    fn lexes_if_else_blocks() {
+        let tokens = lex("if true { print(1); } else { print(2); }").unwrap();
+
+        assert_eq!(tokens[0].kind, TokenKind::If);
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Else));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::LeftBrace)
+        );
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::RightBrace)
+        );
+    }
+
+    #[test]
+    fn lexes_while_block() {
+        let tokens = lex("while true { print(1); }").unwrap();
+
+        assert_eq!(tokens[0].kind, TokenKind::While);
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::LeftBrace)
+        );
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.kind == TokenKind::RightBrace)
+        );
     }
 
     #[test]

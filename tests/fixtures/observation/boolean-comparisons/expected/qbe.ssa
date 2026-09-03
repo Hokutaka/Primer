@@ -1,0 +1,58 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+export function w $main() {
+@start
+  %slot_truth =l alloc8 8
+  %slot_negated =l alloc8 8
+  %slot_same =l alloc8 8
+  %slot_integer_order =l alloc8 8
+  %slot_float_difference =l alloc8 8
+  storew 1, %slot_truth
+  %tmp0 =w loadw %slot_truth
+  %tmp1 =w ceqw %tmp0, 0
+  storew %tmp1, %slot_negated
+  %tmp2 =w loadw %slot_truth
+  %tmp3 =w ceqw %tmp2, 1
+  storew %tmp3, %slot_same
+  %tmp4 =l add 1, 2
+  %tmp5 =w csltl %tmp4, 4
+  storew %tmp5, %slot_integer_order
+  %tmp6 =w cnes s_0.1, s_0.2
+  storew %tmp6, %slot_float_difference
+  %tmp7 =w loadw %slot_truth
+  %tmp8 =l extsw %tmp7
+  %tmp9 =l mul %tmp8, 8
+  %tmp10 =l add $bool_texts, %tmp9
+  %tmp11 =l loadl %tmp10
+  %tmp12 =w call $puts(l %tmp11)
+  %tmp13 =w loadw %slot_negated
+  %tmp14 =l extsw %tmp13
+  %tmp15 =l mul %tmp14, 8
+  %tmp16 =l add $bool_texts, %tmp15
+  %tmp17 =l loadl %tmp16
+  %tmp18 =w call $puts(l %tmp17)
+  %tmp19 =w loadw %slot_same
+  %tmp20 =l extsw %tmp19
+  %tmp21 =l mul %tmp20, 8
+  %tmp22 =l add $bool_texts, %tmp21
+  %tmp23 =l loadl %tmp22
+  %tmp24 =w call $puts(l %tmp23)
+  %tmp25 =w loadw %slot_integer_order
+  %tmp26 =l extsw %tmp25
+  %tmp27 =l mul %tmp26, 8
+  %tmp28 =l add $bool_texts, %tmp27
+  %tmp29 =l loadl %tmp28
+  %tmp30 =w call $puts(l %tmp29)
+  %tmp31 =w loadw %slot_float_difference
+  %tmp32 =l extsw %tmp31
+  %tmp33 =l mul %tmp32, 8
+  %tmp34 =l add $bool_texts, %tmp33
+  %tmp35 =l loadl %tmp34
+  %tmp36 =w call $puts(l %tmp35)
+  ret 0
+}

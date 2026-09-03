@@ -1,86 +1,215 @@
+use std::collections::HashMap;
+
 use crate::{
     ast,
     diagnostic::Diagnostic,
-    semantic::{self, Bindings},
+    semantic::{self, BindingInfo, Bindings},
 };
 
-use super::{BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp};
+use super::{
+    BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp,
+};
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
-    let bindings = semantic::check(program)?;
-    let mut statements = Vec::with_capacity(program.statements.len());
+    semantic::check(program)?;
 
-    for statement in &program.statements {
-        statements.push(build_statement(statement, &bindings)?);
+    let mut builder = Builder {
+        scopes: vec![HashMap::new()],
+        next_binding_id: 0,
+    };
+
+    Ok(Program {
+        statements: builder.build_statements(&program.statements)?,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResolvedBinding {
+    id: BindingId,
+    info: BindingInfo,
+}
+
+struct Builder {
+    scopes: Vec<HashMap<String, ResolvedBinding>>,
+    next_binding_id: usize,
+}
+
+impl Builder {
+    fn build_statements(&mut self, statements: &[ast::Stmt]) -> Result<Vec<Statement>, Diagnostic> {
+        statements
+            .iter()
+            .map(|statement| self.build_statement(statement))
+            .collect()
     }
 
-    Ok(Program { statements })
-}
+    fn build_statement(&mut self, statement: &ast::Stmt) -> Result<Statement, Diagnostic> {
+        let bindings = self.visible_bindings();
 
-fn build_statement(statement: &ast::Stmt, bindings: &Bindings) -> Result<Statement, Diagnostic> {
-    let kind = match &statement.kind {
-        ast::StmtKind::Binding { name, value, .. } => {
-            let ty = bindings.get(name).copied().ok_or_else(|| {
-                Diagnostic::without_span(format!("missing resolved type for binding `{name}`"))
-            })?;
+        let kind = match &statement.kind {
+            ast::StmtKind::Binding {
+                mutable,
+                name,
+                type_spec,
+                value,
+            } => {
+                let ty = match type_spec {
+                    ast::TypeSpec::Explicit(ty) => *ty,
+                    ast::TypeSpec::Infer => semantic::type_of_expr(value, &bindings)?,
+                };
+                let value = self.build_expr(value, Some(ty), &bindings)?;
+                let id = BindingId(self.next_binding_id);
+                self.next_binding_id += 1;
 
-            StatementKind::Binding {
-                name: name.clone(),
-                ty: ty.into(),
-                value: build_expr(value, Some(ty), bindings)?,
+                self.scopes
+                    .last_mut()
+                    .expect("current scope must exist")
+                    .insert(
+                        name.clone(),
+                        ResolvedBinding {
+                            id,
+                            info: BindingInfo {
+                                ty,
+                                mutable: *mutable,
+                            },
+                        },
+                    );
+
+                StatementKind::Binding {
+                    id,
+                    mutable: *mutable,
+                    name: name.clone(),
+                    ty: ty.into(),
+                    value,
+                }
             }
-        }
-        ast::StmtKind::Print { value } => {
-            let ty = semantic::type_of_expr(value, bindings)?;
+            ast::StmtKind::Assignment { name, value, .. } => {
+                let binding = self.resolve(name).ok_or_else(|| {
+                    Diagnostic::without_span(format!("missing resolved binding `{name}`"))
+                })?;
 
-            StatementKind::Print {
-                value: build_expr(value, Some(ty), bindings)?,
+                StatementKind::Assignment {
+                    id: binding.id,
+                    name: name.clone(),
+                    ty: binding.info.ty.into(),
+                    value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
+                }
             }
+            ast::StmtKind::Print { value } => {
+                let ty = semantic::type_of_expr(value, &bindings)?;
+                StatementKind::Print {
+                    value: self.build_expr(value, Some(ty), &bindings)?,
+                }
+            }
+            ast::StmtKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let then_body = self.with_scope(|builder| builder.build_statements(then_body))?;
+                let else_body = self.with_scope(|builder| builder.build_statements(else_body))?;
+
+                StatementKind::If {
+                    condition,
+                    then_body,
+                    else_body,
+                }
+            }
+            ast::StmtKind::While { condition, body } => {
+                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let body = self.with_scope(|builder| builder.build_statements(body))?;
+
+                StatementKind::While { condition, body }
+            }
+        };
+
+        Ok(Statement {
+            kind,
+            span: statement.span,
+        })
+    }
+
+    fn build_expr(
+        &self,
+        expr: &ast::Expr,
+        expected: Option<ast::Type>,
+        bindings: &Bindings,
+    ) -> Result<Expr, Diagnostic> {
+        let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
+
+        let kind = match &expr.kind {
+            ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
+            ast::ExprKind::Integer(value) => ExprKind::Integer(*value),
+            ast::ExprKind::Float { text, .. } => ExprKind::Float { text: text.clone() },
+            ast::ExprKind::Variable(name) => {
+                let binding = self.resolve(name).ok_or_else(|| {
+                    Diagnostic::without_span(format!("missing resolved binding `{name}`"))
+                })?;
+                ExprKind::Variable {
+                    id: binding.id,
+                    name: name.clone(),
+                }
+            }
+            ast::ExprKind::Unary { op, value } => ExprKind::Unary {
+                op: (*op).into(),
+                value: Box::new(self.build_expr(value, Some(ty), bindings)?),
+            },
+            ast::ExprKind::Binary { op, left, right } => {
+                let (left_expected, right_expected) = if is_comparison(*op) {
+                    semantic::comparison_operand_types(left, right, bindings)?
+                } else {
+                    (ty, ty)
+                };
+
+                ExprKind::Binary {
+                    op: (*op).into(),
+                    left: Box::new(self.build_expr(left, Some(left_expected), bindings)?),
+                    right: Box::new(self.build_expr(right, Some(right_expected), bindings)?),
+                }
+            }
+        };
+
+        Ok(Expr {
+            ty: ty.into(),
+            kind,
+            span: expr.span,
+        })
+    }
+
+    fn resolve(&self, name: &str) -> Option<ResolvedBinding> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
+    fn visible_bindings(&self) -> Bindings {
+        let mut bindings = HashMap::new();
+        for scope in &self.scopes {
+            bindings.extend(
+                scope
+                    .iter()
+                    .map(|(name, binding)| (name.clone(), binding.info)),
+            );
         }
-    };
+        bindings
+    }
 
-    Ok(Statement {
-        kind,
-        span: statement.span,
-    })
-}
-
-fn build_expr(
-    expr: &ast::Expr,
-    expected: Option<ast::Type>,
-    bindings: &Bindings,
-) -> Result<Expr, Diagnostic> {
-    let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
-
-    let kind = match &expr.kind {
-        ast::ExprKind::Integer(value) => ExprKind::Integer(*value),
-
-        ast::ExprKind::Float { text, .. } => ExprKind::Float { text: text.clone() },
-
-        ast::ExprKind::Variable(name) => ExprKind::Variable(name.clone()),
-
-        ast::ExprKind::Unary { op, value } => ExprKind::Unary {
-            op: (*op).into(),
-            value: Box::new(build_expr(value, Some(ty), bindings)?),
-        },
-
-        ast::ExprKind::Binary { op, left, right } => ExprKind::Binary {
-            op: (*op).into(),
-            left: Box::new(build_expr(left, Some(ty), bindings)?),
-            right: Box::new(build_expr(right, Some(ty), bindings)?),
-        },
-    };
-
-    Ok(Expr {
-        ty: ty.into(),
-        kind,
-        span: expr.span,
-    })
+    fn with_scope<T>(
+        &mut self,
+        build: impl FnOnce(&mut Self) -> Result<T, Diagnostic>,
+    ) -> Result<T, Diagnostic> {
+        self.scopes.push(HashMap::new());
+        let result = build(self);
+        self.scopes.pop();
+        result
+    }
 }
 
 impl From<ast::Type> for Type {
     fn from(value: ast::Type) -> Self {
         match value {
+            ast::Type::Bool => Self::Bool,
             ast::Type::I64 => Self::I64,
             ast::Type::F32 => Self::F32,
             ast::Type::F64 => Self::F64,
@@ -92,6 +221,7 @@ impl From<ast::UnaryOp> for UnaryOp {
     fn from(value: ast::UnaryOp) -> Self {
         match value {
             ast::UnaryOp::Negate => Self::Negate,
+            ast::UnaryOp::Not => Self::Not,
         }
     }
 }
@@ -103,8 +233,26 @@ impl From<ast::BinaryOp> for BinaryOp {
             ast::BinaryOp::Subtract => Self::Subtract,
             ast::BinaryOp::Multiply => Self::Multiply,
             ast::BinaryOp::Divide => Self::Divide,
+            ast::BinaryOp::Equal => Self::Equal,
+            ast::BinaryOp::NotEqual => Self::NotEqual,
+            ast::BinaryOp::Less => Self::Less,
+            ast::BinaryOp::LessEqual => Self::LessEqual,
+            ast::BinaryOp::Greater => Self::Greater,
+            ast::BinaryOp::GreaterEqual => Self::GreaterEqual,
         }
     }
+}
+
+const fn is_comparison(op: ast::BinaryOp) -> bool {
+    matches!(
+        op,
+        ast::BinaryOp::Equal
+            | ast::BinaryOp::NotEqual
+            | ast::BinaryOp::Less
+            | ast::BinaryOp::LessEqual
+            | ast::BinaryOp::Greater
+            | ast::BinaryOp::GreaterEqual
+    )
 }
 
 #[cfg(test)]
@@ -136,6 +284,7 @@ mod tests {
         let ast = AstProgram {
             statements: vec![ast_stmt(AstStmtKind::Binding {
                 name: "x".into(),
+                mutable: false,
                 type_spec: TypeSpec::Explicit(AstType::F32),
                 value: ast_expr(AstExprKind::Binary {
                     op: AstBinaryOp::Add,
@@ -170,6 +319,7 @@ mod tests {
         let ast = AstProgram {
             statements: vec![ast_stmt(AstStmtKind::Binding {
                 name: "x".into(),
+                mutable: false,
                 type_spec: TypeSpec::Infer,
                 value: ast_expr(AstExprKind::Float {
                     text: "0.1".into(),

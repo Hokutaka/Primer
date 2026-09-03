@@ -1,0 +1,8 @@
+mut count: i64 = 40;
+count = count + 2;
+
+mut ratio: f32 = 0.25;
+ratio = ratio * 2.0;
+
+print(count);
+print(ratio);

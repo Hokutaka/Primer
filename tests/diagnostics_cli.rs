@@ -67,6 +67,31 @@ fn semantic_unknown_binding_matches_expected_diagnostic() {
 }
 
 #[test]
+fn semantic_immutable_assignment_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-immutable-assignment", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_boolean_arithmetic_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-boolean-arithmetic", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_if_condition_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-if-condition", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_while_condition_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-while-condition", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_block_scope_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-block-scope", "check", "check.stderr");
+}
+
+#[test]
 fn emit_ir_semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "emit-ir", "emit-ir.stderr");
 }

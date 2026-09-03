@@ -41,8 +41,8 @@ mod tests {
         let qbe = emit_qbe(&program);
 
         assert!(qbe.contains("=l add 1, 2"));
-        assert!(qbe.contains("%primer_x =l copy"));
-        assert!(qbe.contains("call $printf(l $fmt_i64, ..., l %primer_x)"));
+        assert!(qbe.contains("storel %tmp0, %slot_x"));
+        assert!(qbe.contains("call $printf(l $fmt_i64"));
     }
 
     #[test]
@@ -51,7 +51,7 @@ mod tests {
         let qbe = emit_qbe(&program);
 
         assert!(qbe.contains("=s add s_0.1, s_0.2"));
-        assert!(qbe.contains("=d exts %primer_x"));
+        assert!(qbe.contains("=d exts %tmp"));
         assert!(qbe.contains("call $printf(l $fmt_f32"));
     }
 
@@ -69,6 +69,20 @@ mod tests {
         let program = compile_to_ir("a: f32 = 0.1 + 0.2; b: infer = a + a;").unwrap();
         let qbe = emit_qbe(&program);
 
-        assert!(qbe.contains("%primer_b =s copy"));
+        assert!(qbe.contains("stores %tmp"));
+    }
+
+    #[test]
+    fn emits_all_integer_comparisons() {
+        let program = compile_to_ir(
+            "a: bool = 1 == 1; b: bool = 1 != 2; c: bool = 1 < 2;
+             d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
+        )
+        .unwrap();
+        let qbe = emit_qbe(&program);
+
+        for instruction in ["ceql", "cnel", "csltl", "cslel", "csgtl", "csgel"] {
+            assert!(qbe.contains(instruction));
+        }
     }
 }

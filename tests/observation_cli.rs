@@ -1,6 +1,13 @@
 use std::{fs, path::PathBuf, process::Command};
 
-const OBSERVATION_CASES: &[&str] = &["i64-addition", "float-types"];
+const OBSERVATION_CASES: &[&str] = &[
+    "i64-addition",
+    "float-types",
+    "mutable-assignment",
+    "boolean-comparisons",
+    "conditional-scope",
+    "while-loop",
+];
 
 fn fixture_path(case_name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

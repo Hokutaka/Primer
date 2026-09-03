@@ -4,19 +4,27 @@ data $fmt_f64 = { b "%.17g", b 10, b 0 }
 
 export function w $main() {
 @start
+  %slot_single =l alloc8 8
+  %slot_double =l alloc8 8
+  %slot_inferred =l alloc8 8
+  %slot_suffixed =l alloc8 8
   %tmp0 =s add s_0.1, s_0.2
-  %primer_single =s copy %tmp0
+  stores %tmp0, %slot_single
   %tmp1 =d add d_0.1, d_0.2
-  %primer_double =d copy %tmp1
+  stored %tmp1, %slot_double
   %tmp2 =d add d_0.1, d_0.2
-  %primer_inferred =d copy %tmp2
+  stored %tmp2, %slot_inferred
   %tmp3 =s add s_0.1, s_0.2
-  %primer_suffixed =s copy %tmp3
-  %tmp4 =d exts %primer_single
-  %tmp5 =w call $printf(l $fmt_f32, ..., d %tmp4)
-  %tmp6 =w call $printf(l $fmt_f64, ..., d %primer_double)
-  %tmp7 =w call $printf(l $fmt_f64, ..., d %primer_inferred)
-  %tmp8 =d exts %primer_suffixed
-  %tmp9 =w call $printf(l $fmt_f32, ..., d %tmp8)
+  stores %tmp3, %slot_suffixed
+  %tmp4 =s loads %slot_single
+  %tmp5 =d exts %tmp4
+  %tmp6 =w call $printf(l $fmt_f32, ..., d %tmp5)
+  %tmp7 =d loadd %slot_double
+  %tmp8 =w call $printf(l $fmt_f64, ..., d %tmp7)
+  %tmp9 =d loadd %slot_inferred
+  %tmp10 =w call $printf(l $fmt_f64, ..., d %tmp9)
+  %tmp11 =s loads %slot_suffixed
+  %tmp12 =d exts %tmp11
+  %tmp13 =w call $printf(l $fmt_f32, ..., d %tmp12)
   ret 0
 }

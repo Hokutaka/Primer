@@ -1,0 +1,5 @@
+if true {
+    local: i64 = 1;
+}
+
+print(local);

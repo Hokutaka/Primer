@@ -91,4 +91,25 @@ mod tests {
 
         assert!(asm.contains("movq %xmm1, %rdx"));
     }
+
+    #[test]
+    fn emits_all_integer_comparisons() {
+        let program = compile_to_ir(
+            "a: bool = 1 == 1; b: bool = 1 != 2; c: bool = 1 < 2;
+             d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
+        )
+        .unwrap();
+        let asm = emit_x86_64_win_asm(&program);
+
+        for instruction in [
+            "sete %al",
+            "setne %al",
+            "setl %al",
+            "setle %al",
+            "setg %al",
+            "setge %al",
+        ] {
+            assert!(asm.contains(instruction));
+        }
+    }
 }

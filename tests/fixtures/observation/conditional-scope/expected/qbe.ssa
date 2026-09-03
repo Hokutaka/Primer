@@ -1,0 +1,34 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+export function w $main() {
+@start
+  %slot_value =l alloc8 8
+  %slot_value_1 =l alloc8 8
+  storel 1, %slot_value
+  %tmp0 =l loadl %slot_value
+  %tmp1 =w csltl %tmp0, 2
+  jnz %tmp1, @block0, @block1
+@block0 # if_then
+  storel 42, %slot_value
+  storew 1, %slot_value_1
+  %tmp2 =w loadw %slot_value_1
+  %tmp3 =l extsw %tmp2
+  %tmp4 =l mul %tmp3, 8
+  %tmp5 =l add $bool_texts, %tmp4
+  %tmp6 =l loadl %tmp5
+  %tmp7 =w call $puts(l %tmp6)
+  jmp @block2
+@block1 # if_else
+  %tmp8 =l neg 1
+  storel %tmp8, %slot_value
+  jmp @block2
+@block2 # if_end
+  %tmp9 =l loadl %slot_value
+  %tmp10 =w call $printf(l $fmt_i64, ..., l %tmp9)
+  ret 0
+}

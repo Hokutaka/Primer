@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I64,
     Float,
     Double,
@@ -12,12 +13,33 @@ pub struct Module {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    Binding { name: String, ty: Type, value: Expr },
-    Print { format: PrintFormat, value: Expr },
+    Binding {
+        name: String,
+        ty: Type,
+        value: Expr,
+    },
+    Assignment {
+        name: String,
+        value: Expr,
+    },
+    Print {
+        format: PrintFormat,
+        value: Expr,
+    },
+    If {
+        condition: Expr,
+        then_body: Vec<Statement>,
+        else_body: Vec<Statement>,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Statement>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrintFormat {
+    Bool,
     I64,
     F32,
     F64,
@@ -31,6 +53,7 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    Boolean(bool),
     Integer(i64),
     Float {
         text: String,
@@ -51,6 +74,7 @@ pub enum ExprKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Negate,
+    Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,4 +83,10 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }

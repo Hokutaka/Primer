@@ -1,0 +1,24 @@
+; Primer bytecode v0.1
+
+.slot 0 mut value i64
+.slot 1 value bool
+
+0000  push.i64 1
+0001  store 0       ; value
+0002  load 0        ; value
+0003  push.i64 2
+0004  lt.i64
+0005  jump-if-false 0013
+0006  push.i64 42
+0007  assign 0      ; value
+0008  push.bool true
+0009  store 1       ; value
+0010  load 1        ; value
+0011  print.bool
+0012  jump 0016
+0013  push.i64 1
+0014  neg.i64
+0015  assign 0      ; value
+0016  load 0        ; value
+0017  print.i64
+0018  halt

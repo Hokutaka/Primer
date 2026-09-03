@@ -4,8 +4,10 @@ data $fmt_f64 = { b "%.17g", b 10, b 0 }
 
 export function w $main() {
 @start
+  %slot_x =l alloc8 8
   %tmp0 =l add 1, 2
-  %primer_x =l copy %tmp0
-  %tmp1 =w call $printf(l $fmt_i64, ..., l %primer_x)
+  storel %tmp0, %slot_x
+  %tmp1 =l loadl %slot_x
+  %tmp2 =w call $printf(l $fmt_i64, ..., l %tmp1)
   ret 0
 }

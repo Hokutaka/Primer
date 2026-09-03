@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I64,
     Float,
     Double,
@@ -24,7 +25,11 @@ pub struct SlotId(pub usize);
 pub struct Temp(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Label(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operand {
+    Boolean(bool),
     Integer(i64),
     Float32(u32),
     Float64(u64),
@@ -41,6 +46,17 @@ pub enum BinaryOp {
     FSub,
     FMul,
     FDiv,
+    Xor,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareOp {
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,8 +68,17 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
-    Alloca {
-        slot: SlotId,
+    Label {
+        id: Label,
+        name: &'static str,
+    },
+    Branch {
+        condition: Operand,
+        then_label: Label,
+        else_label: Label,
+    },
+    Jump {
+        label: Label,
     },
     Store {
         ty: Type,
@@ -72,6 +97,13 @@ pub enum Instruction {
         left: Operand,
         right: Operand,
     },
+    Compare {
+        dest: Temp,
+        op: CompareOp,
+        operand_ty: Type,
+        left: Operand,
+        right: Operand,
+    },
     FNeg {
         dest: Temp,
         ty: Type,
@@ -84,6 +116,13 @@ pub enum Instruction {
     CallPrintf {
         format: PrintFormat,
         arg_ty: Type,
+        value: Operand,
+    },
+    SelectBoolText {
+        dest: Temp,
+        value: Operand,
+    },
+    CallPuts {
         value: Operand,
     },
 }

@@ -1,0 +1,22 @@
+; Primer bytecode v0.1
+
+.slot 0 mut count i64
+.slot 1 mut ratio f32
+
+0000  push.i64 40
+0001  store 0       ; count
+0002  load 0        ; count
+0003  push.i64 2
+0004  add.i64
+0005  assign 0      ; count
+0006  push.f32 0.25
+0007  store 1       ; ratio
+0008  load 1        ; ratio
+0009  push.f32 2
+0010  mul.f32
+0011  assign 1      ; ratio
+0012  load 0        ; count
+0013  print.i64
+0014  load 1        ; ratio
+0015  print.f32
+0016  halt

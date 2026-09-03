@@ -1,0 +1,11 @@
+mut value: i64 = 1;
+
+if value < 2 {
+    value = 42;
+    value: bool = true;
+    print(value);
+} else {
+    value = -1;
+}
+
+print(value);

@@ -1,0 +1,22 @@
+truth: bool = true;
+falsehood: bool = !truth;
+
+same: bool = truth == true;
+different: bool = truth != falsehood;
+
+less: bool = 2 < 3;
+less_or_equal: bool = 3 <= 3;
+greater: bool = 5 > 4;
+greater_or_equal: bool = 5 >= 5;
+
+float_order: bool = 0.1f32 < 0.2f32;
+
+print(truth);
+print(falsehood);
+print(same);
+print(different);
+print(less);
+print(less_or_equal);
+print(greater);
+print(greater_or_equal);
+print(float_order);

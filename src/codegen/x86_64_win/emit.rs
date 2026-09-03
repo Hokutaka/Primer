@@ -1,7 +1,7 @@
-use super::ir::{BinaryOp, FloatConstant, Instruction, Module};
+use super::ir::{BinaryOp, CompareOp, FloatConstant, Instruction, Module};
 
 pub fn emit(module: &Module) -> String {
-    let mut output = initial_data();
+    let mut output = initial_data(uses_bool_print(module));
 
     for constant in &module.float_constants {
         emit_float_constant(constant, &mut output);
@@ -58,6 +58,19 @@ fn emit_float_constant(constant: &FloatConstant, output: &mut String) {
 
 fn emit_instruction(instruction: &Instruction, output: &mut String) {
     match instruction {
+        Instruction::Label { id, name } => {
+            output.push_str(&format!(".Lprimer_block_{id}: # {name}\n"));
+        }
+
+        Instruction::JumpIfZero(label) => {
+            output.push_str("  testq %rax, %rax\n");
+            output.push_str(&format!("  je .Lprimer_block_{label}\n"));
+        }
+
+        Instruction::Jump(label) => {
+            output.push_str(&format!("  jmp .Lprimer_block_{label}\n"));
+        }
+
         Instruction::MovI64ImmediateToRax(value) => {
             output.push_str(&format!("  movabsq ${value}, %rax\n"));
         }
@@ -98,6 +111,10 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
             output.push_str("  negq %rax\n");
         }
 
+        Instruction::NotBool => {
+            output.push_str("  xorq $1, %rax\n");
+        }
+
         Instruction::NegF32 => {
             output.push_str("  xorps .Lprimer_sign_f32(%rip), %xmm0\n");
         }
@@ -119,6 +136,12 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
                     unreachable!("i64 division is lowered to sign-extend + divide")
                 }
             });
+        }
+
+        Instruction::CompareI64(op) => {
+            output.push_str("  cmpq %rcx, %rax\n");
+            output.push_str(compare_setcc(*op));
+            output.push_str("  movzbq %al, %rax\n");
         }
 
         Instruction::SignExtendRax => {
@@ -155,6 +178,16 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
             });
         }
 
+        Instruction::CompareF32(op) => {
+            output.push_str("  ucomiss %xmm1, %xmm0\n");
+            emit_float_comparison(*op, output);
+        }
+
+        Instruction::CompareF64(op) => {
+            output.push_str("  ucomisd %xmm1, %xmm0\n");
+            emit_float_comparison(*op, output);
+        }
+
         Instruction::MoveRaxToRdx => {
             output.push_str("  movq %rax, %rdx\n");
         }
@@ -186,10 +219,18 @@ fn emit_instruction(instruction: &Instruction, output: &mut String) {
         Instruction::CallPrintf => {
             output.push_str("  callq printf\n");
         }
+
+        Instruction::CallPrintBool => {
+            output.push_str("  testq %rax, %rax\n");
+            output.push_str("  leaq .Lprimer_bool_false(%rip), %rcx\n");
+            output.push_str("  leaq .Lprimer_bool_true(%rip), %rdx\n");
+            output.push_str("  cmovne %rdx, %rcx\n");
+            output.push_str("  callq puts\n");
+        }
     }
 }
 
-fn initial_data() -> String {
+fn initial_data(include_bool_text: bool) -> String {
     let mut output = String::new();
 
     output.push_str(".section .rdata,\"dr\"\n");
@@ -205,6 +246,13 @@ fn initial_data() -> String {
     output.push_str(".Lprimer_fmt_f64:\n");
 
     output.push_str("  .asciz \"%.17g\\n\"\n");
+
+    if include_bool_text {
+        output.push_str(".Lprimer_bool_false:\n");
+        output.push_str("  .asciz \"false\"\n");
+        output.push_str(".Lprimer_bool_true:\n");
+        output.push_str("  .asciz \"true\"\n");
+    }
 
     // Unary minus masks.
     output.push_str(".p2align 4\n");
@@ -228,4 +276,51 @@ fn initial_data() -> String {
     output.push_str("  .quad 0\n");
 
     output
+}
+
+fn compare_setcc(op: CompareOp) -> &'static str {
+    match op {
+        CompareOp::Equal => "  sete %al\n",
+        CompareOp::NotEqual => "  setne %al\n",
+        CompareOp::Less => "  setl %al\n",
+        CompareOp::LessEqual => "  setle %al\n",
+        CompareOp::Greater => "  setg %al\n",
+        CompareOp::GreaterEqual => "  setge %al\n",
+    }
+}
+
+fn emit_float_comparison(op: CompareOp, output: &mut String) {
+    match op {
+        CompareOp::Equal => {
+            output.push_str("  sete %al\n");
+            output.push_str("  setnp %cl\n");
+            output.push_str("  andb %cl, %al\n");
+        }
+        CompareOp::NotEqual => {
+            output.push_str("  setne %al\n");
+            output.push_str("  setp %cl\n");
+            output.push_str("  orb %cl, %al\n");
+        }
+        CompareOp::Less => {
+            output.push_str("  setb %al\n");
+            output.push_str("  setnp %cl\n");
+            output.push_str("  andb %cl, %al\n");
+        }
+        CompareOp::LessEqual => {
+            output.push_str("  setbe %al\n");
+            output.push_str("  setnp %cl\n");
+            output.push_str("  andb %cl, %al\n");
+        }
+        CompareOp::Greater => output.push_str("  seta %al\n"),
+        CompareOp::GreaterEqual => output.push_str("  setae %al\n"),
+    }
+
+    output.push_str("  movzbq %al, %rax\n");
+}
+
+fn uses_bool_print(module: &Module) -> bool {
+    module
+        .instructions
+        .iter()
+        .any(|instruction| matches!(instruction, Instruction::CallPrintBool))
 }

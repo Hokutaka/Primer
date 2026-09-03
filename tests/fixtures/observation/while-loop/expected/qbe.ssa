@@ -1,0 +1,48 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+export function w $main() {
+@start
+  %slot_count =l alloc8 8
+  %slot_sum =l alloc8 8
+  %slot_marker =l alloc8 8
+  storel 0, %slot_count
+  storel 0, %slot_sum
+  jmp @block0
+@block0 # while_condition
+  %tmp0 =l loadl %slot_count
+  %tmp1 =w csltl %tmp0, 4
+  jnz %tmp1, @block1, @block2
+@block1 # while_body
+  %tmp2 =l loadl %slot_sum
+  %tmp3 =l loadl %slot_count
+  %tmp4 =l add %tmp2, %tmp3
+  storel %tmp4, %slot_sum
+  %tmp5 =l loadl %slot_count
+  %tmp6 =w ceql %tmp5, 2
+  jnz %tmp6, @block3, @block4
+@block3 # if_then
+  storew 1, %slot_marker
+  %tmp7 =w loadw %slot_marker
+  %tmp8 =l extsw %tmp7
+  %tmp9 =l mul %tmp8, 8
+  %tmp10 =l add $bool_texts, %tmp9
+  %tmp11 =l loadl %tmp10
+  %tmp12 =w call $puts(l %tmp11)
+  jmp @block5
+@block4 # if_else
+  jmp @block5
+@block5 # if_end
+  %tmp13 =l loadl %slot_count
+  %tmp14 =l add %tmp13, 1
+  storel %tmp14, %slot_count
+  jmp @block0
+@block2 # while_end
+  %tmp15 =l loadl %slot_sum
+  %tmp16 =w call $printf(l $fmt_i64, ..., l %tmp15)
+  ret 0
+}
