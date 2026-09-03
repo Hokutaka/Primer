@@ -282,6 +282,7 @@ Primer documentation is organized by purpose:
 - [compiler evolution plan (Draft)](docs/design/evolution-plan.en.md);
 - [use cases for design decisions (Draft)](docs/design/use-case-analysis.en.md);
 - [Secret value design (Draft)](docs/design/secrets.en.md);
+- [named product type design (Draft)](docs/design/product-types.en.md);
 - [language reference](docs/reference/language.en.md);
 - [CLI reference](docs/reference/cli.en.md).
 

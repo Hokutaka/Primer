@@ -704,6 +704,8 @@ Emission Map
 
 ユーザー定義型は、Primerを汎用言語にするための必要条件とします。複数の値をまとめる複合型（aggregate type）は、その最初の具体化として検討します。
 
+名前付きproduct typeについて合意した内容と残る判断は、[名前付きproduct typeの設計](product-types.ja.md)に分離して整理します。
+
 次を設計します。
 
 - 名前付き型を、名前によって区別するnominalな型にするか、構造だけで区別するか

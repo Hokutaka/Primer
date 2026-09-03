@@ -23,6 +23,7 @@ The following draft organizes open problems and design candidates. It does not c
 | Compiler evolution plan / コンパイラ進化計画 | [日本語](design/evolution-plan.ja.md) | [English](design/evolution-plan.en.md) |
 | Use cases for design decisions / 設計判断のための利用シナリオ | [日本語](design/use-case-analysis.ja.md) | [English](design/use-case-analysis.en.md) |
 | Secret value design / Secret値の設計 | [日本語](design/secrets.ja.md) | [English](design/secrets.en.md) |
+| Named product type design / 名前付きproduct typeの設計 | [日本語](design/product-types.ja.md) | [English](design/product-types.en.md) |
 
 ## Reference / リファレンス
 

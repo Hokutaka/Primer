@@ -282,6 +282,7 @@ Primerの文書は、目的ごとに整理されています。
 - [コンパイラ進化計画（Draft）](docs/design/evolution-plan.ja.md)
 - [設計判断のための利用シナリオ（Draft）](docs/design/use-case-analysis.ja.md)
 - [Secret値の設計（Draft）](docs/design/secrets.ja.md)
+- [名前付きproduct typeの設計（Draft）](docs/design/product-types.ja.md)
 - [言語リファレンス](docs/reference/language.ja.md)
 - [CLIリファレンス](docs/reference/cli.ja.md)
 

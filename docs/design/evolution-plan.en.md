@@ -704,6 +704,8 @@ The recommendation is to preserve Structured Primer IR and introduce Control-flo
 
 User-defined types are a requirement for making Primer a general-purpose language. Aggregates are considered as their first concrete implementation.
 
+Agreed decisions and remaining questions for named product types are maintained separately in the [named product type design](product-types.en.md).
+
 The design decides:
 
 - whether named types are nominal or identified only by structure;
