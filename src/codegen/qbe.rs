@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_qbe(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_product_type("emit-qbe") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -87,5 +84,21 @@ mod tests {
         for instruction in ["ceql", "cnel", "csltl", "cslel", "csgtl", "csgel"] {
             assert!(qbe.contains(instruction));
         }
+    }
+
+    #[test]
+    fn lowers_product_values_to_stack_memory() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let qbe = emit_qbe(&program).unwrap();
+
+        assert!(qbe.contains("%slot_point =l alloc8 16"));
+        assert!(qbe.contains("%slot_aggregate_tmp0 =l alloc8 16"));
+        assert!(qbe.contains("blit %slot_aggregate_tmp0, %slot_point, 16"));
+        assert!(qbe.contains("loadd %slot_point"));
     }
 }

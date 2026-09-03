@@ -7,7 +7,7 @@ pub struct Module {
 #[derive(Debug, Clone)]
 pub struct Slot {
     pub name: String,
-    pub ty: Type,
+    pub size: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +28,7 @@ pub enum Operand {
     Float32(String),
     Float64(String),
     Temp(Temp),
+    Slot(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,14 +69,24 @@ pub enum Instruction {
     },
     Jump(usize),
     Store {
-        slot: usize,
+        address: Operand,
         ty: Type,
         value: Operand,
     },
     Load {
         dest: Temp,
-        slot: usize,
+        address: Operand,
         ty: Type,
+    },
+    Address {
+        dest: Temp,
+        base: Operand,
+        offset: usize,
+    },
+    Blit {
+        source: Operand,
+        destination: Operand,
+        size: usize,
     },
     Negate {
         dest: Temp,
