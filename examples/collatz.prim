@@ -1,0 +1,23 @@
+mut value: i64 = 27;
+mut steps: i64 = 0;
+mut highest: i64 = value;
+
+while value != 1 {
+    half: i64 = value / 2;
+
+    // halfを2倍して元に戻るなら、valueは偶数。
+    if half * 2 == value {
+        value = half;
+    } else {
+        value = value * 3 + 1;
+    }
+
+    if value > highest {
+        highest = value;
+    }
+
+    steps = steps + 1;
+}
+
+print(steps);
+print(highest);

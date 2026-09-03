@@ -120,7 +120,7 @@ print(double);
 print(inferred);
 ```
 
-Examples that run using the current language include [square-root approximation](examples/square_root.prim), [square-root approximation with `while`](examples/while_square_root.prim), [the Euclidean algorithm](examples/euclidean_gcd.prim), [loop control with `break` and `continue`](examples/loop_control.prim), [a sum with `for`](examples/for_sum.prim), [an f32/f64 logistic map](examples/logistic_map.prim), [booleans and comparisons](examples/boolean_comparisons.prim), and [conditionals and scope](examples/conditional.prim).
+Programs demonstrating basics, numerical computation, and algorithms supported by the current language are collected in the [examples index](examples/README.en.md).
 
 The type field is always required. `infer` explicitly requests inference rather than omitting the type:
 

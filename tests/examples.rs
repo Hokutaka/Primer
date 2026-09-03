@@ -95,3 +95,52 @@ fn euclidean_gcd_example_runs() {
 
     assert_eq!(output, "21\n");
 }
+
+#[test]
+fn fibonacci_example_runs() {
+    let output = run_vm(include_str!("../examples/fibonacci.prim")).unwrap();
+
+    assert_eq!(output, "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n");
+}
+
+#[test]
+fn factorial_example_runs() {
+    let output = run_vm(include_str!("../examples/factorial.prim")).unwrap();
+
+    assert_eq!(output, "3628800\n");
+}
+
+#[test]
+fn collatz_example_runs() {
+    let output = run_vm(include_str!("../examples/collatz.prim")).unwrap();
+
+    assert_eq!(output, "111\n9232\n");
+}
+
+#[test]
+fn prime_check_example_runs() {
+    let output = run_vm(include_str!("../examples/prime_check.prim")).unwrap();
+
+    assert_eq!(output, "true\n");
+}
+
+#[test]
+fn integer_square_root_example_runs() {
+    let output = run_vm(include_str!("../examples/integer_square_root.prim")).unwrap();
+
+    assert_eq!(output, "1414\n");
+}
+
+#[test]
+fn exponentiation_by_squaring_example_runs() {
+    let output = run_vm(include_str!("../examples/exponentiation_by_squaring.prim")).unwrap();
+
+    assert_eq!(output, "1594323\n");
+}
+
+#[test]
+fn pythagorean_triples_example_runs() {
+    let output = run_vm(include_str!("../examples/pythagorean_triples.prim")).unwrap();
+
+    assert_eq!(output, "3\n4\n5\n5\n12\n13\n6\n8\n10\n9\n12\n15\n");
+}

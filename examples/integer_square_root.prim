@@ -1,0 +1,19 @@
+value: i64 = 2000000;
+mut low: i64 = 1;
+mut high: i64 = value;
+mut root: i64 = 0;
+
+// 0以上のvalueについて、答えの候補を半分ずつに狭める。
+while low <= high {
+    middle: i64 = low + (high - low) / 2;
+
+    // middle * middleを作らず、大きな値でも積のoverflowを避ける。
+    if middle <= value / middle {
+        root = middle;
+        low = middle + 1;
+    } else {
+        high = middle - 1;
+    }
+}
+
+print(root);

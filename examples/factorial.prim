@@ -1,0 +1,8 @@
+value: i64 = 10;
+mut result: i64 = 1;
+
+for (mut factor: i64 = 2; factor <= value; factor = factor + 1) {
+    result = result * factor;
+}
+
+print(result);
