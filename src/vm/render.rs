@@ -5,11 +5,14 @@ use super::{VmError, VmErrorKind};
 
 /// VM実行エラーをソース本文やファイルパスを含まない簡潔な形式で描画します。
 pub fn render_compact(error: &VmError) -> String {
-    format!(
-        "{} at bytecode instruction {:04}",
-        render_message(error),
-        error.instruction_index()
-    )
+    let position = match error.function_id() {
+        Some(function_id) => format!(
+            "function {function_id} bytecode instruction {:04}",
+            error.instruction_index()
+        ),
+        None => format!("bytecode instruction {:04}", error.instruction_index()),
+    };
+    format!("{} at {position}", render_message(error))
 }
 
 /// VM実行エラーをソース位置とbytecode命令番号を含む簡潔な形式で描画します。
@@ -20,12 +23,18 @@ pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> 
         return render_compact(error);
     };
 
+    let position = match error.function_id() {
+        Some(function_id) => format!(
+            "function {function_id} bytecode instruction {:04}",
+            error.instruction_index()
+        ),
+        None => format!("bytecode instruction {:04}", error.instruction_index()),
+    };
     format!(
-        "{} at {}:{} (bytecode instruction {:04})",
+        "{} at {}:{} ({position})",
         render_message(error),
         location.line(),
-        location.column(),
-        error.instruction_index()
+        location.column()
     )
 }
 
@@ -43,6 +52,15 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::InvalidField { type_id, field_id } => format!(
             "Primer VM tried to use field {field_id} of product type {type_id}, but that field does not exist"
         ),
+        VmErrorKind::InvalidFunction { function_id } => format!(
+            "Primer VM tried to call function {function_id}, but that function does not exist"
+        ),
+        VmErrorKind::InvalidArgumentCount { expected, actual } => {
+            format!("Primer VM expected {expected} function arguments, but found {actual}")
+        }
+        VmErrorKind::InvalidReturn => {
+            "Primer VM found a return instruction that does not match the function".to_owned()
+        }
         VmErrorKind::UninitializedSlot { slot } => {
             format!("Primer VM tried to read slot {slot} before it was initialized")
         }

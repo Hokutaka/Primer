@@ -117,8 +117,13 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
     let bytecode = compile_to_bytecode(source).map_err(RunError::Compilation)?;
 
     vm::run(&bytecode).map_err(|vm_error| {
-        let origin = bytecode
-            .instructions
+        let instructions = vm_error
+            .function_id()
+            .and_then(|function_id| bytecode.functions.get(function_id))
+            .map_or(bytecode.instructions.as_slice(), |function| {
+                function.instructions.as_slice()
+            });
+        let origin = instructions
             .get(vm_error.instruction_index())
             .map(|instruction| instruction.origin);
 
@@ -215,6 +220,39 @@ mod tests {
         ";
 
         assert_eq!(run_vm(source).unwrap(), "1\n4\n");
+    }
+
+    #[test]
+    fn functions_run_in_independent_vm_frames() {
+        let source = "
+            fn add(left: i64, right: i64) -> i64 {
+                result: i64 = left + right;
+                return result;
+            }
+            fn show(value: i64) -> void { print(value); }
+            answer: i64 = add(20, 22);
+            show(answer);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "42\n");
+    }
+
+    #[test]
+    fn preserves_the_origin_of_vm_errors_inside_functions() {
+        let source = "fn fail(value: i64) -> i64 { return value / 0; }
+                      answer: i64 = fail(1);";
+        let error = run_vm(source).unwrap_err();
+        let RunError::Execution(error) = error else {
+            panic!("expected a VM execution error");
+        };
+
+        assert_eq!(error.vm_error().kind(), VmErrorKind::DivisionByZero);
+        assert_eq!(error.vm_error().function_id(), Some(0));
+        assert_eq!(error.vm_error().instruction_index(), 2);
+        assert_eq!(
+            error.origin(),
+            Some(InstructionOrigin::Source(Span::new(36, 45)))
+        );
     }
 
     #[test]

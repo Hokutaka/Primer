@@ -18,8 +18,24 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub struct BytecodeProgram {
     pub type_definitions: Vec<TypeDefinition>,
+    pub functions: Vec<BytecodeFunction>,
     pub slots: Vec<Slot>,
     pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BytecodeFunction {
+    pub name: String,
+    pub parameter_count: usize,
+    pub return_type: ReturnType,
+    pub slots: Vec<Slot>,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnType {
+    Void,
+    Value(Type),
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +109,13 @@ pub enum InstructionKind {
         type_id: usize,
         field_id: usize,
     },
+    Call {
+        function_id: usize,
+        argument_count: usize,
+    },
+    Return {
+        has_value: bool,
+    },
 
     Add(Type),
     Subtract(Type),
@@ -145,6 +168,48 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
                 .collect(),
         })
         .collect();
+    let functions = program
+        .function_definitions
+        .iter()
+        .map(|function| {
+            let mut slots = Vec::new();
+            let mut slot_map = HashMap::new();
+            for parameter in &function.parameters {
+                let slot = slots.len();
+                slots.push(Slot {
+                    name: parameter.name.clone(),
+                    ty: parameter.ty.into(),
+                    mutable: false,
+                });
+                slot_map.insert(parameter.id, slot);
+            }
+            collect_slots(&function.body, &mut slots, &mut slot_map);
+            let mut compiler = Compiler {
+                slot_map,
+                instructions: Vec::new(),
+                loops: Vec::new(),
+            };
+            let terminates = compiler.emit_statements(&function.body);
+            if !terminates {
+                compiler
+                    .instructions
+                    .push(Instruction::synthetic(InstructionKind::Return {
+                        has_value: false,
+                    }));
+            }
+            BytecodeFunction {
+                name: function.name.clone(),
+                parameter_count: function.parameters.len(),
+                return_type: match function.return_type {
+                    ir::ReturnType::Void => ReturnType::Void,
+                    ir::ReturnType::Value(ty) => ReturnType::Value(ty.into()),
+                },
+                slots,
+                instructions: compiler.instructions,
+            }
+        })
+        .collect();
+
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
 
@@ -164,6 +229,7 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
 
     Ok(BytecodeProgram {
         type_definitions,
+        functions,
         slots,
         instructions: compiler.instructions,
     })
@@ -187,6 +253,44 @@ pub fn format_program(program: &BytecodeProgram) -> String {
         }
     }
 
+    for (function_id, function) in program.functions.iter().enumerate() {
+        writeln!(output).unwrap();
+        write!(output, ".function {function_id} {}(", function.name).unwrap();
+        for parameter_index in 0..function.parameter_count {
+            if parameter_index > 0 {
+                output.push_str(", ");
+            }
+            let parameter = &function.slots[parameter_index];
+            write!(
+                output,
+                "{parameter_index}:{}:{}",
+                parameter.name,
+                type_name(parameter.ty, program)
+            )
+            .unwrap();
+        }
+        match function.return_type {
+            ReturnType::Void => writeln!(output, ") -> void").unwrap(),
+            ReturnType::Value(ty) => {
+                writeln!(output, ") -> {}", type_name(ty, program)).unwrap();
+            }
+        }
+
+        for (index, slot) in function.slots.iter().enumerate() {
+            write!(output, ".slot {index} ").unwrap();
+            if slot.mutable {
+                output.push_str("mut ");
+            }
+            writeln!(output, "{} {}", slot.name, type_name(slot.ty, program)).unwrap();
+        }
+
+        for (pc, instruction) in function.instructions.iter().enumerate() {
+            write!(output, "{pc:04}  ").unwrap();
+            format_instruction(&instruction.kind, program, &function.slots, &mut output);
+        }
+        writeln!(output, ".end").unwrap();
+    }
+
     if !program.slots.is_empty() {
         writeln!(output).unwrap();
 
@@ -206,7 +310,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
     for (pc, instruction) in program.instructions.iter().enumerate() {
         write!(output, "{pc:04}  ").unwrap();
 
-        format_instruction(&instruction.kind, program, &mut output);
+        format_instruction(&instruction.kind, program, &program.slots, &mut output);
     }
 
     output
@@ -267,6 +371,37 @@ impl Compiler {
 
                 self.emit_source(InstructionKind::Print(value.ty.into()), statement.span);
                 false
+            }
+
+            StatementKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                for argument in arguments {
+                    self.emit_expr(argument);
+                }
+                self.emit_source(
+                    InstructionKind::Call {
+                        function_id: function_id.0,
+                        argument_count: arguments.len(),
+                    },
+                    statement.span,
+                );
+                false
+            }
+
+            StatementKind::Return { value } => {
+                if let Some(value) = value {
+                    self.emit_expr(value);
+                }
+                self.emit_source(
+                    InstructionKind::Return {
+                        has_value: value.is_some(),
+                    },
+                    statement.span,
+                );
+                true
             }
 
             StatementKind::If {
@@ -391,9 +526,6 @@ impl Compiler {
                     .push(jump);
                 true
             }
-            StatementKind::Call { .. } | StatementKind::Return { .. } => {
-                unreachable!("functions are rejected before bytecode lowering")
-            }
         }
     }
 
@@ -486,6 +618,23 @@ impl Compiler {
                 );
             }
 
+            ExprKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                for argument in arguments {
+                    self.emit_expr(argument);
+                }
+                self.emit_source(
+                    InstructionKind::Call {
+                        function_id: function_id.0,
+                        argument_count: arguments.len(),
+                    },
+                    expr.span,
+                );
+            }
+
             ExprKind::Unary { op, value } => {
                 self.emit_expr(value);
 
@@ -517,9 +666,6 @@ impl Compiler {
                 };
 
                 self.emit_source(instruction, expr.span);
-            }
-            ExprKind::Call { .. } => {
-                unreachable!("functions are rejected before bytecode lowering")
             }
         }
     }
@@ -602,6 +748,7 @@ impl From<ir::Type> for Type {
 fn format_instruction(
     instruction: &InstructionKind,
     program: &BytecodeProgram,
+    slots: &[Slot],
     output: &mut String,
 ) {
     match instruction {
@@ -622,15 +769,15 @@ fn format_instruction(
         }
 
         InstructionKind::Load(slot) => {
-            writeln!(output, "load {slot}        ; {}", program.slots[*slot].name,).unwrap();
+            writeln!(output, "load {slot}        ; {}", slots[*slot].name).unwrap();
         }
 
         InstructionKind::Store(slot) => {
-            writeln!(output, "store {slot}       ; {}", program.slots[*slot].name,).unwrap();
+            writeln!(output, "store {slot}       ; {}", slots[*slot].name).unwrap();
         }
 
         InstructionKind::Assign(slot) => {
-            writeln!(output, "assign {slot}      ; {}", program.slots[*slot].name,).unwrap();
+            writeln!(output, "assign {slot}      ; {}", slots[*slot].name).unwrap();
         }
 
         InstructionKind::Construct { type_id, fields } => {
@@ -667,6 +814,26 @@ fn format_instruction(
                 definition.name, type_id, definition.fields[*field_id].name, field_id
             )
             .unwrap();
+        }
+
+        InstructionKind::Call {
+            function_id,
+            argument_count,
+        } => {
+            writeln!(
+                output,
+                "call {function_id} {argument_count}  ; {}",
+                program.functions[*function_id].name
+            )
+            .unwrap();
+        }
+
+        InstructionKind::Return { has_value: true } => {
+            writeln!(output, "return.value").unwrap();
+        }
+
+        InstructionKind::Return { has_value: false } => {
+            writeln!(output, "return").unwrap();
         }
 
         InstructionKind::Add(ty) => {
@@ -837,5 +1004,19 @@ mod tests {
         for instruction in ["eq.i64", "ne.i64", "lt.i64", "le.i64", "gt.i64", "ge.i64"] {
             assert!(text.contains(instruction));
         }
+    }
+
+    #[test]
+    fn exposes_function_frames_calls_and_returns() {
+        let program = compile_to_bytecode(
+            "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);",
+        )
+        .unwrap();
+        let text = format_program(&program);
+
+        assert!(text.contains(".function 0 add(0:left:i64, 1:right:i64) -> i64"));
+        assert!(text.contains("0003  return.value"));
+        assert!(text.contains("call 0 2  ; add"));
     }
 }
