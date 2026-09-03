@@ -2,13 +2,18 @@ use std::collections::HashMap;
 
 use crate::ir as primer_ir;
 
-use super::ir::{Instruction, Local, LoopKind, Module, Type};
+use super::ir::{Function, Instruction, Local, LoopKind, Module, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let mut next_address = 0;
+    let mut functions = Vec::new();
+    for function in &program.function_definitions {
+        functions.push(lower_function(program, function, &mut next_address));
+    }
+
     let mut locals = Vec::new();
     let mut locations = HashMap::new();
     let mut name_counts = HashMap::new();
-    let mut next_address = 0;
     collect_locations(
         &program.statements,
         program,
@@ -35,6 +40,73 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             0
         } else {
             context.next_address.div_ceil(65_536) as u32
+        },
+        functions,
+        explicit_main: program
+            .function_definitions
+            .iter()
+            .find(|function| function.name == "main")
+            .map(|function| function.id.0),
+        locals,
+        instructions,
+    }
+}
+
+fn lower_function(
+    program: &primer_ir::Program,
+    function: &primer_ir::FunctionDefinition,
+    next_address: &mut usize,
+) -> Function {
+    let mut locals = Vec::new();
+    let mut locations = HashMap::new();
+    let mut name_counts = HashMap::new();
+    let parameters = function
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let ty = scalar_type(parameter.ty);
+            locations.insert(parameter.id, Location::Scalar(parameter.name.clone()));
+            name_counts.insert(parameter.name.clone(), 1);
+            Local {
+                name: parameter.name.clone(),
+                ty,
+            }
+        })
+        .collect();
+    collect_locations(
+        &function.body,
+        program,
+        &mut locals,
+        &mut locations,
+        &mut name_counts,
+        next_address,
+    );
+
+    let mut context = LoweringContext {
+        program,
+        locations,
+        next_address: *next_address,
+        control: ControlContext {
+            next_loop_id: 0,
+            loops: Vec::new(),
+        },
+    };
+    let mut instructions = Vec::new();
+    context.lower_statements(&function.body, &mut instructions);
+    if matches!(function.return_type, primer_ir::ReturnType::Void)
+        && !matches!(instructions.last(), Some(Instruction::Return))
+    {
+        instructions.push(Instruction::Return);
+    }
+    *next_address = context.next_address;
+
+    Function {
+        id: function.id.0,
+        name: function.name.clone(),
+        parameters,
+        return_type: match function.return_type {
+            primer_ir::ReturnType::Void => None,
+            primer_ir::ReturnType::Value(ty) => Some(scalar_type(ty)),
         },
         locals,
         instructions,
@@ -224,8 +296,27 @@ impl LoweringContext<'_> {
                     id: target.id,
                 });
             }
-            primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
-                unreachable!("functions are rejected before WAT lowering")
+            primer_ir::StatementKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                for argument in arguments {
+                    let Value::Scalar(_) = self.lower_expr(argument, instructions) else {
+                        unreachable!("function signatures currently use scalar types")
+                    };
+                }
+                instructions.push(Instruction::Call {
+                    function_id: function_id.0,
+                });
+            }
+            primer_ir::StatementKind::Return { value } => {
+                if let Some(value) = value {
+                    let Value::Scalar(_) = self.lower_expr(value, instructions) else {
+                        unreachable!("function signatures currently use scalar types")
+                    };
+                }
+                instructions.push(Instruction::Return);
             }
         }
     }
@@ -353,8 +444,20 @@ impl LoweringContext<'_> {
                 instructions.push(lower_binary(*op, left.ty));
                 Value::Scalar(scalar_type(expr.ty))
             }
-            primer_ir::ExprKind::Call { .. } => {
-                unreachable!("functions are rejected before WAT lowering")
+            primer_ir::ExprKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                for argument in arguments {
+                    let Value::Scalar(_) = self.lower_expr(argument, instructions) else {
+                        unreachable!("function signatures currently use scalar types")
+                    };
+                }
+                instructions.push(Instruction::Call {
+                    function_id: function_id.0,
+                });
+                Value::Scalar(scalar_type(expr.ty))
             }
         }
     }

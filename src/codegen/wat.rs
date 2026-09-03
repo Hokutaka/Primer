@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_wat(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_functions("emit-wat") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -150,5 +147,22 @@ mod tests {
         assert!(wat.contains("f64.store"));
         assert!(wat.contains("f64.load"));
         assert!(wat.contains("call $print_f64"));
+    }
+
+    #[test]
+    fn emits_typed_functions_and_calls() {
+        let program = compile_to_ir(
+            "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);
+             print(answer);",
+        )
+        .unwrap();
+        let wat = emit_wat(&program).unwrap();
+
+        assert!(wat.contains(
+            "(func $primer_fn_add_0 (param $primer_left i64) (param $primer_right i64) (result i64)"
+        ));
+        assert!(wat.contains("call $primer_fn_add_0"));
+        assert!(wat.contains("return"));
     }
 }
