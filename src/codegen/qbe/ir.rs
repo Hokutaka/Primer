@@ -1,7 +1,26 @@
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub functions: Vec<Function>,
+    pub explicit_main: Option<usize>,
     pub slots: Vec<Slot>,
     pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub id: usize,
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<Type>,
+    pub slots: Vec<Slot>,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Parameter {
+    pub name: String,
+    pub ty: Type,
+    pub slot: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +106,15 @@ pub enum Instruction {
         source: Operand,
         destination: Operand,
         size: usize,
+    },
+    Call {
+        dest: Option<Temp>,
+        function_id: usize,
+        return_type: Option<Type>,
+        arguments: Vec<(Type, Operand)>,
+    },
+    Return {
+        value: Option<(Type, Operand)>,
     },
     Negate {
         dest: Temp,

@@ -8,9 +8,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_qbe(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_functions("emit-qbe") {
-        return Err(diagnostic);
-    }
     let module = lower(program);
 
     Ok(emit(&module))
@@ -103,5 +100,21 @@ mod tests {
         assert!(qbe.contains("%slot_aggregate_tmp0 =l alloc8 16"));
         assert!(qbe.contains("blit %slot_aggregate_tmp0, %slot_point, 16"));
         assert!(qbe.contains("loadd %slot_point"));
+    }
+
+    #[test]
+    fn emits_typed_functions_and_calls() {
+        let program = compile_to_ir(
+            "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);
+             print(answer);",
+        )
+        .unwrap();
+        let qbe = emit_qbe(&program).unwrap();
+
+        assert!(qbe.contains("function l $primer_fn_add_0(l %arg0, l %arg1)"));
+        assert!(qbe.contains("storel %arg0, %slot_left"));
+        assert!(qbe.contains("call $primer_fn_add_0(l 20, l 22)"));
+        assert!(qbe.contains("ret %tmp"));
     }
 }
