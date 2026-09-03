@@ -50,6 +50,8 @@ pub enum StmtKind {
         condition: Expr,
         body: Vec<Stmt>,
     },
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

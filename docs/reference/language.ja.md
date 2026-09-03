@@ -14,6 +14,8 @@ statement   := binding
              | "print" "(" expression ")" ";"
              | if_statement
              | while_statement
+             | "break" ";"
+             | "continue" ";"
 
 if_statement := "if" expression block ("else" block)?
 
@@ -121,6 +123,24 @@ while count < 3 {
 
 `while`の条件にも`bool`が必要です。`while`も値を作る式ではありません。
 
+`break;`は最も内側のループを終了し、`continue;`は最も内側のループの条件評価へ進みます。ループの外では使用できません。
+
+```primer
+while value < 10 {
+    value = value + 1;
+
+    if value < 3 {
+        continue;
+    }
+
+    if value > 5 {
+        break;
+    }
+}
+```
+
+現在は外側のループを名前で指定するラベル付きの`break`や`continue`を持ちません。
+
 波括弧で囲まれた各ブロックは新しいスコープを作ります。ブロック内の束縛は外側から見えません。内側から外側の束縛を参照でき、`mut`なら再代入もできます。
 
 内側のブロックでは、外側と同じ名前を別の束縛として宣言できます。
@@ -137,7 +157,7 @@ if true {
 print(value);           // i64のvalue
 ```
 
-Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言を参照したか区別します。構造化された`if`と`while`はPrimer IRに残ります。Bytecodeと各バックエンドIRへのlowering時に、`if`は分岐と合流へ、`while`は条件分岐と本文から条件へ戻る経路へ変換されます。
+Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言を参照したか区別します。構造化された`if`、`while`、`break`、`continue`はPrimer IRに残ります。Bytecodeと各バックエンドIRへのlowering時に、`if`は分岐と合流へ、`while`は条件分岐と本文から条件へ戻る経路へ、`break`と`continue`は対象ループへのジャンプへ変換されます。
 
 ## 型
 

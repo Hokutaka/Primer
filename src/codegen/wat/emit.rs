@@ -111,22 +111,31 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
         }
 
         Instruction::While {
+            id,
             condition_instructions,
             body_instructions,
         } => {
-            writeln!(output, "{prefix}block").unwrap();
-            writeln!(output, "{prefix}  loop").unwrap();
+            writeln!(output, "{prefix}block $while_end_{id}").unwrap();
+            writeln!(output, "{prefix}  loop $while_condition_{id}").unwrap();
             for instruction in condition_instructions {
                 emit_instruction(instruction, indent + 2, output);
             }
             writeln!(output, "{prefix}    i32.eqz").unwrap();
-            writeln!(output, "{prefix}    br_if 1").unwrap();
+            writeln!(output, "{prefix}    br_if $while_end_{id}").unwrap();
             for instruction in body_instructions {
                 emit_instruction(instruction, indent + 2, output);
             }
-            writeln!(output, "{prefix}    br 0").unwrap();
+            writeln!(output, "{prefix}    br $while_condition_{id}").unwrap();
             writeln!(output, "{prefix}  end").unwrap();
             writeln!(output, "{prefix}end").unwrap();
+        }
+
+        Instruction::Break(id) => {
+            writeln!(output, "{prefix}br $while_end_{id}").unwrap();
+        }
+
+        Instruction::Continue(id) => {
+            writeln!(output, "{prefix}br $while_condition_{id}").unwrap();
         }
 
         Instruction::I64Add => emit_simple("i64.add", &prefix, output),
@@ -207,6 +216,7 @@ fn instruction_uses_bool_print(instruction: &Instruction) -> bool {
         Instruction::While {
             condition_instructions,
             body_instructions,
+            ..
         } => {
             condition_instructions
                 .iter()

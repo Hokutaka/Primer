@@ -1,0 +1,19 @@
+mut value: i64 = 0;
+mut sum: i64 = 0;
+
+while value < 10 {
+    value = value + 1;
+
+    if value < 3 {
+        continue;
+    }
+
+    if value > 5 {
+        break;
+    }
+
+    sum = sum + value;
+}
+
+print(sum);
+print(value);

@@ -55,6 +55,8 @@ pub enum StatementKind {
         condition: Expr,
         body: Vec<Statement>,
     },
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

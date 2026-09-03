@@ -121,6 +121,8 @@ impl Builder {
 
                 StatementKind::While { condition, body }
             }
+            ast::StmtKind::Break => StatementKind::Break,
+            ast::StmtKind::Continue => StatementKind::Continue,
         };
 
         Ok(Statement {

@@ -94,6 +94,16 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             output.push_str(&prefix);
             output.push_str("}\n");
         }
+
+        Statement::Break => {
+            output.push_str(&prefix);
+            output.push_str("break;\n");
+        }
+
+        Statement::Continue => {
+            output.push_str(&prefix);
+            output.push_str("continue;\n");
+        }
     }
 }
 
@@ -248,5 +258,6 @@ fn statement_uses_bool(statement: &Statement) -> bool {
         Statement::While { condition, body } => {
             condition.ty == Type::Bool || body.iter().any(statement_uses_bool)
         }
+        Statement::Break | Statement::Continue => false,
     }
 }

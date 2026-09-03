@@ -7,6 +7,8 @@ pub enum TokenKind {
     If,
     Else,
     While,
+    Break,
+    Continue,
     True,
     False,
 
@@ -258,6 +260,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
                     "while" => TokenKind::While,
+                    "break" => TokenKind::Break,
+                    "continue" => TokenKind::Continue,
                     "true" => TokenKind::True,
                     "false" => TokenKind::False,
                     name => TokenKind::Identifier(name.to_owned()),
@@ -366,9 +370,11 @@ mod tests {
 
     #[test]
     fn lexes_while_block() {
-        let tokens = lex("while true { print(1); }").unwrap();
+        let tokens = lex("while true { break; continue; }").unwrap();
 
         assert_eq!(tokens[0].kind, TokenKind::While);
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Break));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Continue));
         assert!(
             tokens
                 .iter()

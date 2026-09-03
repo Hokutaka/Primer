@@ -85,6 +85,12 @@ fn emit_statement(statement: &Statement, indent: usize, output: &mut String) {
             }
             writeln!(output, "{prefix}}}").unwrap();
         }
+        StatementKind::Break => {
+            writeln!(output, "{prefix}break").unwrap();
+        }
+        StatementKind::Continue => {
+            writeln!(output, "{prefix}continue").unwrap();
+        }
     }
 }
 

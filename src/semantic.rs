@@ -16,11 +16,15 @@ pub struct BindingInfo {
 
 pub fn check(program: &Program) -> SemanticResult<Bindings> {
     let mut scopes = vec![HashMap::new()];
-    check_statements(&program.statements, &mut scopes)?;
+    check_statements(&program.statements, &mut scopes, 0)?;
     Ok(scopes.pop().expect("top-level scope must exist"))
 }
 
-fn check_statements(statements: &[Stmt], scopes: &mut Vec<Bindings>) -> SemanticResult<()> {
+fn check_statements(
+    statements: &[Stmt],
+    scopes: &mut Vec<Bindings>,
+    loop_depth: usize,
+) -> SemanticResult<()> {
     for statement in statements {
         let bindings = visible_bindings(scopes);
 
@@ -128,11 +132,11 @@ fn check_statements(statements: &[Stmt], scopes: &mut Vec<Bindings>) -> Semantic
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(then_body, scopes)?;
+                check_statements(then_body, scopes, loop_depth)?;
                 scopes.pop();
 
                 scopes.push(HashMap::new());
-                check_statements(else_body, scopes)?;
+                check_statements(else_body, scopes, loop_depth)?;
                 scopes.pop();
             }
 
@@ -150,8 +154,26 @@ fn check_statements(statements: &[Stmt], scopes: &mut Vec<Bindings>) -> Semantic
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(body, scopes)?;
+                check_statements(body, scopes, loop_depth + 1)?;
                 scopes.pop();
+            }
+
+            StmtKind::Break => {
+                if loop_depth == 0 {
+                    return Err(Diagnostic::new(
+                        "break can only be used inside a loop",
+                        statement.span,
+                    ));
+                }
+            }
+
+            StmtKind::Continue => {
+                if loop_depth == 0 {
+                    return Err(Diagnostic::new(
+                        "continue can only be used inside a loop",
+                        statement.span,
+                    ));
+                }
             }
         }
     }
@@ -559,5 +581,37 @@ mod tests {
 
         let error = check(&program).unwrap_err();
         assert_eq!(error.message(), "while condition must be bool, found i64");
+    }
+
+    #[test]
+    fn rejects_break_outside_loop() {
+        let program = crate::parser::parse(crate::lexer::lex("break;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+        assert_eq!(error.message(), "break can only be used inside a loop");
+    }
+
+    #[test]
+    fn rejects_continue_outside_loop() {
+        let program = crate::parser::parse(crate::lexer::lex("continue;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+        assert_eq!(error.message(), "continue can only be used inside a loop");
+    }
+
+    #[test]
+    fn accepts_loop_control_inside_nested_if() {
+        let program = crate::parser::parse(
+            crate::lexer::lex(
+                "while true {
+                    if true { continue; }
+                    if false { break; }
+                }",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        check(&program).unwrap();
     }
 }

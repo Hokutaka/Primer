@@ -14,7 +14,7 @@ pub enum VmErrorKind {
     /// 初期化前のスロットを読み取りました。
     UninitializedSlot { slot: usize },
 
-    /// 初期化済みのスロットへ再度書き込みました。
+    /// 別の初期化命令が初期化済みのスロットへ書き込みました。
     SlotAlreadyInitialized { slot: usize },
 
     /// 初期化前のスロットへ再代入しようとしました。
@@ -97,6 +97,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
     let mut stack: Vec<Value> = Vec::new();
 
     let mut slots: Vec<Option<Value>> = vec![None; program.slots.len()];
+    let mut initializers: Vec<Option<usize>> = vec![None; program.slots.len()];
 
     let mut output = String::new();
 
@@ -160,13 +161,18 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                     .get_mut(*slot)
                     .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
 
-                if destination.is_some() {
+                let initializer = initializers
+                    .get_mut(*slot)
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
+
+                if initializer.is_some_and(|initializer| initializer != pc) {
                     return Err(VmError::new(
                         VmErrorKind::SlotAlreadyInitialized { slot: *slot },
                         pc,
                     ));
                 }
 
+                *initializer = Some(pc);
                 *destination = Some(value);
             }
 
@@ -635,6 +641,32 @@ mod tests {
     }
 
     #[test]
+    fn rejects_distinct_initializers_for_the_same_slot() {
+        let program = BytecodeProgram {
+            slots: vec![Slot {
+                name: "value".into(),
+                ty: Type::I64,
+                mutable: false,
+            }],
+            instructions: vec![
+                Instruction::synthetic(InstructionKind::PushI64(1)),
+                Instruction::synthetic(InstructionKind::Store(0)),
+                Instruction::synthetic(InstructionKind::PushI64(2)),
+                Instruction::synthetic(InstructionKind::Store(0)),
+                Instruction::synthetic(InstructionKind::Halt),
+            ],
+        };
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::SlotAlreadyInitialized { slot: 0 }
+        );
+        assert_eq!(error.instruction_index(), 3);
+    }
+
+    #[test]
     fn reports_missing_instruction_without_panicking() {
         let program = BytecodeProgram {
             slots: Vec::new(),
@@ -672,5 +704,45 @@ mod tests {
         .unwrap();
 
         assert_eq!(run(&program).unwrap(), "0\n1\n2\n3\n");
+    }
+
+    #[test]
+    fn executes_break_and_continue() {
+        let program = compile_to_bytecode(
+            "mut value: i64 = 0;
+             mut sum: i64 = 0;
+             while value < 10 {
+                 value = value + 1;
+                 if value < 3 { continue; }
+                 if value > 5 { break; }
+                 sum = sum + value;
+             }
+             print(sum);
+             print(value);",
+        )
+        .unwrap();
+
+        assert_eq!(run(&program).unwrap(), "12\n6\n");
+    }
+
+    #[test]
+    fn break_targets_only_the_innermost_loop() {
+        let program = compile_to_bytecode(
+            "mut outer: i64 = 0;
+             mut hits: i64 = 0;
+             while outer < 2 {
+                 mut inner: i64 = 0;
+                 while inner < 3 {
+                     inner = inner + 1;
+                     if inner == 2 { break; }
+                     hits = hits + 1;
+                 }
+                 outer = outer + 1;
+             }
+             print(hits);",
+        )
+        .unwrap();
+
+        assert_eq!(run(&program).unwrap(), "2\n");
     }
 }

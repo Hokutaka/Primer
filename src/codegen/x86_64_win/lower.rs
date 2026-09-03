@@ -24,11 +24,10 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         float_constants: Vec::new(),
         instructions: Vec::new(),
         label: 0,
+        loops: Vec::new(),
     };
 
-    for statement in &program.statements {
-        lowerer.lower_statement(statement);
-    }
+    lowerer.lower_statements(&program.statements);
 
     Module {
         frame_size,
@@ -44,10 +43,27 @@ struct Lowerer {
     float_constants: Vec<FloatConstant>,
     instructions: Vec<Instruction>,
     label: usize,
+    loops: Vec<LoopContext>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LoopContext {
+    continue_label: usize,
+    break_label: usize,
 }
 
 impl Lowerer {
-    fn lower_statement(&mut self, statement: &primer_ir::Statement) {
+    fn lower_statements(&mut self, statements: &[primer_ir::Statement]) -> bool {
+        for statement in statements {
+            if self.lower_statement(statement) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
             primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 self.lower_expr(value, 0);
@@ -67,6 +83,7 @@ impl Lowerer {
                         self.instructions.push(Instruction::StoreF64ToStack(offset));
                     }
                 }
+                false
             }
 
             primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
@@ -87,12 +104,14 @@ impl Lowerer {
                         self.instructions.push(Instruction::StoreF64ToStack(offset));
                     }
                 }
+                false
             }
 
             primer_ir::StatementKind::Print { value } => {
                 self.lower_expr(value, 0);
 
                 self.lower_print(value.ty.into());
+                false
             }
 
             primer_ir::StatementKind::If {
@@ -110,25 +129,34 @@ impl Lowerer {
                         else_label
                     }));
 
-                for statement in then_body {
-                    self.lower_statement(statement);
+                let then_terminates = self.lower_statements(then_body);
+                if !then_terminates {
+                    self.instructions.push(Instruction::Jump(end_label));
                 }
-                self.instructions.push(Instruction::Jump(end_label));
 
-                if !else_body.is_empty() {
+                if else_body.is_empty() {
+                    self.instructions.push(Instruction::Label {
+                        id: end_label,
+                        name: "if_end",
+                    });
+                    false
+                } else {
                     self.instructions.push(Instruction::Label {
                         id: else_label,
                         name: "if_else",
                     });
-                    for statement in else_body {
-                        self.lower_statement(statement);
+                    let else_terminates = self.lower_statements(else_body);
+
+                    if then_terminates && else_terminates {
+                        true
+                    } else {
+                        self.instructions.push(Instruction::Label {
+                            id: end_label,
+                            name: "if_end",
+                        });
+                        false
                     }
                 }
-
-                self.instructions.push(Instruction::Label {
-                    id: end_label,
-                    name: "if_end",
-                });
             }
 
             primer_ir::StatementKind::While { condition, body } => {
@@ -142,15 +170,41 @@ impl Lowerer {
                 self.lower_expr(condition, 0);
                 self.instructions.push(Instruction::JumpIfZero(end_label));
 
-                for statement in body {
-                    self.lower_statement(statement);
-                }
+                self.loops.push(LoopContext {
+                    continue_label: condition_label,
+                    break_label: end_label,
+                });
+                let body_terminates = self.lower_statements(body);
+                self.loops.pop().expect("while loop context must exist");
 
-                self.instructions.push(Instruction::Jump(condition_label));
+                if !body_terminates {
+                    self.instructions.push(Instruction::Jump(condition_label));
+                }
                 self.instructions.push(Instruction::Label {
                     id: end_label,
                     name: "while_end",
                 });
+                false
+            }
+
+            primer_ir::StatementKind::Break => {
+                let target = self
+                    .loops
+                    .last()
+                    .expect("semantic analysis rejects break outside a loop")
+                    .break_label;
+                self.instructions.push(Instruction::Jump(target));
+                true
+            }
+
+            primer_ir::StatementKind::Continue => {
+                let target = self
+                    .loops
+                    .last()
+                    .expect("semantic analysis rejects continue outside a loop")
+                    .continue_label;
+                self.instructions.push(Instruction::Jump(target));
+                true
             }
         }
     }
@@ -444,7 +498,9 @@ fn collect_binding_slots(
                 collect_binding_slots(body, slots, next);
             }
             primer_ir::StatementKind::Assignment { .. }
-            | primer_ir::StatementKind::Print { .. } => {}
+            | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Break
+            | primer_ir::StatementKind::Continue => {}
         }
     }
 }
@@ -472,6 +528,7 @@ fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
             primer_ir::StatementKind::While { condition, body } => {
                 count_expr_nodes(condition) + count_statements_expr_nodes(body)
             }
+            primer_ir::StatementKind::Break | primer_ir::StatementKind::Continue => 0,
         })
         .sum()
 }

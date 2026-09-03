@@ -103,11 +103,10 @@ pub fn lower(program: &Program) -> BytecodeProgram {
     let mut compiler = Compiler {
         slot_map,
         instructions: Vec::new(),
+        loops: Vec::new(),
     };
 
-    for statement in &program.statements {
-        compiler.emit_statement(statement);
-    }
+    compiler.emit_statements(&program.statements);
 
     compiler
         .instructions
@@ -152,10 +151,26 @@ pub fn format_program(program: &BytecodeProgram) -> String {
 struct Compiler {
     slot_map: HashMap<BindingId, usize>,
     instructions: Vec<Instruction>,
+    loops: Vec<LoopContext>,
+}
+
+struct LoopContext {
+    continue_target: usize,
+    break_jumps: Vec<usize>,
 }
 
 impl Compiler {
-    fn emit_statement(&mut self, statement: &Statement) {
+    fn emit_statements(&mut self, statements: &[Statement]) -> bool {
+        for statement in statements {
+            if self.emit_statement(statement) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn emit_statement(&mut self, statement: &Statement) -> bool {
         match &statement.kind {
             StatementKind::Binding { id, value, .. } => {
                 self.emit_expr(value);
@@ -167,6 +182,7 @@ impl Compiler {
                     .expect("binding must have a bytecode slot");
 
                 self.emit_source(InstructionKind::Store(slot), statement.span);
+                false
             }
 
             StatementKind::Assignment { id, value, .. } => {
@@ -179,12 +195,14 @@ impl Compiler {
                     .expect("assignment target must have a bytecode slot");
 
                 self.emit_source(InstructionKind::Assign(slot), statement.span);
+                false
             }
 
             StatementKind::Print { value } => {
                 self.emit_expr(value);
 
                 self.emit_source(InstructionKind::Print(value.ty.into()), statement.span);
+                false
             }
 
             StatementKind::If {
@@ -196,25 +214,31 @@ impl Compiler {
                 let false_jump = self.instructions.len();
                 self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
 
-                for statement in then_body {
-                    self.emit_statement(statement);
-                }
+                let then_terminates = self.emit_statements(then_body);
 
                 if else_body.is_empty() {
                     let end = self.instructions.len();
                     self.patch_jump(false_jump, end);
+                    false
                 } else {
-                    let end_jump = self.instructions.len();
-                    self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                    let end_jump = if then_terminates {
+                        None
+                    } else {
+                        let index = self.instructions.len();
+                        self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                        Some(index)
+                    };
                     let else_start = self.instructions.len();
                     self.patch_jump(false_jump, else_start);
 
-                    for statement in else_body {
-                        self.emit_statement(statement);
-                    }
+                    let else_terminates = self.emit_statements(else_body);
 
                     let end = self.instructions.len();
-                    self.patch_jump(end_jump, end);
+                    if let Some(end_jump) = end_jump {
+                        self.patch_jump(end_jump, end);
+                    }
+
+                    then_terminates && else_terminates
                 }
             }
 
@@ -224,13 +248,44 @@ impl Compiler {
                 let end_jump = self.instructions.len();
                 self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
 
-                for statement in body {
-                    self.emit_statement(statement);
-                }
+                self.loops.push(LoopContext {
+                    continue_target: condition_start,
+                    break_jumps: Vec::new(),
+                });
+                let body_terminates = self.emit_statements(body);
+                let loop_context = self.loops.pop().expect("while loop context must exist");
 
-                self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+                if !body_terminates {
+                    self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+                }
                 let end = self.instructions.len();
                 self.patch_jump(end_jump, end);
+                for break_jump in loop_context.break_jumps {
+                    self.patch_jump(break_jump, end);
+                }
+
+                false
+            }
+
+            StatementKind::Break => {
+                let jump = self.instructions.len();
+                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.loops
+                    .last_mut()
+                    .expect("semantic analysis rejects break outside a loop")
+                    .break_jumps
+                    .push(jump);
+                true
+            }
+
+            StatementKind::Continue => {
+                let target = self
+                    .loops
+                    .last()
+                    .expect("semantic analysis rejects continue outside a loop")
+                    .continue_target;
+                self.emit_source(InstructionKind::Jump(target), statement.span);
+                true
             }
         }
     }
@@ -363,7 +418,10 @@ fn collect_slots(
             StatementKind::While { body, .. } => {
                 collect_slots(body, slots, slot_map);
             }
-            StatementKind::Assignment { .. } | StatementKind::Print { .. } => {}
+            StatementKind::Assignment { .. }
+            | StatementKind::Print { .. }
+            | StatementKind::Break
+            | StatementKind::Continue => {}
         }
     }
 }

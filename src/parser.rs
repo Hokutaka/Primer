@@ -39,6 +39,8 @@ impl Parser {
             TokenKind::Print => self.parse_print(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Break => self.parse_loop_control(StmtKind::Break),
+            TokenKind::Continue => self.parse_loop_control(StmtKind::Continue),
             other => Err(self.error(format!("expected statement, found {other:?}"))),
         }
     }
@@ -180,6 +182,16 @@ impl Parser {
 
         Ok(Stmt {
             kind: StmtKind::While { condition, body },
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_loop_control(&mut self, kind: StmtKind) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        let end = self.expect_simple(TokenKind::Semicolon)?.end();
+
+        Ok(Stmt {
+            kind,
             span: Span::new(start, end),
         })
     }
@@ -620,6 +632,20 @@ mod tests {
         assert_eq!(condition.kind, ExprKind::Boolean(true));
         assert_eq!(body.len(), 1);
         assert_eq!(program.statements[0].span, Span::new(0, 24));
+    }
+
+    #[test]
+    fn parses_break_and_continue() {
+        let program = parse(lex("while true { continue; break; }").unwrap()).unwrap();
+
+        let StmtKind::While { body, .. } = &program.statements[0].kind else {
+            panic!("expected while statement");
+        };
+
+        assert_eq!(body[0].kind, StmtKind::Continue);
+        assert_eq!(body[1].kind, StmtKind::Break);
+        assert_eq!(body[0].span, Span::new(13, 22));
+        assert_eq!(body[1].span, Span::new(23, 29));
     }
 
     #[test]

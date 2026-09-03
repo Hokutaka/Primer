@@ -88,6 +88,7 @@ Primer currently supports:
 - `==`, `!=`, `<`, `<=`, `>`, and `>=`;
 - unary `!`;
 - `if` / `else` and block scope;
+- `while` with `break` / `continue` targeting the innermost loop;
 - parentheses;
 - `print(expr);`;
 - `//` line comments;
@@ -118,7 +119,7 @@ print(double);
 print(inferred);
 ```
 
-Examples that run using the current language include [square-root approximation](examples/square_root.prim), [square-root approximation with `while`](examples/while_square_root.prim), [an f32/f64 logistic map](examples/logistic_map.prim), [booleans and comparisons](examples/boolean_comparisons.prim), and [conditionals and scope](examples/conditional.prim).
+Examples that run using the current language include [square-root approximation](examples/square_root.prim), [square-root approximation with `while`](examples/while_square_root.prim), [loop control with `break` and `continue`](examples/loop_control.prim), [an f32/f64 logistic map](examples/logistic_map.prim), [booleans and comparisons](examples/boolean_comparisons.prim), and [conditionals and scope](examples/conditional.prim).
 
 The type field is always required. `infer` explicitly requests inference rather than omitting the type:
 

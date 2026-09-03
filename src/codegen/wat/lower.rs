@@ -14,9 +14,13 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     );
 
     let mut instructions = Vec::new();
+    let mut control = ControlContext {
+        next_loop_id: 0,
+        loops: Vec::new(),
+    };
 
     for statement in &program.statements {
-        lower_statement(statement, &local_names, &mut instructions);
+        lower_statement(statement, &local_names, &mut instructions, &mut control);
     }
 
     Module {
@@ -25,10 +29,16 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     }
 }
 
+struct ControlContext {
+    next_loop_id: usize,
+    loops: Vec<usize>,
+}
+
 fn lower_statement(
     statement: &primer_ir::Statement,
     local_names: &std::collections::HashMap<primer_ir::BindingId, String>,
     instructions: &mut Vec<Instruction>,
+    control: &mut ControlContext,
 ) {
     match &statement.kind {
         primer_ir::StatementKind::Binding { id, value, .. } => {
@@ -55,10 +65,10 @@ fn lower_statement(
             let mut then_instructions = Vec::new();
             let mut else_instructions = Vec::new();
             for statement in then_body {
-                lower_statement(statement, local_names, &mut then_instructions);
+                lower_statement(statement, local_names, &mut then_instructions, control);
             }
             for statement in else_body {
-                lower_statement(statement, local_names, &mut else_instructions);
+                lower_statement(statement, local_names, &mut else_instructions, control);
             }
             instructions.push(Instruction::If {
                 then_instructions,
@@ -67,16 +77,37 @@ fn lower_statement(
         }
 
         primer_ir::StatementKind::While { condition, body } => {
+            let id = control.next_loop_id;
+            control.next_loop_id += 1;
             let mut condition_instructions = Vec::new();
             let mut body_instructions = Vec::new();
             lower_expr(condition, local_names, &mut condition_instructions);
+            control.loops.push(id);
             for statement in body {
-                lower_statement(statement, local_names, &mut body_instructions);
+                lower_statement(statement, local_names, &mut body_instructions, control);
             }
+            control.loops.pop().expect("while loop context must exist");
             instructions.push(Instruction::While {
+                id,
                 condition_instructions,
                 body_instructions,
             });
+        }
+
+        primer_ir::StatementKind::Break => {
+            let id = *control
+                .loops
+                .last()
+                .expect("semantic analysis rejects break outside a loop");
+            instructions.push(Instruction::Break(id));
+        }
+
+        primer_ir::StatementKind::Continue => {
+            let id = *control
+                .loops
+                .last()
+                .expect("semantic analysis rejects continue outside a loop");
+            instructions.push(Instruction::Continue(id));
         }
     }
 }
@@ -243,7 +274,9 @@ fn collect_locals(
                 collect_locals(body, locals, local_names, name_counts);
             }
             primer_ir::StatementKind::Assignment { .. }
-            | primer_ir::StatementKind::Print { .. } => {}
+            | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Break
+            | primer_ir::StatementKind::Continue => {}
         }
     }
 }

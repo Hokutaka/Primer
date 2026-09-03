@@ -88,6 +88,7 @@ Primerは現在、次の機能を備えています。
 - `==`、`!=`、`<`、`<=`、`>`、`>=`
 - 単項`!`
 - `if` / `else`とブロックスコープ
+- `while`と、最内側のループを対象にする`break` / `continue`
 - 丸括弧
 - `print(expr);`
 - `//`による行コメント
@@ -118,7 +119,7 @@ print(double);
 print(inferred);
 ```
 
-現在の機能だけで動く例として、[平方根の近似](examples/square_root.prim)、[`while`による平方根の近似](examples/while_square_root.prim)、[f32・f64のロジスティック写像](examples/logistic_map.prim)、[真偽値と比較演算](examples/boolean_comparisons.prim)、[条件分岐とスコープ](examples/conditional.prim)があります。
+現在の機能だけで動く例として、[平方根の近似](examples/square_root.prim)、[`while`による平方根の近似](examples/while_square_root.prim)、[`break`と`continue`によるループ制御](examples/loop_control.prim)、[f32・f64のロジスティック写像](examples/logistic_map.prim)、[真偽値と比較演算](examples/boolean_comparisons.prim)、[条件分岐とスコープ](examples/conditional.prim)があります。
 
 型の指定は常に必要です。型を省略する代わりに、`infer`で型推論を明示的に要求します。
 

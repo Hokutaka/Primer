@@ -7,6 +7,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "boolean-comparisons",
     "conditional-scope",
     "while-loop",
+    "loop-control",
 ];
 
 fn fixture_path(case_name: &str) -> PathBuf {

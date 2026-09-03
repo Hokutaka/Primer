@@ -14,6 +14,8 @@ statement   := binding
              | "print" "(" expression ")" ";"
              | if_statement
              | while_statement
+             | "break" ";"
+             | "continue" ";"
 
 if_statement := "if" expression block ("else" block)?
 
@@ -121,6 +123,24 @@ while count < 3 {
 
 The condition of a `while` must also be `bool`. A `while` is a statement and does not produce a value.
 
+`break;` exits the innermost loop. `continue;` proceeds to the condition evaluation of the innermost loop. Neither may be used outside a loop.
+
+```primer
+while value < 10 {
+    value = value + 1;
+
+    if value < 3 {
+        continue;
+    }
+
+    if value > 5 {
+        break;
+    }
+}
+```
+
+Primer currently has no labeled `break` or `continue` for naming an outer loop.
+
 Each braced block creates a new scope. Bindings declared inside a block are not visible outside it. An inner block can read an outer binding and can reassign it when it is `mut`.
 
 An inner block may declare a distinct binding with the same name as an outer binding.
@@ -137,7 +157,7 @@ if true {
 print(value);           // the i64 value
 ```
 
-Primer IR assigns deterministic IDs to bindings so references remain unambiguous when names are reused. Structured `if` and `while` statements remain visible in Primer IR. During lowering into Bytecode and backend IRs, an `if` becomes branches and a merge point, while a `while` becomes a conditional branch and a path from its body back to its condition.
+Primer IR assigns deterministic IDs to bindings so references remain unambiguous when names are reused. Structured `if`, `while`, `break`, and `continue` statements remain visible in Primer IR. During lowering into Bytecode and backend IRs, an `if` becomes branches and a merge point, a `while` becomes a conditional branch and a path from its body back to its condition, and `break` and `continue` become jumps to their target loop.
 
 ## Types
 

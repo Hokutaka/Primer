@@ -71,7 +71,7 @@ The following rules are part of the compiler design:
 6. Public observations are Primer IR text and emitted backend artifacts.
 7. Optimization is not implicit. A future optimization stage must be an explicit, observable pass.
 8. Primer IR gives each binding a deterministic compilation-local ID so references remain explicit across shadowing.
-9. Structured `if` and `while` statements remain in Primer IR; branches, merge points, and back edges are introduced during lowering into Bytecode and each backend IR.
+9. Structured `if`, `while`, `break`, and `continue` statements remain in Primer IR; branches, merge points, back edges, and loop exits are introduced during lowering into Bytecode and each backend IR.
 
 Conceptually, every backend follows the same structure:
 

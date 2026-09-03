@@ -33,9 +33,12 @@ pub enum Instruction {
         else_instructions: Vec<Instruction>,
     },
     While {
+        id: usize,
         condition_instructions: Vec<Instruction>,
         body_instructions: Vec<Instruction>,
     },
+    Break(usize),
+    Continue(usize),
 
     I64Add,
     I64Sub,
