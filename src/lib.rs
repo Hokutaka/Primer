@@ -128,7 +128,7 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunError, compile_to_c, compile_to_ir_text, run_vm};
+    use super::{RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, run_vm};
     use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
 
     #[test]
@@ -198,5 +198,33 @@ mod tests {
             "output route `emit-c` does not support product types yet"
         );
         assert_eq!(error.primary_span(), Some(Span::new(0, 22)));
+    }
+
+    #[test]
+    fn product_types_run_with_value_semantics() {
+        let source = "
+            type Point { x: i64, y: i64 = 2, }
+            mut a: Point = Point { x: 1, };
+            b: Point = a;
+            a = Point { x: 3, y: 4, };
+            print(b.x);
+            print(a.y);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "1\n4\n");
+    }
+
+    #[test]
+    fn bytecode_exposes_product_construction_and_field_access() {
+        let source = "
+            type Point { x: i64, y: i64 = 2, }
+            point: Point = Point { x: 1, };
+            print(point.y);
+        ";
+        let bytecode = compile_to_bytecode_text(source).unwrap();
+
+        assert!(bytecode.contains(".type 0 Point"));
+        assert!(bytecode.contains("construct %Point@0 [%x@0:explicit, %y@1:default]"));
+        assert!(bytecode.contains("field.get %Point@0.%y@1"));
     }
 }

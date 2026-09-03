@@ -37,6 +37,12 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::InvalidSlot { slot } => {
             format!("Primer VM tried to access slot {slot}, but that slot does not exist")
         }
+        VmErrorKind::InvalidType { type_id } => {
+            format!("Primer VM tried to use product type {type_id}, but that type does not exist")
+        }
+        VmErrorKind::InvalidField { type_id, field_id } => format!(
+            "Primer VM tried to use field {field_id} of product type {type_id}, but that field does not exist"
+        ),
         VmErrorKind::UninitializedSlot { slot } => {
             format!("Primer VM tried to read slot {slot} before it was initialized")
         }
@@ -74,12 +80,13 @@ fn render_message(error: &VmError) -> String {
     }
 }
 
-const fn type_name(ty: Type) -> &'static str {
+fn type_name(ty: Type) -> String {
     match ty {
-        Type::Bool => "bool",
-        Type::I64 => "i64",
-        Type::F32 => "f32",
-        Type::F64 => "f64",
+        Type::Bool => "bool".into(),
+        Type::I64 => "i64".into(),
+        Type::F32 => "f32".into(),
+        Type::F64 => "f64".into(),
+        Type::Named(id) => format!("product type {id}"),
     }
 }
 

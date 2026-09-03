@@ -12,12 +12,26 @@ pub enum Type {
     I64,
     F32,
     F64,
+    Named(usize),
 }
 
 #[derive(Debug, Clone)]
 pub struct BytecodeProgram {
+    pub type_definitions: Vec<TypeDefinition>,
     pub slots: Vec<Slot>,
     pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDefinition {
+    pub name: String,
+    pub fields: Vec<FieldDefinition>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldDefinition {
+    pub name: String,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone)]
@@ -71,6 +85,14 @@ pub enum InstructionKind {
     Load(usize),
     Store(usize),
     Assign(usize),
+    Construct {
+        type_id: usize,
+        fields: Vec<ConstructField>,
+    },
+    FieldGet {
+        type_id: usize,
+        field_id: usize,
+    },
 
     Add(Type),
     Subtract(Type),
@@ -95,10 +117,34 @@ pub enum InstructionKind {
     Halt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConstructField {
+    pub field_id: usize,
+    pub origin: FieldOrigin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldOrigin {
+    Explicit,
+    Default,
+}
+
 pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
-    if let Some(diagnostic) = program.unsupported_product_type("emit-bytecode") {
-        return Err(diagnostic);
-    }
+    let type_definitions = program
+        .type_definitions
+        .iter()
+        .map(|definition| TypeDefinition {
+            name: definition.name.clone(),
+            fields: definition
+                .fields
+                .iter()
+                .map(|field| FieldDefinition {
+                    name: field.name.clone(),
+                    ty: field.ty.into(),
+                })
+                .collect(),
+        })
+        .collect();
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
 
@@ -117,6 +163,7 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
         .push(Instruction::synthetic(InstructionKind::Halt));
 
     Ok(BytecodeProgram {
+        type_definitions,
         slots,
         instructions: compiler.instructions,
     })
@@ -126,6 +173,19 @@ pub fn format_program(program: &BytecodeProgram) -> String {
     let mut output = String::new();
 
     writeln!(output, "; Primer bytecode v0.1").unwrap();
+
+    for (type_id, definition) in program.type_definitions.iter().enumerate() {
+        writeln!(output, "\n.type {type_id} {}", definition.name).unwrap();
+        for (field_id, field) in definition.fields.iter().enumerate() {
+            writeln!(
+                output,
+                ".field {type_id}.{field_id} {} {}",
+                field.name,
+                type_name(field.ty, program)
+            )
+            .unwrap();
+        }
+    }
 
     if !program.slots.is_empty() {
         writeln!(output).unwrap();
@@ -137,7 +197,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
                 output.push_str("mut ");
             }
 
-            writeln!(output, "{} {}", slot.name, type_name(slot.ty)).unwrap();
+            writeln!(output, "{} {}", slot.name, type_name(slot.ty, program)).unwrap();
         }
     }
 
@@ -383,6 +443,46 @@ impl Compiler {
                 self.emit_source(InstructionKind::Load(slot), expr.span);
             }
 
+            ExprKind::Construct {
+                type_id, fields, ..
+            } => {
+                for field in fields {
+                    self.emit_expr(&field.value);
+                }
+                self.emit_source(
+                    InstructionKind::Construct {
+                        type_id: type_id.0,
+                        fields: fields
+                            .iter()
+                            .map(|field| ConstructField {
+                                field_id: field.id.0,
+                                origin: match field.origin {
+                                    ir::FieldValueOrigin::Explicit { .. } => FieldOrigin::Explicit,
+                                    ir::FieldValueOrigin::Default { .. } => FieldOrigin::Default,
+                                },
+                            })
+                            .collect(),
+                    },
+                    expr.span,
+                );
+            }
+
+            ExprKind::FieldAccess {
+                type_id,
+                field_id,
+                base,
+                ..
+            } => {
+                self.emit_expr(base);
+                self.emit_source(
+                    InstructionKind::FieldGet {
+                        type_id: type_id.0,
+                        field_id: field_id.0,
+                    },
+                    expr.span,
+                );
+            }
+
             ExprKind::Unary { op, value } => {
                 self.emit_expr(value);
 
@@ -414,9 +514,6 @@ impl Compiler {
                 };
 
                 self.emit_source(instruction, expr.span);
-            }
-            ExprKind::Construct { .. } | ExprKind::FieldAccess { .. } => {
-                unreachable!("product types are rejected before bytecode lowering");
             }
         }
     }
@@ -489,9 +586,7 @@ impl From<ir::Type> for Type {
             ir::Type::I64 => Self::I64,
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
-            ir::Type::Named(_) => {
-                unreachable!("product types are rejected before bytecode lowering")
-            }
+            ir::Type::Named(id) => Self::Named(id.0),
         }
     }
 }
@@ -530,48 +625,84 @@ fn format_instruction(
             writeln!(output, "assign {slot}      ; {}", program.slots[*slot].name,).unwrap();
         }
 
+        InstructionKind::Construct { type_id, fields } => {
+            write!(
+                output,
+                "construct {} [",
+                type_name(Type::Named(*type_id), program)
+            )
+            .unwrap();
+            for (index, field) in fields.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                let definition = &program.type_definitions[*type_id];
+                let origin = match field.origin {
+                    FieldOrigin::Explicit => "explicit",
+                    FieldOrigin::Default => "default",
+                };
+                write!(
+                    output,
+                    "%{}@{}:{origin}",
+                    definition.fields[field.field_id].name, field.field_id
+                )
+                .unwrap();
+            }
+            writeln!(output, "]").unwrap();
+        }
+
+        InstructionKind::FieldGet { type_id, field_id } => {
+            let definition = &program.type_definitions[*type_id];
+            writeln!(
+                output,
+                "field.get %{}@{}.%{}@{}",
+                definition.name, type_id, definition.fields[*field_id].name, field_id
+            )
+            .unwrap();
+        }
+
         InstructionKind::Add(ty) => {
-            writeln!(output, "add.{}", type_name(*ty),).unwrap();
+            writeln!(output, "add.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Subtract(ty) => {
-            writeln!(output, "sub.{}", type_name(*ty),).unwrap();
+            writeln!(output, "sub.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Multiply(ty) => {
-            writeln!(output, "mul.{}", type_name(*ty),).unwrap();
+            writeln!(output, "mul.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Divide(ty) => {
-            writeln!(output, "div.{}", type_name(*ty),).unwrap();
+            writeln!(output, "div.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Equal(ty) => {
-            writeln!(output, "eq.{}", type_name(*ty),).unwrap();
+            writeln!(output, "eq.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::NotEqual(ty) => {
-            writeln!(output, "ne.{}", type_name(*ty),).unwrap();
+            writeln!(output, "ne.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Less(ty) => {
-            writeln!(output, "lt.{}", type_name(*ty),).unwrap();
+            writeln!(output, "lt.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::LessEqual(ty) => {
-            writeln!(output, "le.{}", type_name(*ty),).unwrap();
+            writeln!(output, "le.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Greater(ty) => {
-            writeln!(output, "gt.{}", type_name(*ty),).unwrap();
+            writeln!(output, "gt.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::GreaterEqual(ty) => {
-            writeln!(output, "ge.{}", type_name(*ty),).unwrap();
+            writeln!(output, "ge.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Negate(ty) => {
-            writeln!(output, "neg.{}", type_name(*ty),).unwrap();
+            writeln!(output, "neg.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::Not => {
@@ -579,7 +710,7 @@ fn format_instruction(
         }
 
         InstructionKind::Print(ty) => {
-            writeln!(output, "print.{}", type_name(*ty),).unwrap();
+            writeln!(output, "print.{}", type_name(*ty, program),).unwrap();
         }
 
         InstructionKind::JumpIfFalse(target) => {
@@ -596,12 +727,13 @@ fn format_instruction(
     }
 }
 
-fn type_name(ty: Type) -> &'static str {
+fn type_name(ty: Type, program: &BytecodeProgram) -> String {
     match ty {
-        Type::Bool => "bool",
-        Type::I64 => "i64",
-        Type::F32 => "f32",
-        Type::F64 => "f64",
+        Type::Bool => "bool".into(),
+        Type::I64 => "i64".into(),
+        Type::F32 => "f32".into(),
+        Type::F64 => "f64".into(),
+        Type::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
     }
 }
 
