@@ -268,6 +268,9 @@ impl Lowerer<'_> {
                 self.instructions.push(Instruction::Jump(target));
                 true
             }
+            primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
+                unreachable!("functions are rejected before QBE lowering")
+            }
         }
     }
 
@@ -423,6 +426,9 @@ impl Lowerer<'_> {
                         }
                     }
                 }
+            }
+            primer_ir::ExprKind::Call { .. } => {
+                unreachable!("functions are rejected before QBE lowering")
             }
         }
     }
@@ -585,6 +591,8 @@ fn collect_slots(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }

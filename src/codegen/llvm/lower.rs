@@ -291,6 +291,9 @@ impl Lowerer {
                 self.instructions.push(Instruction::Jump { label: target });
                 true
             }
+            primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
+                unreachable!("functions are rejected before LLVM lowering")
+            }
         }
     }
 
@@ -470,6 +473,9 @@ impl Lowerer {
                     operand: Operand::Temp(dest),
                 }
             }
+            primer_ir::ExprKind::Call { .. } => {
+                unreachable!("functions are rejected before LLVM lowering")
+            }
         }
     }
 
@@ -593,6 +599,8 @@ fn collect_slots(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }

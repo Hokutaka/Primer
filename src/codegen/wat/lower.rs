@@ -224,6 +224,9 @@ impl LoweringContext<'_> {
                     id: target.id,
                 });
             }
+            primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
+                unreachable!("functions are rejected before WAT lowering")
+            }
         }
     }
 
@@ -349,6 +352,9 @@ impl LoweringContext<'_> {
                 debug_assert_eq!(left_ty, right_ty);
                 instructions.push(lower_binary(*op, left.ty));
                 Value::Scalar(scalar_type(expr.ty))
+            }
+            primer_ir::ExprKind::Call { .. } => {
+                unreachable!("functions are rejected before WAT lowering")
             }
         }
     }
@@ -479,6 +485,8 @@ fn collect_locations(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }

@@ -8,7 +8,8 @@ use crate::{
 
 use super::{
     BinaryOp, BindingId, Expr, ExprKind, FieldDefinition, FieldId, FieldValue, FieldValueOrigin,
-    Program, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
+    FunctionDefinition, FunctionId, Parameter, Program, ReturnType, Statement, StatementKind, Type,
+    TypeDefinition, TypeId, UnaryOp,
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
@@ -17,6 +18,7 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     let mut builder = Builder {
         scopes: vec![HashMap::new()],
         next_binding_id: 0,
+        current_return_type: None,
         model: &model,
     };
 
@@ -26,17 +28,27 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
         .map(|definition| builder.build_type_definition(definition))
         .collect::<Result<_, _>>()?;
 
+    let function_definitions = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            ast::Item::FunctionDefinition(function) => Some(builder.build_function(function)),
+            ast::Item::TypeDefinition(_) | ast::Item::Statement(_) => None,
+        })
+        .collect::<Result<_, _>>()?;
+
     let statements = program
         .items
         .iter()
         .filter_map(|item| match item {
-            ast::Item::TypeDefinition(_) => None,
+            ast::Item::TypeDefinition(_) | ast::Item::FunctionDefinition(_) => None,
             ast::Item::Statement(statement) => Some(builder.build_statement(statement)),
         })
         .collect::<Result<_, _>>()?;
 
     Ok(Program {
         type_definitions,
+        function_definitions,
         statements,
     })
 }
@@ -50,10 +62,62 @@ struct ResolvedBinding {
 struct Builder<'a> {
     scopes: Vec<HashMap<String, ResolvedBinding>>,
     next_binding_id: usize,
+    current_return_type: Option<semantic::ReturnType>,
     model: &'a SemanticModel,
 }
 
 impl Builder<'_> {
+    fn build_function(
+        &mut self,
+        function: &ast::FunctionDefinition,
+    ) -> Result<FunctionDefinition, Diagnostic> {
+        let semantic_id = self
+            .model
+            .resolve_function_name(&function.name, function.name_span)?;
+        let definition = self.model.function_definition(semantic_id);
+        let previous_scopes = std::mem::replace(&mut self.scopes, vec![HashMap::new()]);
+        let previous_return_type = self.current_return_type.replace(definition.return_type);
+
+        let result = (|| {
+            let mut parameters = Vec::new();
+            for parameter in &definition.parameters {
+                let id = BindingId(self.next_binding_id);
+                self.next_binding_id += 1;
+                self.scopes[0].insert(
+                    parameter.name.clone(),
+                    ResolvedBinding {
+                        id,
+                        info: BindingInfo {
+                            ty: parameter.ty,
+                            mutable: false,
+                        },
+                    },
+                );
+                parameters.push(Parameter {
+                    id,
+                    name: parameter.name.clone(),
+                    ty: ir_type(parameter.ty),
+                    span: parameter.span,
+                });
+            }
+            Ok(FunctionDefinition {
+                id: FunctionId(definition.id.0),
+                name: definition.name.clone(),
+                parameters,
+                return_type: match definition.return_type {
+                    semantic::ReturnType::Void => ReturnType::Void,
+                    semantic::ReturnType::Value(ty) => ReturnType::Value(ir_type(ty)),
+                },
+                body: self.build_statements(&function.body)?,
+                span: function.span,
+            })
+        })();
+
+        self.scopes = previous_scopes;
+        self.current_return_type = previous_return_type;
+        result
+    }
+
     fn build_type_definition(
         &self,
         definition: &semantic::TypeDefinition,
@@ -149,6 +213,33 @@ impl Builder<'_> {
                 StatementKind::Print {
                     value: self.build_expr(value, Some(ty), &bindings)?,
                 }
+            }
+            ast::StmtKind::Call { value } => {
+                let ast::ExprKind::Call {
+                    name,
+                    name_span,
+                    arguments,
+                } = &value.kind
+                else {
+                    unreachable!("parser only creates call statements from calls")
+                };
+                let (function_id, arguments) =
+                    self.build_call(name, *name_span, arguments, &bindings)?;
+                StatementKind::Call {
+                    function_id,
+                    function_name: name.clone(),
+                    arguments,
+                }
+            }
+            ast::StmtKind::Return { value } => {
+                let value = match (self.current_return_type, value) {
+                    (Some(semantic::ReturnType::Value(ty)), Some(value)) => {
+                        Some(self.build_expr(value, Some(ty), &bindings)?)
+                    }
+                    (_, None) => None,
+                    _ => unreachable!("semantic analysis validates return statements"),
+                };
+                StatementKind::Return { value }
             }
             ast::StmtKind::If {
                 condition,
@@ -299,6 +390,19 @@ impl Builder<'_> {
                     base: Box::new(self.build_expr(base, None, bindings)?),
                 }
             }
+            ast::ExprKind::Call {
+                name,
+                name_span,
+                arguments,
+            } => {
+                let (function_id, arguments) =
+                    self.build_call(name, *name_span, arguments, bindings)?;
+                ExprKind::Call {
+                    function_id,
+                    function_name: name.clone(),
+                    arguments,
+                }
+            }
             ast::ExprKind::Unary { op, value } => ExprKind::Unary {
                 op: (*op).into(),
                 value: Box::new(self.build_expr(value, Some(ty), bindings)?),
@@ -330,6 +434,23 @@ impl Builder<'_> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+
+    fn build_call(
+        &self,
+        name: &str,
+        name_span: crate::source::Span,
+        arguments: &[ast::Expr],
+        bindings: &Bindings,
+    ) -> Result<(FunctionId, Vec<Expr>), Diagnostic> {
+        let semantic_id = self.model.resolve_function_name(name, name_span)?;
+        let function = self.model.function_definition(semantic_id);
+        let arguments = arguments
+            .iter()
+            .zip(&function.parameters)
+            .map(|(argument, parameter)| self.build_expr(argument, Some(parameter.ty), bindings))
+            .collect::<Result<_, _>>()?;
+        Ok((FunctionId(semantic_id.0), arguments))
     }
 
     fn visible_bindings(&self) -> Bindings {

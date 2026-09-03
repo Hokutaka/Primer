@@ -391,6 +391,9 @@ impl Compiler {
                     .push(jump);
                 true
             }
+            StatementKind::Call { .. } | StatementKind::Return { .. } => {
+                unreachable!("functions are rejected before bytecode lowering")
+            }
         }
     }
 
@@ -515,6 +518,9 @@ impl Compiler {
 
                 self.emit_source(instruction, expr.span);
             }
+            ExprKind::Call { .. } => {
+                unreachable!("functions are rejected before bytecode lowering")
+            }
         }
     }
 
@@ -573,6 +579,8 @@ fn collect_slots(
             }
             StatementKind::Assignment { .. }
             | StatementKind::Print { .. }
+            | StatementKind::Call { .. }
+            | StatementKind::Return { .. }
             | StatementKind::Break
             | StatementKind::Continue => {}
         }

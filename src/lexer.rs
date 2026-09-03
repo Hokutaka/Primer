@@ -3,6 +3,9 @@ use crate::{diagnostic::Diagnostic, source::Span};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Type,
+    Fn,
+    Return,
+    Void,
     Print,
     Mut,
     If,
@@ -33,6 +36,7 @@ pub enum TokenKind {
 
     Plus,
     Minus,
+    Arrow,
     Star,
     Slash,
 
@@ -145,7 +149,12 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
 
             b'-' => {
                 i += 1;
-                TokenKind::Minus
+                if bytes.get(i) == Some(&b'>') {
+                    i += 1;
+                    TokenKind::Arrow
+                } else {
+                    TokenKind::Minus
+                }
             }
 
             b'*' => {
@@ -270,6 +279,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
 
                 match &source[start..i] {
                     "type" => TokenKind::Type,
+                    "fn" => TokenKind::Fn,
+                    "return" => TokenKind::Return,
+                    "void" => TokenKind::Void,
                     "print" => TokenKind::Print,
                     "mut" => TokenKind::Mut,
                     "if" => TokenKind::If,

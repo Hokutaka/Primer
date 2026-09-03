@@ -15,6 +15,9 @@ pub struct TypeId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldId(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FunctionId(pub usize);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Bool,
@@ -50,11 +53,37 @@ pub struct TypeDefinition {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnType {
+    Void,
+    Value(Type),
+}
+
+#[derive(Debug, Clone)]
+pub struct ParameterDefinition {
+    pub name: String,
+    pub name_span: Span,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionDefinition {
+    pub id: FunctionId,
+    pub name: String,
+    pub name_span: Span,
+    pub parameters: Vec<ParameterDefinition>,
+    pub return_type: ReturnType,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct SemanticModel {
     pub bindings: Bindings,
     pub type_definitions: Vec<TypeDefinition>,
+    pub function_definitions: Vec<FunctionDefinition>,
     type_names: HashMap<String, TypeId>,
+    function_names: HashMap<String, FunctionId>,
 }
 
 impl SemanticModel {
@@ -64,6 +93,17 @@ impl SemanticModel {
 
     pub fn type_definition(&self, id: TypeId) -> &TypeDefinition {
         &self.type_definitions[id.0]
+    }
+
+    pub fn function_definition(&self, id: FunctionId) -> &FunctionDefinition {
+        &self.function_definitions[id.0]
+    }
+
+    pub fn resolve_function_name(&self, name: &str, span: Span) -> SemanticResult<FunctionId> {
+        self.function_names
+            .get(name)
+            .copied()
+            .ok_or_else(|| Diagnostic::new(format!("unknown function `{name}`"), span))
     }
 
     pub fn resolve_type_name(&self, name: &str, span: Span) -> SemanticResult<TypeId> {
@@ -104,26 +144,195 @@ pub fn check(program: &Program) -> SemanticResult<Bindings> {
 pub fn analyze(program: &Program) -> SemanticResult<SemanticModel> {
     let type_names = register_type_names(program)?;
     let type_definitions = resolve_type_definitions(program, &type_names)?;
+    let function_names = register_function_names(program)?;
+    let function_definitions = resolve_function_definitions(program, &type_names, &function_names)?;
     let mut model = SemanticModel {
         bindings: HashMap::new(),
         type_definitions,
+        function_definitions,
         type_names,
+        function_names,
     };
 
     reject_infinite_types(&model)?;
     check_defaults(&model)?;
 
+    let has_main = model.function_names.contains_key("main");
+    let has_top_level_statements = program
+        .items
+        .iter()
+        .any(|item| matches!(item, Item::Statement(_)));
+    if has_main && has_top_level_statements {
+        let main = model.function_definition(model.function_names["main"]);
+        return Err(Diagnostic::new(
+            "an explicit `main` function cannot be combined with top-level statements",
+            main.name_span,
+        ));
+    }
+
     let mut scopes = vec![HashMap::new()];
     for item in &program.items {
         match item {
             Item::TypeDefinition(_) => {}
+            Item::FunctionDefinition(function) => {
+                check_function(function, &model)?;
+            }
             Item::Statement(statement) => {
-                check_statements(std::slice::from_ref(statement), &mut scopes, 0, &model)?;
+                check_statements(
+                    std::slice::from_ref(statement),
+                    &mut scopes,
+                    0,
+                    None,
+                    &model,
+                )?;
             }
         }
     }
     model.bindings = scopes.pop().expect("top-level scope must exist");
     Ok(model)
+}
+
+fn register_function_names(program: &Program) -> SemanticResult<HashMap<String, FunctionId>> {
+    let mut names = HashMap::new();
+    for item in &program.items {
+        let Item::FunctionDefinition(definition) = item else {
+            continue;
+        };
+        let id = FunctionId(names.len());
+        if names.insert(definition.name.clone(), id).is_some() {
+            return Err(Diagnostic::new(
+                format!("duplicate function `{}`", definition.name),
+                definition.name_span,
+            ));
+        }
+    }
+    Ok(names)
+}
+
+fn resolve_function_definitions(
+    program: &Program,
+    type_names: &HashMap<String, TypeId>,
+    function_names: &HashMap<String, FunctionId>,
+) -> SemanticResult<Vec<FunctionDefinition>> {
+    let mut definitions = Vec::new();
+    for item in &program.items {
+        let Item::FunctionDefinition(definition) = item else {
+            continue;
+        };
+        if definition.parameters.len() > 4 {
+            return Err(Diagnostic::new(
+                "functions currently support at most four parameters",
+                definition.span,
+            ));
+        }
+        let mut parameter_names = HashMap::new();
+        let mut parameters = Vec::new();
+        for parameter in &definition.parameters {
+            if parameter_names.insert(parameter.name.clone(), ()).is_some() {
+                return Err(Diagnostic::new(
+                    format!("duplicate parameter `{}`", parameter.name),
+                    parameter.name_span,
+                ));
+            }
+            let ty = resolve_type_name(
+                &parameter.type_ref.name,
+                parameter.type_ref.span,
+                type_names,
+            )?;
+            if matches!(ty, Type::Named(_)) {
+                return Err(Diagnostic::new(
+                    "product types in function signatures are not supported yet",
+                    parameter.type_ref.span,
+                ));
+            }
+            parameters.push(ParameterDefinition {
+                name: parameter.name.clone(),
+                name_span: parameter.name_span,
+                ty,
+                span: parameter.span,
+            });
+        }
+        let return_type = match &definition.return_type {
+            ast::ReturnTypeRef::Void(_) => ReturnType::Void,
+            ast::ReturnTypeRef::Value(type_ref) => {
+                let ty = resolve_type_name(&type_ref.name, type_ref.span, type_names)?;
+                if matches!(ty, Type::Named(_)) {
+                    return Err(Diagnostic::new(
+                        "product types in function signatures are not supported yet",
+                        type_ref.span,
+                    ));
+                }
+                ReturnType::Value(ty)
+            }
+        };
+        let id = function_names[&definition.name];
+        if definition.name == "main" && (!parameters.is_empty() || return_type != ReturnType::Void)
+        {
+            return Err(Diagnostic::new(
+                "`main` must have no parameters and return void",
+                definition.span,
+            ));
+        }
+        definitions.push(FunctionDefinition {
+            id,
+            name: definition.name.clone(),
+            name_span: definition.name_span,
+            parameters,
+            return_type,
+            span: definition.span,
+        });
+    }
+    Ok(definitions)
+}
+
+fn check_function(function: &ast::FunctionDefinition, model: &SemanticModel) -> SemanticResult<()> {
+    let definition = model.function_definition(model.function_names[&function.name]);
+    let mut parameter_scope = HashMap::new();
+    for parameter in &definition.parameters {
+        parameter_scope.insert(
+            parameter.name.clone(),
+            BindingInfo {
+                ty: parameter.ty,
+                mutable: false,
+            },
+        );
+    }
+    let mut scopes = vec![parameter_scope];
+    check_statements(
+        &function.body,
+        &mut scopes,
+        0,
+        Some(definition.return_type),
+        model,
+    )?;
+    if matches!(definition.return_type, ReturnType::Value(_))
+        && !statements_guarantee_return(&function.body)
+    {
+        return Err(Diagnostic::new(
+            format!(
+                "function `{}` may finish without returning a value",
+                function.name
+            ),
+            function.span,
+        ));
+    }
+    Ok(())
+}
+
+fn statements_guarantee_return(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| match &statement.kind {
+        StmtKind::Return { .. } => true,
+        StmtKind::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            !else_body.is_empty()
+                && statements_guarantee_return(then_body)
+                && statements_guarantee_return(else_body)
+        }
+        _ => false,
+    })
 }
 
 fn register_type_names(program: &Program) -> SemanticResult<HashMap<String, TypeId>> {
@@ -290,6 +499,7 @@ fn check_statements(
     statements: &[Stmt],
     scopes: &mut Vec<Bindings>,
     loop_depth: usize,
+    return_type: Option<ReturnType>,
     model: &SemanticModel,
 ) -> SemanticResult<()> {
     for statement in statements {
@@ -389,6 +599,66 @@ fn check_statements(
                 }
             }
 
+            StmtKind::Call { value } => {
+                let ExprKind::Call {
+                    name,
+                    name_span,
+                    arguments,
+                } = &value.kind
+                else {
+                    unreachable!("parser only creates call statements from calls")
+                };
+                if let ReturnType::Value(ty) =
+                    check_call(name, *name_span, arguments, &bindings, model)?
+                {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "the {} result of function `{name}` must be used",
+                            model.type_name(ty)
+                        ),
+                        value.span,
+                    ));
+                }
+            }
+
+            StmtKind::Return { value } => {
+                let Some(expected) = return_type else {
+                    return Err(Diagnostic::new(
+                        "return can only be used inside a function",
+                        statement.span,
+                    ));
+                };
+                match (expected, value) {
+                    (ReturnType::Void, None) => {}
+                    (ReturnType::Void, Some(value)) => {
+                        return Err(Diagnostic::new(
+                            "a void function cannot return a value",
+                            value.span,
+                        ));
+                    }
+                    (ReturnType::Value(expected), Some(value)) => {
+                        let actual =
+                            model.type_of_expr_expected(value, &bindings, Some(expected))?;
+                        if actual != expected {
+                            return Err(Diagnostic::new(
+                                format!(
+                                    "return expects {}, found {}",
+                                    model.type_name(expected),
+                                    model.type_name(actual)
+                                ),
+                                value.span,
+                            ));
+                        }
+                    }
+                    (ReturnType::Value(expected), None) => {
+                        return Err(Diagnostic::new(
+                            format!("return requires a {} value", model.type_name(expected)),
+                            statement.span,
+                        ));
+                    }
+                }
+            }
+
             StmtKind::If {
                 condition,
                 then_body,
@@ -408,11 +678,11 @@ fn check_statements(
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(then_body, scopes, loop_depth, model)?;
+                check_statements(then_body, scopes, loop_depth, return_type, model)?;
                 scopes.pop();
 
                 scopes.push(HashMap::new());
-                check_statements(else_body, scopes, loop_depth, model)?;
+                check_statements(else_body, scopes, loop_depth, return_type, model)?;
                 scopes.pop();
             }
 
@@ -431,7 +701,7 @@ fn check_statements(
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(body, scopes, loop_depth + 1, model)?;
+                check_statements(body, scopes, loop_depth + 1, return_type, model)?;
                 scopes.pop();
             }
 
@@ -442,7 +712,13 @@ fn check_statements(
                 body,
             } => {
                 scopes.push(HashMap::new());
-                check_statements(std::slice::from_ref(initializer), scopes, loop_depth, model)?;
+                check_statements(
+                    std::slice::from_ref(initializer),
+                    scopes,
+                    loop_depth,
+                    return_type,
+                    model,
+                )?;
 
                 let bindings = visible_bindings(scopes);
                 let condition_ty =
@@ -458,10 +734,16 @@ fn check_statements(
                     ));
                 }
 
-                check_statements(std::slice::from_ref(update), scopes, loop_depth, model)?;
+                check_statements(
+                    std::slice::from_ref(update),
+                    scopes,
+                    loop_depth,
+                    return_type,
+                    model,
+                )?;
 
                 scopes.push(HashMap::new());
-                check_statements(body, scopes, loop_depth + 1, model)?;
+                check_statements(body, scopes, loop_depth + 1, return_type, model)?;
                 scopes.pop();
                 scopes.pop();
             }
@@ -616,6 +898,18 @@ fn type_of_expr_expected(
                 })
         }
 
+        ExprKind::Call {
+            name,
+            name_span,
+            arguments,
+        } => match check_call(name, *name_span, arguments, bindings, model)? {
+            ReturnType::Value(ty) => Ok(ty),
+            ReturnType::Void => Err(Diagnostic::new(
+                format!("void function `{name}` does not produce a value"),
+                expr.span,
+            )),
+        },
+
         ExprKind::Unary { op, value } => match op {
             crate::ast::UnaryOp::Negate => {
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
@@ -709,6 +1003,42 @@ fn type_of_expr_expected(
             }
         }
     }
+}
+
+fn check_call(
+    name: &str,
+    name_span: Span,
+    arguments: &[Expr],
+    bindings: &Bindings,
+    model: &SemanticModel,
+) -> SemanticResult<ReturnType> {
+    let id = model.resolve_function_name(name, name_span)?;
+    let function = model.function_definition(id);
+    if arguments.len() != function.parameters.len() {
+        return Err(Diagnostic::new(
+            format!(
+                "function `{name}` expects {} arguments, found {}",
+                function.parameters.len(),
+                arguments.len()
+            ),
+            name_span,
+        ));
+    }
+    for (argument, parameter) in arguments.iter().zip(&function.parameters) {
+        let actual = model.type_of_expr_expected(argument, bindings, Some(parameter.ty))?;
+        if actual != parameter.ty {
+            return Err(Diagnostic::new(
+                format!(
+                    "argument `{}` expects {}, found {}",
+                    parameter.name,
+                    model.type_name(parameter.ty),
+                    model.type_name(actual)
+                ),
+                argument.span,
+            ));
+        }
+    }
+    Ok(function.return_type)
 }
 
 const fn scalar_type(ty: ast::Type) -> Type {
@@ -1084,6 +1414,50 @@ mod tests {
         assert_eq!(
             error.message(),
             "type mismatch for `point`: expected Point, found Velocity"
+        );
+    }
+
+    #[test]
+    fn checks_function_calls_and_returns() {
+        check(
+            &parse(
+                lex(
+                    "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);",
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rejects_missing_function_return() {
+        let error = check(&parse(lex("fn answer() -> i64 { value: i64 = 42; }").unwrap()).unwrap())
+            .expect_err("a value function must return");
+
+        assert_eq!(
+            error.message(),
+            "function `answer` may finish without returning a value"
+        );
+    }
+
+    #[test]
+    fn rejects_explicit_main_with_top_level_statements() {
+        let error = check(
+            &parse(
+                lex("fn main() -> void { print(1); }
+             print(2);")
+                .unwrap(),
+            )
+            .unwrap(),
+        )
+        .expect_err("main and top-level statements must not be mixed");
+
+        assert_eq!(
+            error.message(),
+            "an explicit `main` function cannot be combined with top-level statements"
         );
     }
 }

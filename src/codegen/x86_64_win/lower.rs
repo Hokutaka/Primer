@@ -246,6 +246,9 @@ impl Lowerer<'_> {
                 self.instructions.push(Instruction::Jump(target));
                 true
             }
+            primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
+                unreachable!("functions are rejected before x86-64 lowering")
+            }
         }
     }
 
@@ -413,6 +416,9 @@ impl Lowerer<'_> {
                     }
                 }
             }
+            primer_ir::ExprKind::Call { .. } => {
+                unreachable!("functions are rejected before x86-64 lowering")
+            }
         }
     }
 
@@ -575,6 +581,8 @@ fn collect_binding_slots(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }
@@ -636,6 +644,12 @@ fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
                     + count_statements_expr_nodes(std::slice::from_ref(update))
                     + count_statements_expr_nodes(body)
             }
+            primer_ir::StatementKind::Call { arguments, .. } => {
+                arguments.iter().map(count_expr_nodes).sum()
+            }
+            primer_ir::StatementKind::Return { value } => {
+                value.as_ref().map_or(0, count_expr_nodes)
+            }
             primer_ir::StatementKind::Break | primer_ir::StatementKind::Continue => 0,
         })
         .sum()
@@ -658,6 +672,9 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
                 .sum::<usize>()
         }
         primer_ir::ExprKind::FieldAccess { base, .. } => 1 + count_expr_nodes(base),
+        primer_ir::ExprKind::Call { arguments, .. } => {
+            1 + arguments.iter().map(count_expr_nodes).sum::<usize>()
+        }
     }
 }
 

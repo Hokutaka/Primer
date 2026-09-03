@@ -8,6 +8,9 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_c(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    if let Some(diagnostic) = program.unsupported_functions("emit-c") {
+        return Err(diagnostic);
+    }
     let module = lower(program);
 
     Ok(emit(&module))

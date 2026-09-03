@@ -100,6 +100,9 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
 
         primer_ir::StatementKind::Break => Statement::Break,
         primer_ir::StatementKind::Continue => Statement::Continue,
+        primer_ir::StatementKind::Call { .. } | primer_ir::StatementKind::Return { .. } => {
+            unreachable!("functions are rejected before C lowering")
+        }
     }
 }
 
@@ -146,6 +149,9 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
             field_name: field_name.clone(),
             base: Box::new(lower_expr(base)),
         },
+        primer_ir::ExprKind::Call { .. } => {
+            unreachable!("functions are rejected before C lowering")
+        }
     };
 
     Expr {
