@@ -654,7 +654,7 @@ This section distinguishes syntax implemented as part of the current specificati
 - Command-line arguments enter through a read-only runtime-provided `Args`, not raw `argc` and `argv`.
 - A target that does not support requested argument functionality diagnoses it instead of silently supplying an empty value.
 
-Functions, `void`, explicit `main`, and `Args` are not implemented.
+Functions, `void`, and explicit `main` are implemented. Function signatures currently use scalar types with at most four parameters, and recursion is diagnosed until every backend can support it safely. `Args` is not implemented. Details are recorded in [Function design](functions.en.md).
 
 ### Structured control
 

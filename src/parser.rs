@@ -815,7 +815,9 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, ExprKind, Item, StmtKind, TypeRef, TypeSpec, UnaryOp};
+    use crate::ast::{
+        BinaryOp, ExprKind, Item, ReturnTypeRef, StmtKind, TypeRef, TypeSpec, UnaryOp,
+    };
     use crate::lexer::lex;
     use crate::source::Span;
 
@@ -875,6 +877,30 @@ mod tests {
             panic!("expected print");
         };
         assert!(matches!(value.kind, ExprKind::FieldAccess { .. }));
+    }
+
+    #[test]
+    fn parses_function_definition_call_and_return() {
+        let program = parse(
+            lex("fn identity(value: i64) -> i64 { return value; }
+                 answer: i64 = identity(42);")
+            .unwrap(),
+        )
+        .unwrap();
+
+        let Item::FunctionDefinition(function) = &program.items[0] else {
+            panic!("expected function definition");
+        };
+        assert_eq!(function.name, "identity");
+        assert_eq!(function.parameters.len(), 1);
+        assert_eq!(function.parameters[0].name, "value");
+        assert!(matches!(function.return_type, ReturnTypeRef::Value(ref ty) if ty.name == "i64"));
+        assert!(matches!(function.body[0].kind, StmtKind::Return { .. }));
+
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
+            panic!("expected binding");
+        };
+        assert!(matches!(value.kind, ExprKind::Call { ref name, .. } if name == "identity"));
     }
 
     #[test]

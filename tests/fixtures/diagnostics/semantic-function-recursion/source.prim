@@ -1,0 +1,3 @@
+fn repeat(value: i64) -> i64 {
+    return repeat(value);
+}

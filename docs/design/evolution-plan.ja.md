@@ -654,7 +654,7 @@ Emission Map
 - command-line argumentは、生の`argc`と`argv`ではなく、runtimeが提供する読み取り専用の`Args`で受け取ります。
 - targetが要求されたargument機能に対応しない場合、空の値へ暗黙に置き換えず診断します。
 
-関数、`void`、明示的な`main`、`Args`は未実装です。
+関数、`void`、明示的な`main`は実装済みです。現在の関数シグネチャはscalar型と最大4個のparameterに限定し、再帰はすべてのbackendで安全に扱えるまで診断します。`Args`は未実装です。詳細は[関数の設計](functions.ja.md)に記録します。
 
 ### 構造化された制御
 

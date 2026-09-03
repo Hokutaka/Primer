@@ -435,6 +435,20 @@ mod tests {
     }
 
     #[test]
+    fn lexes_function_definition_and_return() {
+        let tokens = lex("fn show(value: i64) -> void { return; }").unwrap();
+
+        for expected in [
+            TokenKind::Fn,
+            TokenKind::Arrow,
+            TokenKind::Void,
+            TokenKind::Return,
+        ] {
+            assert!(tokens.iter().any(|token| token.kind == expected));
+        }
+    }
+
+    #[test]
     fn lexes_float_literals() {
         let tokens = lex("a: f32 = 0.1f32; \
              b: f64 = 0.2f64; \

@@ -15,6 +15,7 @@ This directory contains programs that can be read and executed with the current 
 | [loop_control.prim](loop_control.prim) | `while`, `break`, and `continue` |
 | [for_sum.prim](for_sum.prim) | `for` and assignment as its start statement |
 | [product-point.prim](product-point.prim) | named product types, defaults, and field access |
+| [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
 
 ## Numerical computation
 
@@ -39,6 +40,6 @@ This directory contains programs that can be read and executed with the current 
 
 ## Current scope
 
-These examples are programs expressible with numbers, booleans, bindings, conditionals, loops, and named product types.
+These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, and named product types.
 
-Primer does not yet have arrays, strings, functions, or recursion. Sorting, array search, tree and graph traversal, and general dynamic programming therefore cannot yet be expressed naturally. Corresponding examples can be added as those language features arrive.
+Primer does not yet have arrays, strings, or recursion. Sorting, array search, tree and graph traversal, and general dynamic programming therefore cannot yet be expressed naturally. Corresponding examples can be added as those language features arrive.

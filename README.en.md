@@ -80,6 +80,9 @@ Primer currently supports:
 
 - static typing;
 - `bool`, `i64`, `f32`, and `f64`;
+- named product types, default field values, and field access;
+- typed functions, `void`, and explicit `return`;
+- top-level executable statements or an explicit `fn main() -> void`;
 - explicit type declarations;
 - explicit type inference with `infer`;
 - immutable bindings;
@@ -282,7 +285,8 @@ Primer documentation is organized by purpose:
 - [compiler evolution plan (Draft)](docs/design/evolution-plan.en.md);
 - [use cases for design decisions (Draft)](docs/design/use-case-analysis.en.md);
 - [Secret value design (Draft)](docs/design/secrets.en.md);
-- [named product type design (Draft)](docs/design/product-types.en.md);
+- [named product type design](docs/design/product-types.en.md);
+- [function design](docs/design/functions.en.md);
 - [language reference](docs/reference/language.en.md);
 - [CLI reference](docs/reference/cli.en.md).
 
