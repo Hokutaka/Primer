@@ -43,6 +43,12 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::SlotAlreadyInitialized { slot } => {
             format!("Primer VM tried to initialize slot {slot} more than once")
         }
+        VmErrorKind::AssignmentToUninitializedSlot { slot } => {
+            format!("Primer VM tried to assign slot {slot} before it was initialized")
+        }
+        VmErrorKind::AssignmentToImmutableSlot { slot } => {
+            format!("Primer VM tried to assign immutable slot {slot}")
+        }
         VmErrorKind::StackUnderflow => {
             "Primer VM needed another value, but the stack was empty".to_owned()
         }
@@ -50,6 +56,10 @@ fn render_message(error: &VmError) -> String {
             "Primer VM expected an {} value, but found an {} value",
             type_name(expected),
             type_name(actual)
+        ),
+        VmErrorKind::InvalidComparisonType { ty } => format!(
+            "Primer VM cannot use this comparison with {} values",
+            type_name(ty)
         ),
         VmErrorKind::DivisionByZero => "cannot divide an integer by zero".to_owned(),
         VmErrorKind::DivisionOverflow => {
@@ -66,6 +76,7 @@ fn render_message(error: &VmError) -> String {
 
 const fn type_name(ty: Type) -> &'static str {
     match ty {
+        Type::Bool => "bool",
         Type::I64 => "i64",
         Type::F32 => "f32",
         Type::F64 => "f64",

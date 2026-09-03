@@ -1,0 +1,13 @@
+mut a: i64 = 1071;
+mut b: i64 = 462;
+
+while b != 0 {
+    quotient: i64 = a / b;
+    // `%`がないため、除算、乗算、減算から余りを求める。
+    remainder: i64 = a - quotient * b;
+
+    a = b;
+    b = remainder;
+}
+
+print(a);

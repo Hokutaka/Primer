@@ -137,7 +137,7 @@ mod tests {
 
         assert_eq!(
             ir,
-            "; Primer IR v0.1\n\n%x: f32 = add.f32(0.1f32, 0.2f32)\nprint.f32 %x:f32\n"
+            "; Primer IR v0.1\n\n%x@0: f32 = add.f32(0.1f32, 0.2f32)\nprint.f32 %x@0:f32\n"
         );
     }
 

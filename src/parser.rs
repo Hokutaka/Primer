@@ -27,15 +27,33 @@ impl Parser {
 
     fn parse_statement(&mut self) -> ParseResult<Stmt> {
         match &self.peek().kind {
-            TokenKind::Identifier(_) => self.parse_binding(),
+            TokenKind::Mut => self.parse_binding(),
+            TokenKind::Identifier(_) => match &self.peek_next().kind {
+                TokenKind::Colon => self.parse_binding(),
+                TokenKind::Equal => self.parse_assignment(),
+                other => Err(Diagnostic::new(
+                    format!("expected `:` or `=` after identifier, found {other:?}"),
+                    self.peek_next().span,
+                )),
+            },
             TokenKind::Print => self.parse_print(),
+            TokenKind::If => self.parse_if(),
+            TokenKind::While => self.parse_while(),
+            TokenKind::For => self.parse_for(),
+            TokenKind::Break => self.parse_loop_control(StmtKind::Break),
+            TokenKind::Continue => self.parse_loop_control(StmtKind::Continue),
             other => Err(self.error(format!("expected statement, found {other:?}"))),
         }
     }
 
     fn parse_binding(&mut self) -> ParseResult<Stmt> {
+        let (mutable, start) = if matches!(&self.peek().kind, TokenKind::Mut) {
+            (true, self.advance().span.start())
+        } else {
+            (false, self.peek().span.start())
+        };
+
         let token = self.advance().clone();
-        let start = token.span.start();
 
         let name = match token.kind {
             TokenKind::Identifier(name) => name,
@@ -55,11 +73,48 @@ impl Parser {
 
         Ok(Stmt {
             kind: StmtKind::Binding {
+                mutable,
                 name,
                 type_spec,
                 value,
             },
             span: Span::new(start, semicolon.end()),
+        })
+    }
+
+    fn parse_assignment(&mut self) -> ParseResult<Stmt> {
+        let mut statement = self.parse_assignment_clause()?;
+        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
+        statement.span = Span::new(statement.span.start(), semicolon.end());
+        Ok(statement)
+    }
+
+    fn parse_assignment_clause(&mut self) -> ParseResult<Stmt> {
+        let token = self.advance().clone();
+        let start = token.span.start();
+        let name_span = token.span;
+
+        let name = match token.kind {
+            TokenKind::Identifier(name) => name,
+            other => {
+                return Err(Diagnostic::new(
+                    format!("expected identifier, found {other:?}"),
+                    token.span,
+                ));
+            }
+        };
+
+        self.expect_simple(TokenKind::Equal)?;
+        let value = self.parse_expression()?;
+        let end = value.span.end();
+
+        Ok(Stmt {
+            kind: StmtKind::Assignment {
+                name,
+                name_span,
+                value,
+            },
+            span: Span::new(start, end),
         })
     }
 
@@ -71,6 +126,7 @@ impl Parser {
                 "i64" => Ok(TypeSpec::Explicit(Type::I64)),
                 "f32" => Ok(TypeSpec::Explicit(Type::F32)),
                 "f64" => Ok(TypeSpec::Explicit(Type::F64)),
+                "bool" => Ok(TypeSpec::Explicit(Type::Bool)),
                 "infer" => Ok(TypeSpec::Infer),
 
                 _ => Err(Diagnostic::new(
@@ -101,7 +157,177 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> ParseResult<Expr> {
-        self.parse_additive()
+        self.parse_equality()
+    }
+
+    fn parse_if(&mut self) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        let condition = self.parse_expression()?;
+        let (then_body, then_end) = self.parse_block()?;
+
+        let (else_body, end) = if matches!(&self.peek().kind, TokenKind::Else) {
+            self.advance();
+            let (body, end) = self.parse_block()?;
+            (body, end)
+        } else {
+            (Vec::new(), then_end)
+        };
+
+        Ok(Stmt {
+            kind: StmtKind::If {
+                condition,
+                then_body,
+                else_body,
+            },
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_while(&mut self) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        let condition = self.parse_expression()?;
+        let (body, end) = self.parse_block()?;
+
+        Ok(Stmt {
+            kind: StmtKind::While { condition, body },
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_for(&mut self) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        if !matches!(&self.peek().kind, TokenKind::LeftParen) {
+            return Err(Diagnostic::new(
+                "expected `(` after `for`",
+                self.peek().span,
+            ));
+        }
+        self.advance();
+
+        let initializer = match (&self.peek().kind, &self.peek_next().kind) {
+            (TokenKind::Mut, _) | (TokenKind::Identifier(_), TokenKind::Colon) => {
+                self.parse_binding()?
+            }
+            (TokenKind::Identifier(_), TokenKind::Equal) => self.parse_assignment()?,
+            _ => {
+                return Err(Diagnostic::new(
+                    "expected a binding or assignment at the start of `for`",
+                    self.peek().span,
+                ));
+            }
+        };
+
+        let condition = self.parse_expression()?;
+        self.expect_simple(TokenKind::Semicolon)?;
+
+        let update = match (&self.peek().kind, &self.peek_next().kind) {
+            (TokenKind::Identifier(_), TokenKind::Equal) => self.parse_assignment_clause()?,
+            _ => {
+                return Err(Diagnostic::new(
+                    "for update must be an assignment",
+                    self.peek().span,
+                ));
+            }
+        };
+        if !matches!(&self.peek().kind, TokenKind::RightParen) {
+            return Err(Diagnostic::new(
+                "expected `)` after the `for` update",
+                self.peek().span,
+            ));
+        }
+        self.advance();
+
+        let (body, end) = self.parse_block()?;
+
+        Ok(Stmt {
+            kind: StmtKind::For {
+                initializer: Box::new(initializer),
+                condition,
+                update: Box::new(update),
+                body,
+            },
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_loop_control(&mut self, kind: StmtKind) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        let end = self.expect_simple(TokenKind::Semicolon)?.end();
+
+        Ok(Stmt {
+            kind,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_block(&mut self) -> ParseResult<(Vec<Stmt>, usize)> {
+        self.expect_simple(TokenKind::LeftBrace)?;
+        let mut statements = Vec::new();
+
+        while !matches!(&self.peek().kind, TokenKind::RightBrace | TokenKind::Eof) {
+            statements.push(self.parse_statement()?);
+        }
+
+        let closing = self.expect_simple(TokenKind::RightBrace)?;
+        Ok((statements, closing.end()))
+    }
+
+    fn parse_equality(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_comparison()?;
+
+        loop {
+            let op = match &self.peek().kind {
+                TokenKind::EqualEqual => BinaryOp::Equal,
+                TokenKind::BangEqual => BinaryOp::NotEqual,
+                _ => break,
+            };
+
+            self.advance();
+
+            let right = self.parse_comparison()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_comparison(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_additive()?;
+
+        loop {
+            let op = match &self.peek().kind {
+                TokenKind::Less => BinaryOp::Less,
+                TokenKind::LessEqual => BinaryOp::LessEqual,
+                TokenKind::Greater => BinaryOp::Greater,
+                TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
+                _ => break,
+            };
+
+            self.advance();
+
+            let right = self.parse_additive()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(expr)
     }
 
     fn parse_additive(&mut self) -> ParseResult<Expr> {
@@ -162,14 +388,20 @@ impl Parser {
     }
 
     fn parse_unary(&mut self) -> ParseResult<Expr> {
-        if matches!(&self.peek().kind, TokenKind::Minus) {
+        let op = match &self.peek().kind {
+            TokenKind::Minus => Some(UnaryOp::Negate),
+            TokenKind::Bang => Some(UnaryOp::Not),
+            _ => None,
+        };
+
+        if let Some(op) = op {
             let operator_span = self.advance().span;
             let value = self.parse_unary()?;
             let span = Span::new(operator_span.start(), value.span.end());
 
             return Ok(Expr {
                 kind: ExprKind::Unary {
-                    op: UnaryOp::Negate,
+                    op,
                     value: Box::new(value),
                 },
                 span,
@@ -184,6 +416,16 @@ impl Parser {
         let span = token.span;
 
         match token.kind {
+            TokenKind::True => Ok(Expr {
+                kind: ExprKind::Boolean(true),
+                span,
+            }),
+
+            TokenKind::False => Ok(Expr {
+                kind: ExprKind::Boolean(false),
+                span,
+            }),
+
             TokenKind::Integer(value) => Ok(Expr {
                 kind: ExprKind::Integer(value),
                 span,
@@ -228,6 +470,12 @@ impl Parser {
         &self.tokens[self.current]
     }
 
+    fn peek_next(&self) -> &Token {
+        self.tokens
+            .get(self.current + 1)
+            .unwrap_or_else(|| self.peek())
+    }
+
     fn advance(&mut self) -> &Token {
         let index = self.current;
 
@@ -266,7 +514,7 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, ExprKind, StmtKind, Type, TypeSpec};
+    use crate::ast::{BinaryOp, ExprKind, StmtKind, Type, TypeSpec, UnaryOp};
     use crate::lexer::lex;
     use crate::source::Span;
 
@@ -277,6 +525,7 @@ mod tests {
         let program = parse(lex("x: i64 = 42;").unwrap()).unwrap();
 
         let StmtKind::Binding {
+            mutable,
             name,
             type_spec,
             value,
@@ -285,11 +534,44 @@ mod tests {
             panic!("expected binding");
         };
 
+        assert!(!mutable);
         assert_eq!(name, "x");
         assert_eq!(*type_spec, TypeSpec::Explicit(Type::I64));
         assert_eq!(value.kind, ExprKind::Integer(42));
         assert_eq!(value.span, Span::new(9, 11));
         assert_eq!(program.statements[0].span, Span::new(0, 12));
+    }
+
+    #[test]
+    fn parses_mutable_binding() {
+        let program = parse(lex("mut x: i64 = 1;").unwrap()).unwrap();
+
+        let StmtKind::Binding { mutable, name, .. } = &program.statements[0].kind else {
+            panic!("expected binding");
+        };
+
+        assert!(*mutable);
+        assert_eq!(name, "x");
+        assert_eq!(program.statements[0].span, Span::new(0, 15));
+    }
+
+    #[test]
+    fn parses_assignment() {
+        let program = parse(lex("x = x + 1;").unwrap()).unwrap();
+
+        let StmtKind::Assignment {
+            name,
+            name_span,
+            value,
+        } = &program.statements[0].kind
+        else {
+            panic!("expected assignment");
+        };
+
+        assert_eq!(name, "x");
+        assert_eq!(*name_span, Span::new(0, 1));
+        assert_eq!(value.span, Span::new(4, 9));
+        assert_eq!(program.statements[0].span, Span::new(0, 10));
     }
 
     #[test]
@@ -343,6 +625,141 @@ mod tests {
             }
         ));
         assert_eq!(right.span, Span::new(13, 18));
+    }
+
+    #[test]
+    fn comparison_has_lower_precedence_than_arithmetic() {
+        let program = parse(lex("x: bool = 1 + 2 < 4;").unwrap()).unwrap();
+
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+            panic!("expected binding");
+        };
+
+        let ExprKind::Binary { op, left, .. } = &value.kind else {
+            panic!("expected comparison");
+        };
+
+        assert_eq!(*op, BinaryOp::Less);
+        assert!(matches!(
+            &left.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_boolean_literal_and_not() {
+        let program = parse(lex("x: bool = !false;").unwrap()).unwrap();
+
+        let StmtKind::Binding { value, .. } = &program.statements[0].kind else {
+            panic!("expected binding");
+        };
+
+        assert!(matches!(
+            &value.kind,
+            ExprKind::Unary {
+                op: UnaryOp::Not,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn parses_if_else_blocks() {
+        let program = parse(lex("if true { print(1); } else { print(2); }").unwrap()).unwrap();
+
+        let StmtKind::If {
+            condition,
+            then_body,
+            else_body,
+        } = &program.statements[0].kind
+        else {
+            panic!("expected if statement");
+        };
+
+        assert_eq!(condition.kind, ExprKind::Boolean(true));
+        assert_eq!(then_body.len(), 1);
+        assert_eq!(else_body.len(), 1);
+        assert_eq!(program.statements[0].span, Span::new(0, 40));
+    }
+
+    #[test]
+    fn parses_while_block() {
+        let program = parse(lex("while true { print(1); }").unwrap()).unwrap();
+
+        let StmtKind::While { condition, body } = &program.statements[0].kind else {
+            panic!("expected while statement");
+        };
+
+        assert_eq!(condition.kind, ExprKind::Boolean(true));
+        assert_eq!(body.len(), 1);
+        assert_eq!(program.statements[0].span, Span::new(0, 24));
+    }
+
+    #[test]
+    fn parses_break_and_continue() {
+        let program = parse(lex("while true { continue; break; }").unwrap()).unwrap();
+
+        let StmtKind::While { body, .. } = &program.statements[0].kind else {
+            panic!("expected while statement");
+        };
+
+        assert_eq!(body[0].kind, StmtKind::Continue);
+        assert_eq!(body[1].kind, StmtKind::Break);
+        assert_eq!(body[0].span, Span::new(13, 22));
+        assert_eq!(body[1].span, Span::new(23, 29));
+    }
+
+    #[test]
+    fn parses_for_block() {
+        let source = "for (mut i: i64 = 0; i < 3; i = i + 1) { print(i); }";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        let StmtKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } = &program.statements[0].kind
+        else {
+            panic!("expected for statement");
+        };
+
+        assert!(matches!(initializer.kind, StmtKind::Binding { .. }));
+        assert!(matches!(condition.kind, ExprKind::Binary { .. }));
+        assert!(matches!(update.kind, StmtKind::Assignment { .. }));
+        assert_eq!(body.len(), 1);
+        assert_eq!(program.statements[0].span, Span::new(0, source.len()));
+    }
+
+    #[test]
+    fn parses_for_block_with_assignment_as_start() {
+        let source = "mut i: i64 = 3; for (i = 0; i < 3; i = i + 1) { print(i); }";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        let StmtKind::For { initializer, .. } = &program.statements[1].kind else {
+            panic!("expected for statement");
+        };
+
+        assert!(matches!(initializer.kind, StmtKind::Assignment { .. }));
+    }
+
+    #[test]
+    fn requires_parentheses_around_for_header() {
+        let error =
+            parse(lex("for mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "expected `(` after `for`");
+    }
+
+    #[test]
+    fn reports_missing_closing_parenthesis_in_for_header() {
+        let error =
+            parse(lex("for (mut i: i64 = 0; i < 3; i = i + 1 { print(i); }").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "expected `)` after the `for` update");
     }
 
     #[test]

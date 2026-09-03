@@ -1,0 +1,1 @@
+primer: while condition must be bool, found i64 at 1:7

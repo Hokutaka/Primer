@@ -1,0 +1,36 @@
+// 同じロジスティック写像をf32とf64で計算し、丸め誤差の広がりを見る。
+rate32: f32 = 3.9;
+rate64: f64 = 3.9;
+
+mut x32: f32 = 0.2;
+mut x64: f64 = 0.2;
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);
+
+x32 = rate32 * x32 * (1.0 - x32);
+x64 = rate64 * x64 * (1.0 - x64);
+print(x32);
+print(x64);

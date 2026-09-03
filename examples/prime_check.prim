@@ -1,0 +1,22 @@
+value: i64 = 97;
+mut divisor: i64 = 2;
+mut is_prime: bool = true;
+
+if value < 2 {
+    is_prime = false;
+} else {
+    // divisor * divisorを作らず、大きな値でも積のoverflowを避ける。
+    while divisor <= value / divisor {
+        quotient: i64 = value / divisor;
+        remainder: i64 = value - quotient * divisor;
+
+        if remainder == 0 {
+            is_prime = false;
+            break;
+        }
+
+        divisor = divisor + 1;
+    }
+}
+
+print(is_prime);

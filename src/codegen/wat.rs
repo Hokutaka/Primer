@@ -116,4 +116,20 @@ mod tests {
 
         assert!(wat.contains("f32.add"));
     }
+
+    #[test]
+    fn emits_all_integer_comparisons() {
+        let program = compile_to_ir(
+            "a: bool = 1 == 1; b: bool = 1 != 2; c: bool = 1 < 2;
+             d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
+        )
+        .unwrap();
+        let wat = emit_wat(&program);
+
+        for instruction in [
+            "i64.eq", "i64.ne", "i64.lt_s", "i64.le_s", "i64.gt_s", "i64.ge_s",
+        ] {
+            assert!(wat.contains(instruction));
+        }
+    }
 }

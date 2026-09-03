@@ -1,0 +1,11 @@
+truth: bool = true;
+negated: bool = !truth;
+same: bool = truth == true;
+integer_order: bool = 1 + 2 < 4;
+float_difference: bool = 0.1f32 != 0.2f32;
+
+print(truth);
+print(negated);
+print(same);
+print(integer_order);
+print(float_difference);

@@ -1,0 +1,18 @@
+// Babylonian methodで2の平方根へ近づける。
+target: f64 = 2.0;
+mut guess: f64 = 1.0;
+
+guess = (guess + target / guess) / 2.0;
+print(guess);
+
+guess = (guess + target / guess) / 2.0;
+print(guess);
+
+guess = (guess + target / guess) / 2.0;
+print(guess);
+
+guess = (guess + target / guess) / 2.0;
+print(guess);
+
+guess = (guess + target / guess) / 2.0;
+print(guess);

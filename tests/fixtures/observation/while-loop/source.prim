@@ -1,0 +1,15 @@
+mut count: i64 = 0;
+mut sum: i64 = 0;
+
+while count < 4 {
+    sum = sum + count;
+
+    if count == 2 {
+        marker: bool = true;
+        print(marker);
+    }
+
+    count = count + 1;
+}
+
+print(sum);

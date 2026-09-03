@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I64,
     F32,
     F64,
@@ -11,6 +12,16 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompareOp {
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +39,10 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    Label { id: usize, name: &'static str },
+    JumpIfZero(usize),
+    Jump(usize),
+
     MovI64ImmediateToRax(i64),
 
     LoadI64FromStack(isize),
@@ -43,12 +58,14 @@ pub enum Instruction {
     LoadF64Constant(usize),
 
     NegI64,
+    NotBool,
     NegF32,
     NegF64,
 
     MoveRaxToRcx,
     LoadI64ScratchToRax(isize),
     I64Binary(BinaryOp),
+    CompareI64(CompareOp),
     SignExtendRax,
     DivideRaxByRcx,
 
@@ -58,6 +75,8 @@ pub enum Instruction {
     LoadF64ScratchToXmm0(isize),
     F32Binary(BinaryOp),
     F64Binary(BinaryOp),
+    CompareF32(CompareOp),
+    CompareF64(CompareOp),
 
     MoveRaxToRdx,
     LoadFormatI64ToRcx,
@@ -70,4 +89,5 @@ pub enum Instruction {
     LoadFormatF64ToRcx,
 
     CallPrintf,
+    CallPrintBool,
 }

@@ -2,6 +2,7 @@ use crate::source::Span;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I64,
     F32,
     F64,
@@ -27,13 +28,36 @@ pub struct Stmt {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StmtKind {
     Binding {
+        mutable: bool,
         name: String,
         type_spec: TypeSpec,
+        value: Expr,
+    },
+    Assignment {
+        name: String,
+        name_span: Span,
         value: Expr,
     },
     Print {
         value: Expr,
     },
+    If {
+        condition: Expr,
+        then_body: Vec<Stmt>,
+        else_body: Vec<Stmt>,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
+    For {
+        initializer: Box<Stmt>,
+        condition: Expr,
+        update: Box<Stmt>,
+        body: Vec<Stmt>,
+    },
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +68,7 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    Boolean(bool),
     Integer(i64),
     Float {
         text: String,
@@ -64,6 +89,7 @@ pub enum ExprKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Negate,
+    Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,4 +98,10 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 }

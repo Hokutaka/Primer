@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ir as primer_ir;
 
-use super::ir::{BinaryOp, FloatConstant, Instruction, Module, Type};
+use super::ir::{BinaryOp, CompareOp, FloatConstant, Instruction, Module, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     let binding_slots = assign_binding_slots(program);
@@ -23,11 +23,11 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         float_id: 0,
         float_constants: Vec::new(),
         instructions: Vec::new(),
+        label: 0,
+        loops: Vec::new(),
     };
 
-    for statement in &program.statements {
-        lowerer.lower_statement(statement);
-    }
+    lowerer.lower_statements(&program.statements);
 
     Module {
         frame_size,
@@ -37,23 +37,41 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 }
 
 struct Lowerer {
-    binding_slots: HashMap<String, usize>,
+    binding_slots: HashMap<primer_ir::BindingId, usize>,
     scratch_base: usize,
     float_id: usize,
     float_constants: Vec<FloatConstant>,
     instructions: Vec<Instruction>,
+    label: usize,
+    loops: Vec<LoopContext>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LoopContext {
+    continue_label: usize,
+    break_label: usize,
 }
 
 impl Lowerer {
-    fn lower_statement(&mut self, statement: &primer_ir::Statement) {
+    fn lower_statements(&mut self, statements: &[primer_ir::Statement]) -> bool {
+        for statement in statements {
+            if self.lower_statement(statement) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
-            primer_ir::StatementKind::Binding { name, ty, value } => {
+            primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 self.lower_expr(value, 0);
 
-                let offset = self.binding_offset(name);
+                let offset = self.binding_offset(*id);
 
                 match Type::from(*ty) {
-                    Type::I64 => {
+                    Type::Bool | Type::I64 => {
                         self.instructions.push(Instruction::StoreI64ToStack(offset));
                     }
 
@@ -65,18 +83,183 @@ impl Lowerer {
                         self.instructions.push(Instruction::StoreF64ToStack(offset));
                     }
                 }
+                false
+            }
+
+            primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
+                self.lower_expr(value, 0);
+
+                let offset = self.binding_offset(*id);
+
+                match Type::from(*ty) {
+                    Type::Bool | Type::I64 => {
+                        self.instructions.push(Instruction::StoreI64ToStack(offset));
+                    }
+
+                    Type::F32 => {
+                        self.instructions.push(Instruction::StoreF32ToStack(offset));
+                    }
+
+                    Type::F64 => {
+                        self.instructions.push(Instruction::StoreF64ToStack(offset));
+                    }
+                }
+                false
             }
 
             primer_ir::StatementKind::Print { value } => {
                 self.lower_expr(value, 0);
 
                 self.lower_print(value.ty.into());
+                false
+            }
+
+            primer_ir::StatementKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                self.lower_expr(condition, 0);
+                let else_label = self.next_label();
+                let end_label = self.next_label();
+                self.instructions
+                    .push(Instruction::JumpIfZero(if else_body.is_empty() {
+                        end_label
+                    } else {
+                        else_label
+                    }));
+
+                let then_terminates = self.lower_statements(then_body);
+                if !then_terminates {
+                    self.instructions.push(Instruction::Jump(end_label));
+                }
+
+                if else_body.is_empty() {
+                    self.instructions.push(Instruction::Label {
+                        id: end_label,
+                        name: "if_end",
+                    });
+                    false
+                } else {
+                    self.instructions.push(Instruction::Label {
+                        id: else_label,
+                        name: "if_else",
+                    });
+                    let else_terminates = self.lower_statements(else_body);
+
+                    if then_terminates && else_terminates {
+                        true
+                    } else {
+                        self.instructions.push(Instruction::Label {
+                            id: end_label,
+                            name: "if_end",
+                        });
+                        false
+                    }
+                }
+            }
+
+            primer_ir::StatementKind::While { condition, body } => {
+                let condition_label = self.next_label();
+                let end_label = self.next_label();
+
+                self.instructions.push(Instruction::Label {
+                    id: condition_label,
+                    name: "while_condition",
+                });
+                self.lower_expr(condition, 0);
+                self.instructions.push(Instruction::JumpIfZero(end_label));
+
+                self.loops.push(LoopContext {
+                    continue_label: condition_label,
+                    break_label: end_label,
+                });
+                let body_terminates = self.lower_statements(body);
+                self.loops.pop().expect("while loop context must exist");
+
+                if !body_terminates {
+                    self.instructions.push(Instruction::Jump(condition_label));
+                }
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "while_end",
+                });
+                false
+            }
+
+            primer_ir::StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                self.lower_statement(initializer);
+
+                let condition_label = self.next_label();
+                let update_label = self.next_label();
+                let end_label = self.next_label();
+
+                self.instructions.push(Instruction::Label {
+                    id: condition_label,
+                    name: "for_condition",
+                });
+                self.lower_expr(condition, 0);
+                self.instructions.push(Instruction::JumpIfZero(end_label));
+
+                self.loops.push(LoopContext {
+                    continue_label: update_label,
+                    break_label: end_label,
+                });
+                let body_terminates = self.lower_statements(body);
+                self.loops.pop().expect("for loop context must exist");
+
+                if !body_terminates {
+                    self.instructions.push(Instruction::Jump(update_label));
+                }
+                self.instructions.push(Instruction::Label {
+                    id: update_label,
+                    name: "for_update",
+                });
+                self.lower_statement(update);
+                self.instructions.push(Instruction::Jump(condition_label));
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "for_end",
+                });
+                false
+            }
+
+            primer_ir::StatementKind::Break => {
+                let target = self
+                    .loops
+                    .last()
+                    .expect("semantic analysis rejects break outside a loop")
+                    .break_label;
+                self.instructions.push(Instruction::Jump(target));
+                true
+            }
+
+            primer_ir::StatementKind::Continue => {
+                let target = self
+                    .loops
+                    .last()
+                    .expect("semantic analysis rejects continue outside a loop")
+                    .continue_label;
+                self.instructions.push(Instruction::Jump(target));
+                true
             }
         }
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, depth: usize) -> Type {
         match &expr.kind {
+            primer_ir::ExprKind::Boolean(value) => {
+                self.instructions
+                    .push(Instruction::MovI64ImmediateToRax(i64::from(*value)));
+
+                Type::Bool
+            }
+
             primer_ir::ExprKind::Integer(value) => {
                 self.instructions
                     .push(Instruction::MovI64ImmediateToRax(*value));
@@ -97,7 +280,7 @@ impl Lowerer {
                         self.instructions.push(Instruction::LoadF64Constant(id));
                     }
 
-                    Type::I64 => {
+                    Type::Bool | Type::I64 => {
                         unreachable!("integer cannot be lowered as float");
                     }
                 }
@@ -105,12 +288,12 @@ impl Lowerer {
                 ty
             }
 
-            primer_ir::ExprKind::Variable(name) => {
+            primer_ir::ExprKind::Variable { id, .. } => {
                 let ty = expr.ty.into();
-                let offset = self.binding_offset(name);
+                let offset = self.binding_offset(*id);
 
                 match ty {
-                    Type::I64 => {
+                    Type::Bool | Type::I64 => {
                         self.instructions
                             .push(Instruction::LoadI64FromStack(offset));
                     }
@@ -146,22 +329,29 @@ impl Lowerer {
                     (primer_ir::UnaryOp::Negate, Type::F64) => {
                         self.instructions.push(Instruction::NegF64);
                     }
+
+                    (primer_ir::UnaryOp::Not, Type::Bool) => {
+                        self.instructions.push(Instruction::NotBool);
+                    }
+
+                    (primer_ir::UnaryOp::Negate, Type::Bool)
+                    | (primer_ir::UnaryOp::Not, Type::I64 | Type::F32 | Type::F64) => {
+                        unreachable!("semantic analysis rejects invalid unary operands");
+                    }
                 }
 
                 ty
             }
 
             primer_ir::ExprKind::Binary { op, left, right } => {
-                let ty = expr.ty.into();
+                let operand_ty = self.lower_expr(left, depth + 1);
 
                 // 左辺を計算。
-                self.lower_expr(left, depth + 1);
-
                 // 左辺をscratchへ退避。
                 let scratch = self.scratch_offset(depth);
 
-                match ty {
-                    Type::I64 => {
+                match operand_ty {
+                    Type::Bool | Type::I64 => {
                         self.instructions
                             .push(Instruction::StoreI64ToStack(scratch));
                     }
@@ -178,23 +368,24 @@ impl Lowerer {
                 }
 
                 // 右辺を計算。
-                self.lower_expr(right, depth + 1);
+                let right_ty = self.lower_expr(right, depth + 1);
+                debug_assert_eq!(operand_ty, right_ty);
 
-                match ty {
-                    Type::I64 => {
+                match operand_ty {
+                    Type::Bool | Type::I64 => {
                         self.instructions.push(Instruction::MoveRaxToRcx);
                         self.instructions
                             .push(Instruction::LoadI64ScratchToRax(scratch));
 
-                        let op = (*op).into();
+                        if let Some(op) = compare_op(*op) {
+                            self.instructions.push(Instruction::CompareI64(op));
+                        } else {
+                            let op = (*op).into();
 
-                        match op {
-                            BinaryOp::Divide => {
+                            if op == BinaryOp::Divide {
                                 self.instructions.push(Instruction::SignExtendRax);
                                 self.instructions.push(Instruction::DivideRaxByRcx);
-                            }
-
-                            _ => {
+                            } else {
                                 self.instructions.push(Instruction::I64Binary(op));
                             }
                         }
@@ -204,24 +395,36 @@ impl Lowerer {
                         self.instructions.push(Instruction::CopyXmm0ToXmm1F32);
                         self.instructions
                             .push(Instruction::LoadF32ScratchToXmm0(scratch));
-                        self.instructions.push(Instruction::F32Binary((*op).into()));
+                        if let Some(op) = compare_op(*op) {
+                            self.instructions.push(Instruction::CompareF32(op));
+                        } else {
+                            self.instructions.push(Instruction::F32Binary((*op).into()));
+                        }
                     }
 
                     Type::F64 => {
                         self.instructions.push(Instruction::CopyXmm0ToXmm1F64);
                         self.instructions
                             .push(Instruction::LoadF64ScratchToXmm0(scratch));
-                        self.instructions.push(Instruction::F64Binary((*op).into()));
+                        if let Some(op) = compare_op(*op) {
+                            self.instructions.push(Instruction::CompareF64(op));
+                        } else {
+                            self.instructions.push(Instruction::F64Binary((*op).into()));
+                        }
                     }
                 }
 
-                ty
+                expr.ty.into()
             }
         }
     }
 
     fn lower_print(&mut self, ty: Type) {
         match ty {
+            Type::Bool => {
+                self.instructions.push(Instruction::CallPrintBool);
+            }
+
             Type::I64 => {
                 self.instructions.push(Instruction::MoveRaxToRdx);
                 self.instructions.push(Instruction::LoadFormatI64ToRcx);
@@ -277,7 +480,7 @@ impl Lowerer {
                 });
             }
 
-            Type::I64 => {
+            Type::Bool | Type::I64 => {
                 unreachable!("integer cannot be lowered as float");
             }
         }
@@ -285,10 +488,10 @@ impl Lowerer {
         id
     }
 
-    fn binding_offset(&self, name: &str) -> isize {
+    fn binding_offset(&self, id: primer_ir::BindingId) -> isize {
         let slot = self
             .binding_slots
-            .get(name)
+            .get(&id)
             .copied()
             .expect("binding must have a stack slot");
 
@@ -298,38 +501,107 @@ impl Lowerer {
     fn scratch_offset(&self, depth: usize) -> isize {
         slot_offset(self.scratch_base + depth)
     }
+
+    fn next_label(&mut self) -> usize {
+        let label = self.label;
+        self.label += 1;
+        label
+    }
 }
 
-fn assign_binding_slots(program: &primer_ir::Program) -> HashMap<String, usize> {
+fn assign_binding_slots(program: &primer_ir::Program) -> HashMap<primer_ir::BindingId, usize> {
     let mut slots = HashMap::new();
     let mut next = 0;
-
-    for statement in &program.statements {
-        if let primer_ir::StatementKind::Binding { name, .. } = &statement.kind {
-            slots.insert(name.clone(), next);
-            next += 1;
-        }
-    }
+    collect_binding_slots(&program.statements, &mut slots, &mut next);
 
     slots
 }
 
+fn collect_binding_slots(
+    statements: &[primer_ir::Statement],
+    slots: &mut HashMap<primer_ir::BindingId, usize>,
+    next: &mut usize,
+) {
+    for statement in statements {
+        match &statement.kind {
+            primer_ir::StatementKind::Binding { id, .. } => {
+                slots.insert(*id, *next);
+                *next += 1;
+            }
+            primer_ir::StatementKind::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_binding_slots(then_body, slots, next);
+                collect_binding_slots(else_body, slots, next);
+            }
+            primer_ir::StatementKind::While { body, .. } => {
+                collect_binding_slots(body, slots, next);
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                update,
+                body,
+                ..
+            } => {
+                collect_binding_slots(std::slice::from_ref(initializer), slots, next);
+                collect_binding_slots(std::slice::from_ref(update), slots, next);
+                collect_binding_slots(body, slots, next);
+            }
+            primer_ir::StatementKind::Assignment { .. }
+            | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Break
+            | primer_ir::StatementKind::Continue => {}
+        }
+    }
+}
+
 fn count_program_expr_nodes(program: &primer_ir::Program) -> usize {
-    program
-        .statements
+    count_statements_expr_nodes(&program.statements)
+}
+
+fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
+    statements
         .iter()
         .map(|statement| match &statement.kind {
             primer_ir::StatementKind::Binding { value, .. }
+            | primer_ir::StatementKind::Assignment { value, .. }
             | primer_ir::StatementKind::Print { value } => count_expr_nodes(value),
+            primer_ir::StatementKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                count_expr_nodes(condition)
+                    + count_statements_expr_nodes(then_body)
+                    + count_statements_expr_nodes(else_body)
+            }
+            primer_ir::StatementKind::While { condition, body } => {
+                count_expr_nodes(condition) + count_statements_expr_nodes(body)
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                count_statements_expr_nodes(std::slice::from_ref(initializer))
+                    + count_expr_nodes(condition)
+                    + count_statements_expr_nodes(std::slice::from_ref(update))
+                    + count_statements_expr_nodes(body)
+            }
+            primer_ir::StatementKind::Break | primer_ir::StatementKind::Continue => 0,
         })
         .sum()
 }
 
 fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
     match &expr.kind {
-        primer_ir::ExprKind::Integer(_)
+        primer_ir::ExprKind::Boolean(_)
+        | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
-        | primer_ir::ExprKind::Variable(_) => 1,
+        | primer_ir::ExprKind::Variable { .. } => 1,
 
         primer_ir::ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
 
@@ -350,6 +622,7 @@ fn align16(value: usize) -> usize {
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
+            primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::F32,
             primer_ir::Type::F64 => Self::F64,
@@ -364,6 +637,29 @@ impl From<primer_ir::BinaryOp> for BinaryOp {
             primer_ir::BinaryOp::Subtract => Self::Subtract,
             primer_ir::BinaryOp::Multiply => Self::Multiply,
             primer_ir::BinaryOp::Divide => Self::Divide,
+            primer_ir::BinaryOp::Equal
+            | primer_ir::BinaryOp::NotEqual
+            | primer_ir::BinaryOp::Less
+            | primer_ir::BinaryOp::LessEqual
+            | primer_ir::BinaryOp::Greater
+            | primer_ir::BinaryOp::GreaterEqual => {
+                unreachable!("comparisons use dedicated x86-64 instructions")
+            }
         }
+    }
+}
+
+const fn compare_op(op: primer_ir::BinaryOp) -> Option<CompareOp> {
+    match op {
+        primer_ir::BinaryOp::Add
+        | primer_ir::BinaryOp::Subtract
+        | primer_ir::BinaryOp::Multiply
+        | primer_ir::BinaryOp::Divide => None,
+        primer_ir::BinaryOp::Equal => Some(CompareOp::Equal),
+        primer_ir::BinaryOp::NotEqual => Some(CompareOp::NotEqual),
+        primer_ir::BinaryOp::Less => Some(CompareOp::Less),
+        primer_ir::BinaryOp::LessEqual => Some(CompareOp::LessEqual),
+        primer_ir::BinaryOp::Greater => Some(CompareOp::Greater),
+        primer_ir::BinaryOp::GreaterEqual => Some(CompareOp::GreaterEqual),
     }
 }

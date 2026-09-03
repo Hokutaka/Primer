@@ -10,9 +10,16 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
     match &statement.kind {
-        primer_ir::StatementKind::Binding { name, ty, value } => Statement::Binding {
+        primer_ir::StatementKind::Binding {
+            name, ty, value, ..
+        } => Statement::Binding {
             name: name.clone(),
             ty: (*ty).into(),
+            value: lower_expr(value),
+        },
+
+        primer_ir::StatementKind::Assignment { name, value, .. } => Statement::Assignment {
+            name: name.clone(),
             value: lower_expr(value),
         },
 
@@ -20,11 +27,43 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
             format: print_format(value.ty),
             value: lower_expr(value),
         },
+
+        primer_ir::StatementKind::If {
+            condition,
+            then_body,
+            else_body,
+        } => Statement::If {
+            condition: lower_expr(condition),
+            then_body: then_body.iter().map(lower_statement).collect(),
+            else_body: else_body.iter().map(lower_statement).collect(),
+        },
+
+        primer_ir::StatementKind::While { condition, body } => Statement::While {
+            condition: lower_expr(condition),
+            body: body.iter().map(lower_statement).collect(),
+        },
+
+        primer_ir::StatementKind::For {
+            initializer,
+            condition,
+            update,
+            body,
+        } => Statement::For {
+            initializer: Box::new(lower_statement(initializer)),
+            condition: lower_expr(condition),
+            update: Box::new(lower_statement(update)),
+            body: body.iter().map(lower_statement).collect(),
+        },
+
+        primer_ir::StatementKind::Break => Statement::Break,
+        primer_ir::StatementKind::Continue => Statement::Continue,
     }
 }
 
 fn lower_expr(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
+        primer_ir::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
+
         primer_ir::ExprKind::Integer(value) => ExprKind::Integer(*value),
 
         primer_ir::ExprKind::Float { text } => ExprKind::Float {
@@ -32,7 +71,7 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
             suffix_f32: expr.ty == primer_ir::Type::F32,
         },
 
-        primer_ir::ExprKind::Variable(name) => ExprKind::Variable(name.clone()),
+        primer_ir::ExprKind::Variable { name, .. } => ExprKind::Variable(name.clone()),
 
         primer_ir::ExprKind::Unary { op, value } => ExprKind::Unary {
             op: (*op).into(),
@@ -54,6 +93,7 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 
 fn print_format(ty: primer_ir::Type) -> PrintFormat {
     match ty {
+        primer_ir::Type::Bool => PrintFormat::Bool,
         primer_ir::Type::I64 => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
@@ -63,6 +103,7 @@ fn print_format(ty: primer_ir::Type) -> PrintFormat {
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
+            primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
@@ -74,6 +115,7 @@ impl From<primer_ir::UnaryOp> for UnaryOp {
     fn from(value: primer_ir::UnaryOp) -> Self {
         match value {
             primer_ir::UnaryOp::Negate => Self::Negate,
+            primer_ir::UnaryOp::Not => Self::Not,
         }
     }
 }
@@ -85,6 +127,12 @@ impl From<primer_ir::BinaryOp> for BinaryOp {
             primer_ir::BinaryOp::Subtract => Self::Subtract,
             primer_ir::BinaryOp::Multiply => Self::Multiply,
             primer_ir::BinaryOp::Divide => Self::Divide,
+            primer_ir::BinaryOp::Equal => Self::Equal,
+            primer_ir::BinaryOp::NotEqual => Self::NotEqual,
+            primer_ir::BinaryOp::Less => Self::Less,
+            primer_ir::BinaryOp::LessEqual => Self::LessEqual,
+            primer_ir::BinaryOp::Greater => Self::Greater,
+            primer_ir::BinaryOp::GreaterEqual => Self::GreaterEqual,
         }
     }
 }

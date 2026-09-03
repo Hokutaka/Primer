@@ -1,0 +1,37 @@
+; Primer bytecode v0.1
+
+.slot 0 mut value i64
+.slot 1 mut sum i64
+
+0000  push.i64 0
+0001  store 0       ; value
+0002  push.i64 0
+0003  store 1       ; sum
+0004  load 0        ; value
+0005  push.i64 10
+0006  lt.i64
+0007  jump-if-false 0027
+0008  load 0        ; value
+0009  push.i64 1
+0010  add.i64
+0011  assign 0      ; value
+0012  load 0        ; value
+0013  push.i64 3
+0014  lt.i64
+0015  jump-if-false 0017
+0016  jump 0004
+0017  load 0        ; value
+0018  push.i64 5
+0019  gt.i64
+0020  jump-if-false 0022
+0021  jump 0027
+0022  load 1        ; sum
+0023  load 0        ; value
+0024  add.i64
+0025  assign 1      ; sum
+0026  jump 0004
+0027  load 1        ; sum
+0028  print.i64
+0029  load 0        ; value
+0030  print.i64
+0031  halt

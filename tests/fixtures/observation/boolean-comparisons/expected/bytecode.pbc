@@ -1,0 +1,38 @@
+; Primer bytecode v0.1
+
+.slot 0 truth bool
+.slot 1 negated bool
+.slot 2 same bool
+.slot 3 integer_order bool
+.slot 4 float_difference bool
+
+0000  push.bool true
+0001  store 0       ; truth
+0002  load 0        ; truth
+0003  not.bool
+0004  store 1       ; negated
+0005  load 0        ; truth
+0006  push.bool true
+0007  eq.bool
+0008  store 2       ; same
+0009  push.i64 1
+0010  push.i64 2
+0011  add.i64
+0012  push.i64 4
+0013  lt.i64
+0014  store 3       ; integer_order
+0015  push.f32 0.1
+0016  push.f32 0.2
+0017  ne.f32
+0018  store 4       ; float_difference
+0019  load 0        ; truth
+0020  print.bool
+0021  load 1        ; negated
+0022  print.bool
+0023  load 2        ; same
+0024  print.bool
+0025  load 3        ; integer_order
+0026  print.bool
+0027  load 4        ; float_difference
+0028  print.bool
+0029  halt

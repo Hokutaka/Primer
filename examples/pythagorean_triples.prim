@@ -1,0 +1,14 @@
+limit: i64 = 15;
+
+// a * a + b * b == c * cになる三つの整数を探す。
+for (mut a: i64 = 1; a <= limit; a = a + 1) {
+    for (mut b: i64 = a; b <= limit; b = b + 1) {
+        for (mut c: i64 = b; c <= limit; c = c + 1) {
+            if a * a + b * b == c * c {
+                print(a);
+                print(b);
+                print(c);
+            }
+        }
+    }
+}

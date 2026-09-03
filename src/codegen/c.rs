@@ -71,4 +71,18 @@ mod tests {
 
         assert!(c.contains("double primer_x = (0.1 + 0.2);"));
     }
+
+    #[test]
+    fn emits_all_comparison_operators() {
+        let program = compile_to_ir(
+            "a: bool = 1 == 1; b: bool = 1 != 2; c: bool = 1 < 2;
+             d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
+        )
+        .unwrap();
+        let c = emit_c(&program);
+
+        for operator in ["==", "!=", "<", "<=", ">", ">="] {
+            assert!(c.contains(operator));
+        }
+    }
 }

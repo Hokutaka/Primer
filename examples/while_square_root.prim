@@ -1,0 +1,10 @@
+// Babylonian methodで2の平方根へ5回近づける。
+target: f64 = 2.0;
+mut guess: f64 = 1.0;
+mut iteration: i64 = 0;
+
+while iteration < 5 {
+    guess = (guess + target / guess) / 2.0;
+    print(guess);
+    iteration = iteration + 1;
+}

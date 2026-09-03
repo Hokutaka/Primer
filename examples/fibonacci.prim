@@ -1,0 +1,11 @@
+mut current: i64 = 0;
+mut following: i64 = 1;
+
+for (mut count: i64 = 0; count < 10; count = count + 1) {
+    print(current);
+
+    // 更新前の二つの値から、次の値を先に作る。
+    next: i64 = current + following;
+    current = following;
+    following = next;
+}

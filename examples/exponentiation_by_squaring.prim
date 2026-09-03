@@ -1,0 +1,17 @@
+mut base: i64 = 3;
+mut exponent: i64 = 13;
+mut result: i64 = 1;
+
+// exponentを半分にしながら、必要なbaseだけをresultへ掛ける。
+while exponent > 0 {
+    half: i64 = exponent / 2;
+
+    if half * 2 != exponent {
+        result = result * base;
+    }
+
+    base = base * base;
+    exponent = half;
+}
+
+print(result);

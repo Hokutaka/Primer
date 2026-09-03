@@ -1,0 +1,13 @@
+mut result: i64 = 0;
+
+if 2 < 3 {
+    result = 42;
+    message: bool = true;
+    print(message);
+} else {
+    result = -1;
+    message: bool = false;
+    print(message);
+}
+
+print(result);

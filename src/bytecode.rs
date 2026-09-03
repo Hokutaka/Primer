@@ -1,12 +1,13 @@
 use std::{collections::HashMap, fmt::Write};
 
 use crate::{
-    ir::{self, BinaryOp, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp},
+    ir::{self, BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp},
     source::Span,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    Bool,
     I64,
     F32,
     F64,
@@ -22,6 +23,7 @@ pub struct BytecodeProgram {
 pub struct Slot {
     pub name: String,
     pub ty: Type,
+    pub mutable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -60,21 +62,34 @@ pub enum InstructionOrigin {
 
 #[derive(Debug, Clone)]
 pub enum InstructionKind {
+    PushBool(bool),
     PushI64(i64),
     PushF32(f32),
     PushF64(f64),
 
     Load(usize),
     Store(usize),
+    Assign(usize),
 
     Add(Type),
     Subtract(Type),
     Multiply(Type),
     Divide(Type),
 
+    Equal(Type),
+    NotEqual(Type),
+    Less(Type),
+    LessEqual(Type),
+    Greater(Type),
+    GreaterEqual(Type),
+
     Negate(Type),
+    Not,
 
     Print(Type),
+
+    JumpIfFalse(usize),
+    Jump(usize),
 
     Halt,
 }
@@ -83,27 +98,15 @@ pub fn lower(program: &Program) -> BytecodeProgram {
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
 
-    for statement in &program.statements {
-        if let StatementKind::Binding { name, ty, .. } = &statement.kind {
-            let index = slots.len();
-
-            slots.push(Slot {
-                name: name.clone(),
-                ty: (*ty).into(),
-            });
-
-            slot_map.insert(name.clone(), index);
-        }
-    }
+    collect_slots(&program.statements, &mut slots, &mut slot_map);
 
     let mut compiler = Compiler {
         slot_map,
         instructions: Vec::new(),
+        loops: Vec::new(),
     };
 
-    for statement in &program.statements {
-        compiler.emit_statement(statement);
-    }
+    compiler.emit_statements(&program.statements);
 
     compiler
         .instructions
@@ -124,7 +127,13 @@ pub fn format_program(program: &BytecodeProgram) -> String {
         writeln!(output).unwrap();
 
         for (index, slot) in program.slots.iter().enumerate() {
-            writeln!(output, ".slot {index} {} {}", slot.name, type_name(slot.ty),).unwrap();
+            write!(output, ".slot {index} ").unwrap();
+
+            if slot.mutable {
+                output.push_str("mut ");
+            }
+
+            writeln!(output, "{} {}", slot.name, type_name(slot.ty)).unwrap();
         }
     }
 
@@ -140,35 +149,193 @@ pub fn format_program(program: &BytecodeProgram) -> String {
 }
 
 struct Compiler {
-    slot_map: HashMap<String, usize>,
+    slot_map: HashMap<BindingId, usize>,
     instructions: Vec<Instruction>,
+    loops: Vec<LoopContext>,
+}
+
+struct LoopContext {
+    break_jumps: Vec<usize>,
+    continue_jumps: Vec<usize>,
 }
 
 impl Compiler {
-    fn emit_statement(&mut self, statement: &Statement) {
+    fn emit_statements(&mut self, statements: &[Statement]) -> bool {
+        for statement in statements {
+            if self.emit_statement(statement) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn emit_statement(&mut self, statement: &Statement) -> bool {
         match &statement.kind {
-            StatementKind::Binding { name, value, .. } => {
+            StatementKind::Binding { id, value, .. } => {
                 self.emit_expr(value);
 
                 let slot = self
                     .slot_map
-                    .get(name)
+                    .get(id)
                     .copied()
                     .expect("binding must have a bytecode slot");
 
                 self.emit_source(InstructionKind::Store(slot), statement.span);
+                false
+            }
+
+            StatementKind::Assignment { id, value, .. } => {
+                self.emit_expr(value);
+
+                let slot = self
+                    .slot_map
+                    .get(id)
+                    .copied()
+                    .expect("assignment target must have a bytecode slot");
+
+                self.emit_source(InstructionKind::Assign(slot), statement.span);
+                false
             }
 
             StatementKind::Print { value } => {
                 self.emit_expr(value);
 
                 self.emit_source(InstructionKind::Print(value.ty.into()), statement.span);
+                false
+            }
+
+            StatementKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                self.emit_expr(condition);
+                let false_jump = self.instructions.len();
+                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+
+                let then_terminates = self.emit_statements(then_body);
+
+                if else_body.is_empty() {
+                    let end = self.instructions.len();
+                    self.patch_jump(false_jump, end);
+                    false
+                } else {
+                    let end_jump = if then_terminates {
+                        None
+                    } else {
+                        let index = self.instructions.len();
+                        self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                        Some(index)
+                    };
+                    let else_start = self.instructions.len();
+                    self.patch_jump(false_jump, else_start);
+
+                    let else_terminates = self.emit_statements(else_body);
+
+                    let end = self.instructions.len();
+                    if let Some(end_jump) = end_jump {
+                        self.patch_jump(end_jump, end);
+                    }
+
+                    then_terminates && else_terminates
+                }
+            }
+
+            StatementKind::While { condition, body } => {
+                let condition_start = self.instructions.len();
+                self.emit_expr(condition);
+                let end_jump = self.instructions.len();
+                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+
+                self.loops.push(LoopContext {
+                    break_jumps: Vec::new(),
+                    continue_jumps: Vec::new(),
+                });
+                let body_terminates = self.emit_statements(body);
+                let loop_context = self.loops.pop().expect("while loop context must exist");
+
+                if !body_terminates {
+                    self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+                }
+                for continue_jump in loop_context.continue_jumps {
+                    self.patch_jump(continue_jump, condition_start);
+                }
+                let end = self.instructions.len();
+                self.patch_jump(end_jump, end);
+                for break_jump in loop_context.break_jumps {
+                    self.patch_jump(break_jump, end);
+                }
+
+                false
+            }
+
+            StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                self.emit_statement(initializer);
+
+                let condition_start = self.instructions.len();
+                self.emit_expr(condition);
+                let end_jump = self.instructions.len();
+                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+
+                self.loops.push(LoopContext {
+                    break_jumps: Vec::new(),
+                    continue_jumps: Vec::new(),
+                });
+                self.emit_statements(body);
+                let loop_context = self.loops.pop().expect("for loop context must exist");
+
+                let update_start = self.instructions.len();
+                for continue_jump in loop_context.continue_jumps {
+                    self.patch_jump(continue_jump, update_start);
+                }
+                self.emit_statement(update);
+                self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+
+                let end = self.instructions.len();
+                self.patch_jump(end_jump, end);
+                for break_jump in loop_context.break_jumps {
+                    self.patch_jump(break_jump, end);
+                }
+
+                false
+            }
+
+            StatementKind::Break => {
+                let jump = self.instructions.len();
+                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.loops
+                    .last_mut()
+                    .expect("semantic analysis rejects break outside a loop")
+                    .break_jumps
+                    .push(jump);
+                true
+            }
+
+            StatementKind::Continue => {
+                let jump = self.instructions.len();
+                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.loops
+                    .last_mut()
+                    .expect("semantic analysis rejects continue outside a loop")
+                    .continue_jumps
+                    .push(jump);
+                true
             }
         }
     }
 
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::Boolean(value) => {
+                self.emit_source(InstructionKind::PushBool(*value), expr.span);
+            }
+
             ExprKind::Integer(value) => {
                 self.emit_source(InstructionKind::PushI64(*value), expr.span);
             }
@@ -193,12 +360,16 @@ impl Compiler {
                 ir::Type::I64 => {
                     unreachable!("integer cannot be emitted as float");
                 }
+
+                ir::Type::Bool => {
+                    unreachable!("boolean cannot be emitted as float");
+                }
             },
 
-            ExprKind::Variable(name) => {
+            ExprKind::Variable { id, .. } => {
                 let slot = self
                     .slot_map
-                    .get(name)
+                    .get(id)
                     .copied()
                     .expect("variable must have a bytecode slot");
 
@@ -212,6 +383,9 @@ impl Compiler {
                     UnaryOp::Negate => {
                         self.emit_source(InstructionKind::Negate(expr.ty.into()), expr.span);
                     }
+                    UnaryOp::Not => {
+                        self.emit_source(InstructionKind::Not, expr.span);
+                    }
                 }
             }
 
@@ -224,6 +398,12 @@ impl Compiler {
                     BinaryOp::Subtract => InstructionKind::Subtract(expr.ty.into()),
                     BinaryOp::Multiply => InstructionKind::Multiply(expr.ty.into()),
                     BinaryOp::Divide => InstructionKind::Divide(expr.ty.into()),
+                    BinaryOp::Equal => InstructionKind::Equal(left.ty.into()),
+                    BinaryOp::NotEqual => InstructionKind::NotEqual(left.ty.into()),
+                    BinaryOp::Less => InstructionKind::Less(left.ty.into()),
+                    BinaryOp::LessEqual => InstructionKind::LessEqual(left.ty.into()),
+                    BinaryOp::Greater => InstructionKind::Greater(left.ty.into()),
+                    BinaryOp::GreaterEqual => InstructionKind::GreaterEqual(left.ty.into()),
                 };
 
                 self.emit_source(instruction, expr.span);
@@ -234,11 +414,68 @@ impl Compiler {
     fn emit_source(&mut self, kind: InstructionKind, span: Span) {
         self.instructions.push(Instruction::source(kind, span));
     }
+
+    fn patch_jump(&mut self, index: usize, target: usize) {
+        match &mut self.instructions[index].kind {
+            InstructionKind::JumpIfFalse(current) | InstructionKind::Jump(current) => {
+                *current = target;
+            }
+            _ => unreachable!("only jump instructions are patched"),
+        }
+    }
+}
+
+fn collect_slots(
+    statements: &[Statement],
+    slots: &mut Vec<Slot>,
+    slot_map: &mut HashMap<BindingId, usize>,
+) {
+    for statement in statements {
+        match &statement.kind {
+            StatementKind::Binding {
+                id,
+                mutable,
+                name,
+                ty,
+                ..
+            } => {
+                let index = slots.len();
+                slots.push(Slot {
+                    name: name.clone(),
+                    ty: (*ty).into(),
+                    mutable: *mutable,
+                });
+                slot_map.insert(*id, index);
+            }
+            StatementKind::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_slots(then_body, slots, slot_map);
+                collect_slots(else_body, slots, slot_map);
+            }
+            StatementKind::While { body, .. } => {
+                collect_slots(body, slots, slot_map);
+            }
+            StatementKind::For {
+                initializer, body, ..
+            } => {
+                collect_slots(std::slice::from_ref(initializer), slots, slot_map);
+                collect_slots(body, slots, slot_map);
+            }
+            StatementKind::Assignment { .. }
+            | StatementKind::Print { .. }
+            | StatementKind::Break
+            | StatementKind::Continue => {}
+        }
+    }
 }
 
 impl From<ir::Type> for Type {
     fn from(value: ir::Type) -> Self {
         match value {
+            ir::Type::Bool => Self::Bool,
             ir::Type::I64 => Self::I64,
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
@@ -252,6 +489,10 @@ fn format_instruction(
     output: &mut String,
 ) {
     match instruction {
+        InstructionKind::PushBool(value) => {
+            writeln!(output, "push.bool {value}").unwrap();
+        }
+
         InstructionKind::PushI64(value) => {
             writeln!(output, "push.i64 {value}").unwrap();
         }
@@ -272,6 +513,10 @@ fn format_instruction(
             writeln!(output, "store {slot}       ; {}", program.slots[*slot].name,).unwrap();
         }
 
+        InstructionKind::Assign(slot) => {
+            writeln!(output, "assign {slot}      ; {}", program.slots[*slot].name,).unwrap();
+        }
+
         InstructionKind::Add(ty) => {
             writeln!(output, "add.{}", type_name(*ty),).unwrap();
         }
@@ -288,12 +533,48 @@ fn format_instruction(
             writeln!(output, "div.{}", type_name(*ty),).unwrap();
         }
 
+        InstructionKind::Equal(ty) => {
+            writeln!(output, "eq.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::NotEqual(ty) => {
+            writeln!(output, "ne.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::Less(ty) => {
+            writeln!(output, "lt.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::LessEqual(ty) => {
+            writeln!(output, "le.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::Greater(ty) => {
+            writeln!(output, "gt.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::GreaterEqual(ty) => {
+            writeln!(output, "ge.{}", type_name(*ty),).unwrap();
+        }
+
         InstructionKind::Negate(ty) => {
             writeln!(output, "neg.{}", type_name(*ty),).unwrap();
         }
 
+        InstructionKind::Not => {
+            writeln!(output, "not.bool").unwrap();
+        }
+
         InstructionKind::Print(ty) => {
             writeln!(output, "print.{}", type_name(*ty),).unwrap();
+        }
+
+        InstructionKind::JumpIfFalse(target) => {
+            writeln!(output, "jump-if-false {target:04}").unwrap();
+        }
+
+        InstructionKind::Jump(target) => {
+            writeln!(output, "jump {target:04}").unwrap();
         }
 
         InstructionKind::Halt => {
@@ -304,6 +585,7 @@ fn format_instruction(
 
 fn type_name(ty: Type) -> &'static str {
     match ty {
+        Type::Bool => "bool",
         Type::I64 => "i64",
         Type::F32 => "f32",
         Type::F64 => "f64",
@@ -388,5 +670,19 @@ mod tests {
         };
 
         assert_eq!(origins(&first), origins(&second));
+    }
+
+    #[test]
+    fn emits_all_typed_comparisons() {
+        let program = compile_to_bytecode(
+            "a: bool = 1 == 1; b: bool = 1 != 2; c: bool = 1 < 2;
+             d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
+        )
+        .unwrap();
+        let text = format_program(&program);
+
+        for instruction in ["eq.i64", "ne.i64", "lt.i64", "le.i64", "gt.i64", "ge.i64"] {
+            assert!(text.contains(instruction));
+        }
     }
 }

@@ -1,0 +1,1 @@
+primer: if condition must be bool, found i64 at 1:4
