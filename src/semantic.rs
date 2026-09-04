@@ -527,7 +527,7 @@ fn resolve_type_definitions(
                 name: field.name.clone(),
                 name_span: field.name_span,
                 ty: {
-                    if field.type_ref.array_length.is_some() {
+                    if matches!(&field.type_ref.kind, ast::TypeRefKind::Array { .. }) {
                         return Err(Diagnostic::new(
                             "array fields are not supported yet",
                             field.type_ref.span,
@@ -576,10 +576,13 @@ fn resolve_type_ref(
     type_ref: &ast::TypeRef,
     type_names: &HashMap<String, TypeId>,
 ) -> SemanticResult<Type> {
-    let element = resolve_type_name(&type_ref.name, type_ref.span, type_names)?;
-    let Some(length) = type_ref.array_length else {
-        return Ok(element);
+    let (element, length) = match &type_ref.kind {
+        ast::TypeRefKind::Named(name) => {
+            return resolve_type_name(name, type_ref.span, type_names);
+        }
+        ast::TypeRefKind::Array { element, length } => (element, *length),
     };
+    let element = resolve_type_ref(element, type_names)?;
     let element = match element {
         Type::Bool => ArrayElementType::Bool,
         Type::I64 => ArrayElementType::I64,
@@ -1665,6 +1668,18 @@ mod tests {
         assert_eq!(
             error.message(),
             "type `B` has infinite size through field `a`"
+        );
+    }
+
+    #[test]
+    fn rejects_nested_arrays_after_preserving_their_type_structure() {
+        let source = "values: [[i64; 2]; 2] = [[1, 2], [3, 4]];";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "array elements currently require a scalar type"
         );
     }
 

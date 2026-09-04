@@ -562,7 +562,7 @@ const fn is_comparison(op: ast::BinaryOp) -> bool {
 mod tests {
     use crate::ast::{
         BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
-        Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeSpec,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeRefKind, TypeSpec,
     };
     use crate::source::Span;
 
@@ -588,8 +588,7 @@ mod tests {
 
     fn explicit_type(name: &str) -> TypeSpec {
         TypeSpec::Explicit(TypeRef {
-            name: name.into(),
-            array_length: None,
+            kind: TypeRefKind::Named(name.into()),
             span: Span::empty(0),
         })
     }

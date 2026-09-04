@@ -402,8 +402,7 @@ mod tests {
                     mutable: false,
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(TypeRef {
-                        name: "f32".into(),
-                        array_length: None,
+                        kind: crate::ast::TypeRefKind::Named("f32".into()),
                         span: Span::empty(0),
                     }),
                     value: ast_expr(AstExprKind::Binary {
