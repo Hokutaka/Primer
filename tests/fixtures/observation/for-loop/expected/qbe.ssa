@@ -2,6 +2,21 @@ data $fmt_i64 = { b "%lld", b 10, b 0 }
 data $fmt_f32 = { b "%.9g", b 10, b 0 }
 data $fmt_f64 = { b "%.17g", b 10, b 0 }
 
+function l $primer_i64_add(l %left, l %right) {
+@start
+  %result =l add %left, %right
+  %left_changed =l xor %result, %left
+  %right_changed =l xor %result, %right
+  %sign_changed =l and %left_changed, %right_changed
+  %overflow =w csltl %sign_changed, 0
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
 export function w $main() {
 @start
   %slot_sum =l alloc8 8
@@ -24,12 +39,12 @@ export function w $main() {
 @block6 # if_end
   %tmp4 =l loadl %slot_sum
   %tmp5 =l loadl %slot_i
-  %tmp6 =l add %tmp4, %tmp5
+  %tmp6 =l call $primer_i64_add(l %tmp4, l %tmp5)
   storel %tmp6, %slot_sum
   jmp @block2
 @block2 # for_update
   %tmp7 =l loadl %slot_i
-  %tmp8 =l add %tmp7, 1
+  %tmp8 =l call $primer_i64_add(l %tmp7, l 1)
   storel %tmp8, %slot_i
   jmp @block0
 @block3 # for_end

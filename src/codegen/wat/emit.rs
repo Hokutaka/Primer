@@ -4,6 +4,7 @@ use super::ir::{Function, Instruction, LoopKind, Module, Type};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
+    let i64_operations = i64_operations(module);
 
     writeln!(output, "(module").unwrap();
 
@@ -35,6 +36,8 @@ pub fn emit(module: &Module) -> String {
     .unwrap();
 
     writeln!(output).unwrap();
+
+    emit_i64_operation_support(i64_operations, &mut output);
 
     if module.memory_pages > 0 {
         writeln!(output, "  (memory {})", module.memory_pages).unwrap();
@@ -82,6 +85,156 @@ pub fn emit(module: &Module) -> String {
     writeln!(output, ")").unwrap();
 
     output
+}
+
+#[derive(Clone, Copy, Default)]
+struct I64Operations {
+    add: bool,
+    subtract: bool,
+    multiply: bool,
+}
+
+impl I64Operations {
+    fn include(&mut self, instruction: &Instruction) {
+        match instruction {
+            Instruction::CheckedI64Add => self.add = true,
+            Instruction::CheckedI64Sub => self.subtract = true,
+            Instruction::CheckedI64Mul => self.multiply = true,
+            Instruction::If {
+                then_instructions,
+                else_instructions,
+            } => {
+                for instruction in then_instructions.iter().chain(else_instructions) {
+                    self.include(instruction);
+                }
+            }
+            Instruction::Loop {
+                condition_instructions,
+                body_instructions,
+                update_instructions,
+                ..
+            } => {
+                for instruction in condition_instructions
+                    .iter()
+                    .chain(body_instructions)
+                    .chain(update_instructions)
+                {
+                    self.include(instruction);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn i64_operations(module: &Module) -> I64Operations {
+    let mut operations = I64Operations::default();
+    for instruction in &module.instructions {
+        operations.include(instruction);
+    }
+    for function in &module.functions {
+        for instruction in &function.instructions {
+            operations.include(instruction);
+        }
+    }
+    operations
+}
+
+fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    if operations.add {
+        output.push_str(
+            "  (func $primer_i64_add (param $left i64) (param $right i64) (result i64)\n\
+             \x20   (local $result i64)\n\
+             \x20   local.get $left\n\
+             \x20   local.get $right\n\
+             \x20   i64.add\n\
+             \x20   local.set $result\n\
+             \x20   local.get $result\n\
+             \x20   local.get $left\n\
+             \x20   i64.xor\n\
+             \x20   local.get $result\n\
+             \x20   local.get $right\n\
+             \x20   i64.xor\n\
+             \x20   i64.and\n\
+             \x20   i64.const 0\n\
+             \x20   i64.lt_s\n\
+             \x20   if\n\
+             \x20     unreachable\n\
+             \x20   end\n\
+             \x20   local.get $result\n\
+             \x20 )\n\n",
+        );
+    }
+
+    if operations.subtract {
+        output.push_str(
+            "  (func $primer_i64_sub (param $left i64) (param $right i64) (result i64)\n\
+             \x20   (local $result i64)\n\
+             \x20   local.get $left\n\
+             \x20   local.get $right\n\
+             \x20   i64.sub\n\
+             \x20   local.set $result\n\
+             \x20   local.get $left\n\
+             \x20   local.get $right\n\
+             \x20   i64.xor\n\
+             \x20   local.get $left\n\
+             \x20   local.get $result\n\
+             \x20   i64.xor\n\
+             \x20   i64.and\n\
+             \x20   i64.const 0\n\
+             \x20   i64.lt_s\n\
+             \x20   if\n\
+             \x20     unreachable\n\
+             \x20   end\n\
+             \x20   local.get $result\n\
+             \x20 )\n\n",
+        );
+    }
+
+    if operations.multiply {
+        output.push_str(
+            "  (func $primer_i64_mul (param $left i64) (param $right i64) (result i64)\n\
+             \x20   (local $result i64)\n\
+             \x20   local.get $left\n\
+             \x20   i64.eqz\n\
+             \x20   if\n\
+             \x20     i64.const 0\n\
+             \x20     return\n\
+             \x20   end\n\
+             \x20   local.get $left\n\
+             \x20   i64.const -1\n\
+             \x20   i64.eq\n\
+             \x20   local.get $right\n\
+             \x20   i64.const -9223372036854775808\n\
+             \x20   i64.eq\n\
+             \x20   i32.and\n\
+             \x20   local.get $right\n\
+             \x20   i64.const -1\n\
+             \x20   i64.eq\n\
+             \x20   local.get $left\n\
+             \x20   i64.const -9223372036854775808\n\
+             \x20   i64.eq\n\
+             \x20   i32.and\n\
+             \x20   i32.or\n\
+             \x20   if\n\
+             \x20     unreachable\n\
+             \x20   end\n\
+             \x20   local.get $left\n\
+             \x20   local.get $right\n\
+             \x20   i64.mul\n\
+             \x20   local.set $result\n\
+             \x20   local.get $result\n\
+             \x20   local.get $left\n\
+             \x20   i64.div_s\n\
+             \x20   local.get $right\n\
+             \x20   i64.ne\n\
+             \x20   if\n\
+             \x20     unreachable\n\
+             \x20   end\n\
+             \x20   local.get $result\n\
+             \x20 )\n\n",
+        );
+    }
 }
 
 fn emit_function(function: &Function, module: &Module, output: &mut String) {
@@ -233,10 +386,10 @@ fn emit_instruction(
 
         Instruction::Return => emit_simple("return", &prefix, output),
 
-        Instruction::I64Add => emit_simple("i64.add", &prefix, output),
-        Instruction::I64Sub => emit_simple("i64.sub", &prefix, output),
-        Instruction::I64Mul => emit_simple("i64.mul", &prefix, output),
-        Instruction::I64DivS => emit_simple("i64.div_s", &prefix, output),
+        Instruction::CheckedI64Add => emit_simple("call $primer_i64_add", &prefix, output),
+        Instruction::CheckedI64Sub => emit_simple("call $primer_i64_sub", &prefix, output),
+        Instruction::CheckedI64Mul => emit_simple("call $primer_i64_mul", &prefix, output),
+        Instruction::CheckedI64DivS => emit_simple("i64.div_s", &prefix, output),
         Instruction::I64Eq => emit_simple("i64.eq", &prefix, output),
         Instruction::I64Ne => emit_simple("i64.ne", &prefix, output),
         Instruction::I64LtS => emit_simple("i64.lt_s", &prefix, output),

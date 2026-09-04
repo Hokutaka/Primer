@@ -37,6 +37,9 @@ main:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_0
+  ud2
+.Lprimer_main_integer_ok_0:
   movq %rax, -8(%rbp)
   movss .Lprimer_f32_0(%rip), %xmm0
   movss %xmm0, -16(%rbp)

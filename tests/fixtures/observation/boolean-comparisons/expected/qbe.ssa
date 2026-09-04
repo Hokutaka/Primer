@@ -5,6 +5,21 @@ data $bool_false = { b "false", b 0 }
 data $bool_true = { b "true", b 0 }
 data $bool_texts = align 8 { l $bool_false, l $bool_true }
 
+function l $primer_i64_add(l %left, l %right) {
+@start
+  %result =l add %left, %right
+  %left_changed =l xor %result, %left
+  %right_changed =l xor %result, %right
+  %sign_changed =l and %left_changed, %right_changed
+  %overflow =w csltl %sign_changed, 0
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
 export function w $main() {
 @start
   %slot_truth =l alloc8 8
@@ -19,7 +34,7 @@ export function w $main() {
   %tmp2 =w loadw %slot_truth
   %tmp3 =w ceqw %tmp2, 1
   storew %tmp3, %slot_same
-  %tmp4 =l add 1, 2
+  %tmp4 =l call $primer_i64_add(l 1, l 2)
   %tmp5 =w csltl %tmp4, 4
   storew %tmp5, %slot_integer_order
   %tmp6 =w cnes s_0.1, s_0.2

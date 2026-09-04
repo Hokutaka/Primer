@@ -4,6 +4,27 @@
   (import "primer" "print_f32" (func $print_f32 (param f32)))
   (import "primer" "print_f64" (func $print_f64 (param f64)))
 
+  (func $primer_i64_sub (param $left i64) (param $right i64) (result i64)
+    (local $result i64)
+    local.get $left
+    local.get $right
+    i64.sub
+    local.set $result
+    local.get $left
+    local.get $right
+    i64.xor
+    local.get $left
+    local.get $result
+    i64.xor
+    i64.and
+    i64.const 0
+    i64.lt_s
+    if
+      unreachable
+    end
+    local.get $result
+  )
+
   (func $main
     (local $primer_value i64)
     (local $primer_value_1 i32)
@@ -23,7 +44,7 @@
     else
       i64.const 0
       i64.const 1
-      i64.sub
+      call $primer_i64_sub
       local.set $primer_value
     end
     local.get $primer_value

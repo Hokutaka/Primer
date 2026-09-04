@@ -17,7 +17,11 @@ pub fn emit_c(program: &primer_ir::Program) -> Result<String, Diagnostic> {
 mod tests {
     use crate::compile_to_ir;
 
-    use super::{emit_c, ir::Statement, lower};
+    use super::{
+        emit_c,
+        ir::{BinaryOp, ExprKind, Statement},
+        lower,
+    };
 
     #[test]
     fn lowers_binding_to_c_ir() {
@@ -97,7 +101,53 @@ mod tests {
         let c = emit_c(&program).unwrap();
 
         assert!(c.contains("int64_t primer_fn_add_0(int64_t primer_left, int64_t primer_right);"));
-        assert!(c.contains("return (primer_left + primer_right);"));
+        assert!(c.contains("return primer_i64_add(primer_left, primer_right);"));
         assert!(c.contains("primer_fn_add_0(20, 22)"));
+    }
+
+    #[test]
+    fn keeps_checked_i64_arithmetic_visible_in_c_ir() {
+        let program = compile_to_ir("x: i64 = 1 + 2;").unwrap();
+        let module = lower(&program);
+
+        assert!(matches!(
+            &module.statements[0],
+            Statement::Binding {
+                value: super::ir::Expr {
+                    kind: ExprKind::Binary {
+                        op: BinaryOp::CheckedI64Add,
+                        ..
+                    },
+                    ..
+                },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn emits_checked_i64_arithmetic() {
+        let program = compile_to_ir(
+            "value: i64 = 8;
+             print(value + 1);
+             print(value - 1);
+             print(value * 2);
+             print(value / 2);
+             print(-value);",
+        )
+        .unwrap();
+        let c = emit_c(&program).unwrap();
+
+        for helper in [
+            "primer_i64_add",
+            "primer_i64_sub",
+            "primer_i64_mul",
+            "primer_i64_div",
+            "primer_i64_neg",
+        ] {
+            assert!(c.contains(helper));
+        }
+        assert!(c.contains("INT64_MAX"));
+        assert!(c.contains("INT64_MIN"));
     }
 }

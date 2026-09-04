@@ -28,7 +28,7 @@ mod tests {
             matches!(
                 instruction,
                 Instruction::Binary {
-                    op: super::ir::BinaryOp::Add,
+                    op: super::ir::BinaryOp::CheckedI64Add,
                     ..
                 }
             )
@@ -40,9 +40,36 @@ mod tests {
         let program = compile_to_ir("x: i64 = 1 + 2; print(x);").unwrap();
         let qbe = emit_qbe(&program).unwrap();
 
-        assert!(qbe.contains("=l add 1, 2"));
+        assert!(qbe.contains("function l $primer_i64_add"));
+        assert!(qbe.contains("=l call $primer_i64_add(l 1, l 2)"));
+        assert!(qbe.contains("jnz %overflow, @trap, @ok"));
         assert!(qbe.contains("storel %tmp0, %slot_x"));
         assert!(qbe.contains("call $printf(l $fmt_i64"));
+    }
+
+    #[test]
+    fn emits_checked_i64_arithmetic_helpers() {
+        let program = compile_to_ir(
+            "value: i64 = 8;
+             print(value + 1);
+             print(value - 1);
+             print(value * 2);
+             print(value / 2);
+             print(-value);",
+        )
+        .unwrap();
+        let qbe = emit_qbe(&program).unwrap();
+
+        for helper in [
+            "$primer_i64_add",
+            "$primer_i64_sub",
+            "$primer_i64_mul",
+            "$primer_i64_div",
+            "$primer_i64_neg",
+        ] {
+            assert!(qbe.contains(helper));
+        }
+        assert!(qbe.contains("call $abort()"));
     }
 
     #[test]

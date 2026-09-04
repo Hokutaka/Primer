@@ -2,6 +2,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static void primer_integer_overflow(void) {
+    fputs("primer: integer operation produced a value outside the supported range\n", stderr);
+    abort();
+}
+
+static int64_t primer_i64_add(int64_t left, int64_t right) {
+    if ((right > 0 && left > INT64_MAX - right) ||
+        (right < 0 && left < INT64_MIN - right)) {
+        primer_integer_overflow();
+    }
+    return left + right;
+}
+
 typedef struct primer_array_i64_2 {
     int64_t items[2];
 } primer_array_i64_2;
@@ -38,7 +51,7 @@ primer_array_array_i64_2_2 primer_fn_duplicate_3(primer_array_i64_2 primer_row);
 primer_array_array_i64_2_2 primer_fn_duplicate_first_row_4(primer_array_array_i64_2_2 primer_matrix);
 
 primer_type_Point_0 primer_fn_move_x_0(primer_type_Point_0 primer_point, int64_t primer_amount) {
-    return (primer_type_Point_0){ .x = ((primer_point).x + primer_amount), .y = (primer_point).y };
+    return (primer_type_Point_0){ .x = primer_i64_add((primer_point).x, primer_amount), .y = (primer_point).y };
 }
 
 primer_type_Point_0 primer_fn_move_twice_1(primer_type_Point_0 primer_point, int64_t primer_amount) {

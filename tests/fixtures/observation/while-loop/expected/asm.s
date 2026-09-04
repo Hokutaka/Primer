@@ -48,6 +48,9 @@ main:
   movq %rax, %rcx
   movq -32(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_2
+  ud2
+.Lprimer_main_integer_ok_2:
   movq %rax, -16(%rbp)
   movq -8(%rbp), %rax
   movq %rax, -32(%rbp)
@@ -58,7 +61,7 @@ main:
   sete %al
   movzbq %al, %rax
   testq %rax, %rax
-  je .Lprimer_block_3
+  je .Lprimer_block_4
   movabsq $1, %rax
   movq %rax, -24(%rbp)
   movq -24(%rbp), %rax
@@ -67,14 +70,17 @@ main:
   leaq .Lprimer_bool_true(%rip), %rdx
   cmovne %rdx, %rcx
   callq puts
-  jmp .Lprimer_block_3
-.Lprimer_block_3: # if_end
+  jmp .Lprimer_block_4
+.Lprimer_block_4: # if_end
   movq -8(%rbp), %rax
   movq %rax, -32(%rbp)
   movabsq $1, %rax
   movq %rax, %rcx
   movq -32(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_5
+  ud2
+.Lprimer_main_integer_ok_5:
   movq %rax, -8(%rbp)
   jmp .Lprimer_block_0
 .Lprimer_block_1: # while_end

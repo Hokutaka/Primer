@@ -455,6 +455,10 @@ f32 op f32 -> f32
 f64 op f64 -> f64
 ```
 
+The `i64` operators `+`, `-`, `*`, and unary `-` stop execution when their result is outside the `i64` range. They do not silently wrap from one end of the range to the other. Integer division by zero and division of the minimum `i64` value by `-1` also stop execution.
+
+The Primer VM diagnoses the failing operation kind, type, bytecode instruction index, and source location. Generated C, LLVM IR, QBE IR, WebAssembly Text, and Windows x86-64 assembly retain corresponding checks or traps, making the enforcement point observable.
+
 Primer v0.1 performs no implicit numeric conversion.
 
 For example, the following expression is a type error because its operands are `i64` and `f64`:

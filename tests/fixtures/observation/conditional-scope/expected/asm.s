@@ -53,6 +53,9 @@ main:
 .Lprimer_block_0: # if_else
   movabsq $1, %rax
   negq %rax
+  jno .Lprimer_main_integer_ok_2
+  ud2
+.Lprimer_main_integer_ok_2:
   movq %rax, -8(%rbp)
 .Lprimer_block_1: # if_end
   movq -8(%rbp), %rax

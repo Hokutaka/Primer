@@ -28,7 +28,7 @@ mod tests {
             matches!(
                 instruction,
                 Instruction::Binary {
-                    op: super::ir::BinaryOp::Add,
+                    op: super::ir::BinaryOp::CheckedI64Add,
                     ..
                 }
             )
@@ -40,7 +40,36 @@ mod tests {
         let program = compile_to_ir("x: i64 = 1 + 2; print(x);").unwrap();
         let llvm = emit_llvm(&program).unwrap();
 
-        assert!(llvm.contains("add i64 1, 2"));
+        assert!(llvm.contains("@llvm.sadd.with.overflow.i64"));
+        assert!(llvm.contains("call i64 @primer_i64_add(i64 1, i64 2)"));
+        assert!(llvm.contains("br i1 %overflow, label %trap, label %ok"));
+    }
+
+    #[test]
+    fn emits_checked_i64_arithmetic_helpers() {
+        let program = compile_to_ir(
+            "value: i64 = 8;
+             print(value + 1);
+             print(value - 1);
+             print(value * 2);
+             print(value / 2);
+             print(-value);",
+        )
+        .unwrap();
+        let llvm = emit_llvm(&program).unwrap();
+
+        for helper in [
+            "@primer_i64_add",
+            "@primer_i64_sub",
+            "@primer_i64_mul",
+            "@primer_i64_div",
+        ] {
+            assert!(llvm.contains(helper));
+        }
+        assert!(llvm.contains("@llvm.sadd.with.overflow.i64"));
+        assert!(llvm.contains("@llvm.ssub.with.overflow.i64"));
+        assert!(llvm.contains("@llvm.smul.with.overflow.i64"));
+        assert!(llvm.contains("%result = sdiv i64 %left, %right"));
     }
 
     #[test]

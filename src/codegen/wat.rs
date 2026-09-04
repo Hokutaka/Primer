@@ -34,7 +34,7 @@ mod tests {
                 [
                     Instruction::I64Const(0),
                     Instruction::I64Const(1),
-                    Instruction::I64Sub
+                    Instruction::CheckedI64Sub
                 ]
             )
         }));
@@ -61,11 +61,33 @@ mod tests {
 
         let wat = emit_wat(&program).unwrap();
 
-        assert!(wat.contains("i64.add"));
+        assert!(wat.contains("(func $primer_i64_add"));
+        assert!(wat.contains("call $primer_i64_add"));
+        assert!(wat.contains("unreachable"));
 
         assert!(wat.contains("(local $primer_x i64)"));
 
         assert!(wat.contains("call $print_i64"));
+    }
+
+    #[test]
+    fn emits_checked_i64_arithmetic() {
+        let program = compile_to_ir(
+            "value: i64 = 8;
+             print(value + 1);
+             print(value - 1);
+             print(value * 2);
+             print(value / 2);
+             print(-value);",
+        )
+        .unwrap();
+        let wat = emit_wat(&program).unwrap();
+
+        for helper in ["$primer_i64_add", "$primer_i64_sub", "$primer_i64_mul"] {
+            assert!(wat.contains(helper));
+        }
+        assert!(wat.contains("i64.div_s"));
+        assert!(wat.contains("unreachable"));
     }
 
     #[test]

@@ -253,6 +253,11 @@ fn run_vm_error_matches_expected_diagnostic() {
 }
 
 #[test]
+fn run_integer_overflow_matches_expected_diagnostic() {
+    assert_diagnostic("vm-integer-overflow", "run", "run.stderr");
+}
+
+#[test]
 fn run_array_index_out_of_bounds_matches_expected_diagnostic() {
     assert_diagnostic("vm-array-index-out-of-bounds", "run", "run.stderr");
 }

@@ -160,12 +160,17 @@ pub struct FieldValue {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
+    CheckedI64Negate,
     Negate,
     Not,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
+    CheckedI64Add,
+    CheckedI64Subtract,
+    CheckedI64Multiply,
+    CheckedI64Divide,
     Add,
     Subtract,
     Multiply,

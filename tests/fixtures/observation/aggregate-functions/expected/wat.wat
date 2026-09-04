@@ -3,6 +3,27 @@
   (import "primer" "print_f32" (func $print_f32 (param f32)))
   (import "primer" "print_f64" (func $print_f64 (param f64)))
 
+  (func $primer_i64_add (param $left i64) (param $right i64) (result i64)
+    (local $result i64)
+    local.get $left
+    local.get $right
+    i64.add
+    local.set $result
+    local.get $result
+    local.get $left
+    i64.xor
+    local.get $result
+    local.get $right
+    i64.xor
+    i64.and
+    i64.const 0
+    i64.lt_s
+    if
+      unreachable
+    end
+    local.get $result
+  )
+
   (memory 1)
 
   (func $primer_fn_move_x_0 (param $primer_abi.result i32) (param $primer_point i32) (param $primer_amount i64)
@@ -32,7 +53,7 @@
     i32.const 8
     i64.load
     local.get $primer_amount
-    i64.add
+    call $primer_i64_add
     i64.store
     i32.const 36
     i32.const 16

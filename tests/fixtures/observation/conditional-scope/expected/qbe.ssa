@@ -5,6 +5,18 @@ data $bool_false = { b "false", b 0 }
 data $bool_true = { b "true", b 0 }
 data $bool_texts = align 8 { l $bool_false, l $bool_true }
 
+function l $primer_i64_neg(l %value) {
+@start
+  %overflow =w ceql %value, -9223372036854775808
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l neg %value
+  ret %result
+}
+
 export function w $main() {
 @start
   %slot_value =l alloc8 8
@@ -24,7 +36,7 @@ export function w $main() {
   %tmp7 =w call $puts(l %tmp6)
   jmp @block2
 @block1 # if_else
-  %tmp8 =l neg 1
+  %tmp8 =l call $primer_i64_neg(l 1)
   storel %tmp8, %slot_value
   jmp @block2
 @block2 # if_end

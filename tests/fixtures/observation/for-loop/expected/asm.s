@@ -56,6 +56,9 @@ main:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_5
+  ud2
+.Lprimer_main_integer_ok_5:
   movq %rax, -8(%rbp)
   jmp .Lprimer_block_1
 .Lprimer_block_1: # for_update
@@ -65,6 +68,9 @@ main:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_6
+  ud2
+.Lprimer_main_integer_ok_6:
   movq %rax, -16(%rbp)
   jmp .Lprimer_block_0
 .Lprimer_block_2: # for_end

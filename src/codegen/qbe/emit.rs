@@ -7,6 +7,7 @@ use super::ir::{
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
+    let i64_operations = i64_operations(module);
 
     // printf format strings.
     //
@@ -23,6 +24,8 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push('\n');
+
+    emit_i64_operation_support(i64_operations, &mut output);
 
     for function in &module.functions {
         emit_function(function, module, &mut output);
@@ -53,6 +56,143 @@ pub fn emit(module: &Module) -> String {
     output.push_str("}\n");
 
     output
+}
+
+#[derive(Clone, Copy, Default)]
+struct I64Operations {
+    add: bool,
+    subtract: bool,
+    multiply: bool,
+    divide: bool,
+    negate: bool,
+}
+
+impl I64Operations {
+    fn include(&mut self, instruction: &Instruction) {
+        match instruction {
+            Instruction::CheckedI64Negate { .. } => self.negate = true,
+            Instruction::Binary { op, .. } => match op {
+                BinaryOp::CheckedI64Add => self.add = true,
+                BinaryOp::CheckedI64Subtract => self.subtract = true,
+                BinaryOp::CheckedI64Multiply => self.multiply = true,
+                BinaryOp::CheckedI64Divide => self.divide = true,
+                BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+fn i64_operations(module: &Module) -> I64Operations {
+    let mut operations = I64Operations::default();
+    for instruction in &module.instructions {
+        operations.include(instruction);
+    }
+    for function in &module.functions {
+        for instruction in &function.instructions {
+            operations.include(instruction);
+        }
+    }
+    operations
+}
+
+fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for (enabled, name, operation, check) in [
+        (
+            operations.add,
+            "add",
+            "add",
+            "  %left_changed =l xor %result, %left\n  %right_changed =l xor %result, %right\n  %sign_changed =l and %left_changed, %right_changed\n",
+        ),
+        (
+            operations.subtract,
+            "sub",
+            "sub",
+            "  %operands_differ =l xor %left, %right\n  %result_changed =l xor %left, %result\n  %sign_changed =l and %operands_differ, %result_changed\n",
+        ),
+    ] {
+        if !enabled {
+            continue;
+        }
+        writeln!(
+            output,
+            "function l $primer_i64_{name}(l %left, l %right) {{"
+        )
+        .unwrap();
+        output.push_str("@start\n");
+        writeln!(output, "  %result =l {operation} %left, %right").unwrap();
+        output.push_str(check);
+        output.push_str("  %overflow =w csltl %sign_changed, 0\n");
+        output.push_str("  jnz %overflow, @trap, @ok\n@trap\n");
+        output.push_str("  call $abort()\n  hlt\n@ok\n  ret %result\n}\n\n");
+    }
+
+    if operations.multiply {
+        output.push_str(
+            "function l $primer_i64_mul(l %left, l %right) {\n\
+             @start\n\
+             \x20 %left_zero =w ceql %left, 0\n\
+             \x20 jnz %left_zero, @zero, @special\n\
+             @special\n\
+             \x20 %left_negative_one =w ceql %left, -1\n\
+             \x20 %right_min =w ceql %right, -9223372036854775808\n\
+             \x20 %first_special =w and %left_negative_one, %right_min\n\
+             \x20 %right_negative_one =w ceql %right, -1\n\
+             \x20 %left_min =w ceql %left, -9223372036854775808\n\
+             \x20 %second_special =w and %right_negative_one, %left_min\n\
+             \x20 %special_overflow =w or %first_special, %second_special\n\
+             \x20 jnz %special_overflow, @trap, @multiply\n\
+             @multiply\n\
+             \x20 %result =l mul %left, %right\n\
+             \x20 %quotient =l div %result, %left\n\
+             \x20 %overflow =w cnel %quotient, %right\n\
+             \x20 jnz %overflow, @trap, @ok\n\
+             @zero\n\
+             \x20 ret 0\n\
+             @trap\n\
+             \x20 call $abort()\n\
+             \x20 hlt\n\
+             @ok\n\
+             \x20 ret %result\n\
+             }\n\n",
+        );
+    }
+
+    if operations.divide {
+        output.push_str(
+            "function l $primer_i64_div(l %left, l %right) {\n\
+             @start\n\
+             \x20 %is_zero =w ceql %right, 0\n\
+             \x20 %is_min =w ceql %left, -9223372036854775808\n\
+             \x20 %is_negative_one =w ceql %right, -1\n\
+             \x20 %overflows =w and %is_min, %is_negative_one\n\
+             \x20 %invalid =w or %is_zero, %overflows\n\
+             \x20 jnz %invalid, @trap, @ok\n\
+             @trap\n\
+             \x20 call $abort()\n\
+             \x20 hlt\n\
+             @ok\n\
+             \x20 %result =l div %left, %right\n\
+             \x20 ret %result\n\
+             }\n\n",
+        );
+    }
+
+    if operations.negate {
+        output.push_str(
+            "function l $primer_i64_neg(l %value) {\n\
+             @start\n\
+             \x20 %overflow =w ceql %value, -9223372036854775808\n\
+             \x20 jnz %overflow, @trap, @ok\n\
+             @trap\n\
+             \x20 call $abort()\n\
+             \x20 hlt\n\
+             @ok\n\
+             \x20 %result =l neg %value\n\
+             \x20 ret %result\n\
+             }\n\n",
+        );
+    }
 }
 
 fn emit_function(function: &Function, module: &Module, output: &mut String) {
@@ -237,6 +377,16 @@ fn emit_instruction(
             .unwrap();
         }
 
+        Instruction::CheckedI64Negate { dest, value } => {
+            writeln!(
+                output,
+                "  {} =l call $primer_i64_neg(l {})",
+                temp(*dest),
+                operand(value, slots),
+            )
+            .unwrap();
+        }
+
         Instruction::Not { dest, value } => {
             writeln!(
                 output,
@@ -254,16 +404,27 @@ fn emit_instruction(
             left,
             right,
         } => {
-            writeln!(
-                output,
-                "  {} ={} {} {}, {}",
-                temp(*dest),
-                type_name(*ty),
-                binary_name(*op),
-                operand(left, slots),
-                operand(right, slots),
-            )
-            .unwrap();
+            if let Some(helper) = checked_i64_helper(*op) {
+                writeln!(
+                    output,
+                    "  {} =l call ${helper}(l {}, l {})",
+                    temp(*dest),
+                    operand(left, slots),
+                    operand(right, slots),
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output,
+                    "  {} ={} {} {}, {}",
+                    temp(*dest),
+                    type_name(*ty),
+                    binary_name(*op),
+                    operand(left, slots),
+                    operand(right, slots),
+                )
+                .unwrap();
+            }
         }
 
         Instruction::Compare {
@@ -424,6 +585,22 @@ fn binary_name(op: BinaryOp) -> &'static str {
         BinaryOp::Subtract => "sub",
         BinaryOp::Multiply => "mul",
         BinaryOp::Divide => "div",
+        BinaryOp::CheckedI64Add
+        | BinaryOp::CheckedI64Subtract
+        | BinaryOp::CheckedI64Multiply
+        | BinaryOp::CheckedI64Divide => {
+            unreachable!("checked integer operations are emitted as helper calls")
+        }
+    }
+}
+
+fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::CheckedI64Add => Some("primer_i64_add"),
+        BinaryOp::CheckedI64Subtract => Some("primer_i64_sub"),
+        BinaryOp::CheckedI64Multiply => Some("primer_i64_mul"),
+        BinaryOp::CheckedI64Divide => Some("primer_i64_div"),
+        BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => None,
     }
 }
 

@@ -70,6 +70,10 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    CheckedI64Add,
+    CheckedI64Subtract,
+    CheckedI64Multiply,
+    CheckedI64Divide,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +138,10 @@ pub enum Instruction {
     Negate {
         dest: Temp,
         ty: Type,
+        value: Operand,
+    },
+    CheckedI64Negate {
+        dest: Temp,
         value: Operand,
     },
     Not {

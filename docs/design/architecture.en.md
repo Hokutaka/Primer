@@ -119,6 +119,8 @@ A `NodeId` refers to an element within one compilation result. It is not stable 
 
 Each backend lowers Primer IR into a backend-specific Rust representation before emission.
 
+An expression represented as one integer operation in Primer IR may become the operation plus an overflow check during backend lowering. The check is not left to accidental behavior in an external tool. Backend IR retains it as a checked integer operation or an explicit trap condition. The generated artifact exposes the target-appropriate result, such as a helper call, an overflow-flag branch, or `unreachable`.
+
 The current output routes and implementation boundaries are:
 
 | Output route | Backend-internal representation | Emitted artifact |

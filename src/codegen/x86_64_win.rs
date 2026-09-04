@@ -34,6 +34,12 @@ mod tests {
                 .iter()
                 .any(|instruction| matches!(instruction, Instruction::I64Binary(BinaryOp::Add)))
         );
+        assert!(
+            module
+                .instructions
+                .iter()
+                .any(|instruction| matches!(instruction, Instruction::TrapIfOverflow(_)))
+        );
     }
 
     #[test]
@@ -58,8 +64,29 @@ mod tests {
         let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addq %rcx, %rax"));
+        assert!(asm.contains("jno .Lprimer_main_integer_ok_"));
+        assert!(asm.contains("ud2"));
 
         assert!(asm.contains("callq printf"));
+    }
+
+    #[test]
+    fn emits_checked_i64_arithmetic() {
+        let program = compile_to_ir(
+            "value: i64 = 8;
+             print(value + 1);
+             print(value - 1);
+             print(value * 2);
+             print(value / 2);
+             print(-value);",
+        )
+        .unwrap();
+        let asm = emit_x86_64_win_asm(&program).unwrap();
+
+        assert!(asm.contains("jno .Lprimer_main_integer_ok_"));
+        assert!(asm.contains("je .Lprimer_main_division_trap_"));
+        assert!(asm.contains("movabsq $-9223372036854775808, %rdx"));
+        assert!(asm.contains("ud2"));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::bytecode::Type;
 use crate::source::{SourceLocation, Span};
 
-use super::{VmError, VmErrorKind};
+use super::{IntegerOperation, VmError, VmErrorKind};
 
 /// VM実行エラーをソース本文やファイルパスを含まない簡潔な形式で描画します。
 pub fn render_compact(error: &VmError) -> String {
@@ -89,6 +89,11 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::DivisionOverflow => {
             "integer division produced a value outside the supported range".to_owned()
         }
+        VmErrorKind::IntegerOverflow { operation, ty } => format!(
+            "{} with {} values produced a result outside the supported range",
+            integer_operation_name(operation),
+            type_name(ty)
+        ),
         VmErrorKind::ArrayIndexOutOfBounds { index, length } => {
             format!("array index {index} is outside an array of length {length}")
         }
@@ -98,6 +103,15 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::UnusedStackValues { count } => {
             format!("Primer VM stopped with {count} unused values on the stack")
         }
+    }
+}
+
+fn integer_operation_name(operation: IntegerOperation) -> &'static str {
+    match operation {
+        IntegerOperation::Add => "addition",
+        IntegerOperation::Subtract => "subtraction",
+        IntegerOperation::Multiply => "multiplication",
+        IntegerOperation::Negate => "negation",
     }
 }
 
@@ -127,6 +141,22 @@ mod tests {
         assert_eq!(
             render_compact(&error),
             "cannot divide an integer by zero at bytecode instruction 0002"
+        );
+    }
+
+    #[test]
+    fn renders_integer_overflow_in_plain_language() {
+        let error = VmError::new(
+            VmErrorKind::IntegerOverflow {
+                operation: crate::vm::IntegerOperation::Add,
+                ty: crate::bytecode::Type::I64,
+            },
+            2,
+        );
+
+        assert_eq!(
+            render_compact(&error),
+            "addition with i64 values produced a result outside the supported range at bytecode instruction 0002"
         );
     }
 

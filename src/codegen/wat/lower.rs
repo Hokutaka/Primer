@@ -878,7 +878,7 @@ impl LoweringContext<'_> {
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         instructions.push(Instruction::I64Const(0));
                         self.lower_expr(value, instructions);
-                        instructions.push(Instruction::I64Sub);
+                        instructions.push(Instruction::CheckedI64Sub);
                     }
                     (primer_ir::UnaryOp::Negate, Type::F32) => {
                         self.lower_expr(value, instructions);
@@ -1306,10 +1306,10 @@ fn store_instruction(ty: Type, offset: u32) -> Instruction {
 
 fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
     match (op, ty) {
-        (primer_ir::BinaryOp::Add, primer_ir::Type::I64) => Instruction::I64Add,
-        (primer_ir::BinaryOp::Subtract, primer_ir::Type::I64) => Instruction::I64Sub,
-        (primer_ir::BinaryOp::Multiply, primer_ir::Type::I64) => Instruction::I64Mul,
-        (primer_ir::BinaryOp::Divide, primer_ir::Type::I64) => Instruction::I64DivS,
+        (primer_ir::BinaryOp::Add, primer_ir::Type::I64) => Instruction::CheckedI64Add,
+        (primer_ir::BinaryOp::Subtract, primer_ir::Type::I64) => Instruction::CheckedI64Sub,
+        (primer_ir::BinaryOp::Multiply, primer_ir::Type::I64) => Instruction::CheckedI64Mul,
+        (primer_ir::BinaryOp::Divide, primer_ir::Type::I64) => Instruction::CheckedI64DivS,
         (primer_ir::BinaryOp::Add, primer_ir::Type::F32) => Instruction::F32Add,
         (primer_ir::BinaryOp::Subtract, primer_ir::Type::F32) => Instruction::F32Sub,
         (primer_ir::BinaryOp::Multiply, primer_ir::Type::F32) => Instruction::F32Mul,

@@ -477,7 +477,9 @@ impl Lowerer<'_> {
                 };
                 match (*op, ty) {
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
-                        self.instructions.push(Instruction::NegI64)
+                        self.instructions.push(Instruction::NegI64);
+                        let label = self.next_label();
+                        self.instructions.push(Instruction::TrapIfOverflow(label));
                     }
                     (primer_ir::UnaryOp::Negate, Type::F32) => {
                         self.instructions.push(Instruction::NegF32)
@@ -517,10 +519,15 @@ impl Lowerer<'_> {
                         } else {
                             let op = (*op).into();
                             if op == BinaryOp::Divide {
+                                let label = self.next_label();
+                                self.instructions
+                                    .push(Instruction::TrapIfInvalidI64Division(label));
                                 self.instructions.push(Instruction::SignExtendRax);
                                 self.instructions.push(Instruction::DivideRaxByRcx);
                             } else {
                                 self.instructions.push(Instruction::I64Binary(op));
+                                let label = self.next_label();
+                                self.instructions.push(Instruction::TrapIfOverflow(label));
                             }
                         }
                     }
