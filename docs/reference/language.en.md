@@ -66,7 +66,7 @@ type_spec   := "i64"
 
 type_ref    := "i64" | "f32" | "f64" | "bool" | fixed_array_type | IDENT
 
-fixed_array_type := "[" ("i64" | "f32" | "f64" | "bool") ";" INTEGER "]"
+fixed_array_type := "[" type_ref ";" INTEGER "]"
 
 expression  := equality
 
@@ -177,7 +177,31 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-Current element types are `bool`, `i64`, `f32`, and `f64`. Nested arrays, array fields in product types, array parameters, and array results are not yet supported. Direct element assignment such as `values[0] = 1;` is also unavailable. Primer diagnoses these forms instead of silently assigning them another meaning.
+An element type may be `bool`, `i64`, `f32`, `f64`, or a named product type. A fixed array may also be used as a field of a product type.
+
+```primer
+type Point {
+    x: i64,
+    y: i64,
+}
+
+type Path {
+    points: [Point; 4],
+}
+
+path: Path = Path {
+    points: [
+        Point { x: 0, y: 0, },
+        Point { x: 1, y: 1, },
+        Point { x: 2, y: 4, },
+        Point { x: 3, y: 9, },
+    ],
+};
+
+print(path.points[2].y);
+```
+
+Directly nested fixed arrays such as `[[i64; 2]; 2]`, array parameters and results, and direct element assignment such as `values[0] = 1;` are not yet supported. Primer diagnoses these forms instead of silently assigning them another meaning.
 
 See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
 

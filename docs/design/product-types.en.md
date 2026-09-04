@@ -95,12 +95,16 @@ point: Point = Point {
 };
 ```
 
-A field may use a built-in type or another user-defined type:
+A field may use a built-in type, a fixed array, or another user-defined type:
 
 ```primer
 type Line {
     start: Point,
     end: Point,
+}
+
+type Path {
+    points: [Point; 4],
 }
 ```
 
@@ -409,7 +413,7 @@ The following scope is implemented:
 
 - top-level named product types declared with `type`;
 - nominal type identity;
-- fields containing built-in or user-defined types;
+- fields containing built-in types, fixed arrays, or user-defined types;
 - aggregate construction from explicit and default values;
 - field access;
 - whole-aggregate binding and reassignment;
@@ -430,7 +434,7 @@ The following are not rejected. They are separated into later design decisions:
 - aggregate `==` and `!=`;
 - `print(aggregate)` and stable formatting;
 - type aliases and newtypes;
-- tuples, arrays, sum types, and generic types;
+- tuples, sum types, and generic types;
 - field visibility and module boundaries;
 - copy, move, borrow, and references;
 - recursive types through references;
