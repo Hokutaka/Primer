@@ -44,6 +44,8 @@ pub enum TokenKind {
     RightParen,
     LeftBrace,
     RightBrace,
+    LeftBracket,
+    RightBracket,
     Semicolon,
 
     Eof,
@@ -180,6 +182,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b'{' => {
                 i += 1;
                 TokenKind::LeftBrace
+            }
+
+            b'[' => {
+                i += 1;
+                TokenKind::LeftBracket
+            }
+
+            b']' => {
+                i += 1;
+                TokenKind::RightBracket
             }
 
             b'}' => {
@@ -348,6 +360,26 @@ mod tests {
         assert_eq!(tokens[0].kind, TokenKind::Type);
         assert!(tokens.iter().any(|token| token.kind == TokenKind::Comma));
         assert!(tokens.iter().any(|token| token.kind == TokenKind::Dot));
+    }
+
+    #[test]
+    fn lexes_fixed_array_syntax() {
+        let tokens = lex("values: [i64; 2] = [1, 2]; print(values[0]);").unwrap();
+
+        assert_eq!(
+            tokens
+                .iter()
+                .filter(|token| token.kind == TokenKind::LeftBracket)
+                .count(),
+            3
+        );
+        assert_eq!(
+            tokens
+                .iter()
+                .filter(|token| token.kind == TokenKind::RightBracket)
+                .count(),
+            3
+        );
     }
 
     #[test]

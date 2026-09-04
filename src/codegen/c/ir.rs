@@ -5,10 +5,23 @@ pub enum Type {
     Float,
     Double,
     Named(usize),
+    Array {
+        element: ArrayElementType,
+        length: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayElementType {
+    Bool,
+    I64,
+    Float,
+    Double,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub array_types: Vec<Type>,
     pub type_definitions: Vec<TypeDefinition>,
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
@@ -113,6 +126,11 @@ pub enum ExprKind {
     FieldAccess {
         field_name: String,
         base: Box<Expr>,
+    },
+    Array(Vec<Expr>),
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
     },
     Call {
         function_id: usize,

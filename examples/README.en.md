@@ -16,6 +16,7 @@ This directory contains programs that can be read and executed with the current 
 | [for_sum.prim](for_sum.prim) | `for` and assignment as its start statement |
 | [product-point.prim](product-point.prim) | named product types, defaults, and field access |
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
+| [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
 
 ## Numerical computation
 
@@ -37,9 +38,13 @@ This directory contains programs that can be read and executed with the current 
 | [integer_square_root.prim](integer_square_root.prim) | integer square root with binary search |
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | exponentiation by squaring |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
+| [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
+| [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
 
 ## Current scope
 
-These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, and named product types.
+These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, named product types, and fixed arrays.
 
-Primer does not yet have arrays, strings, or recursion. Sorting, array search, tree and graph traversal, and general dynamic programming therefore cannot yet be expressed naturally. Corresponding examples can be added as those language features arrive.
+Array elements can be read but not assigned directly yet. Search and aggregation are therefore natural, while in-place sorting and array-updating dynamic programming still require element assignment. Strings, recursion, and dynamically sized collections are also not available yet.
+
+`xor_neural_network.prim` demonstrates inference with predetermined weights. It does not yet train those weights from examples.

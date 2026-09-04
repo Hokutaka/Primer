@@ -10,6 +10,18 @@ pub enum Type {
     F32,
     F64,
     Named(TypeId),
+    Array {
+        element: ArrayElementType,
+        length: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ArrayElementType {
+    Bool,
+    I64,
+    F32,
+    F64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +166,11 @@ pub enum ExprKind {
         field_id: FieldId,
         field_name: String,
         base: Box<Expr>,
+    },
+    Array(Vec<Expr>),
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
     },
     Call {
         function_id: FunctionId,

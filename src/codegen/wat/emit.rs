@@ -164,6 +164,11 @@ fn emit_instruction(
         Instruction::F32Store { offset } => emit_memory("f32.store", *offset, &prefix, output),
         Instruction::F64Store { offset } => emit_memory("f64.store", *offset, &prefix, output),
 
+        Instruction::I32WrapI64 => emit_simple("i32.wrap_i64", &prefix, output),
+        Instruction::I32Add => emit_simple("i32.add", &prefix, output),
+        Instruction::I32Mul => emit_simple("i32.mul", &prefix, output),
+        Instruction::Unreachable => emit_simple("unreachable", &prefix, output),
+
         Instruction::If {
             then_instructions,
             else_instructions,

@@ -1,6 +1,6 @@
 pub mod render;
 
-use crate::bytecode::{BytecodeProgram, InstructionKind, ReturnType, Type};
+use crate::bytecode::{ArrayElementType, BytecodeProgram, InstructionKind, ReturnType, Type};
 
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +53,9 @@ pub enum VmErrorKind {
     /// 整数除算の結果を`i64`で表現できませんでした。
     DivisionOverflow,
 
+    /// 配列の外側を読み取ろうとしました。
+    ArrayIndexOutOfBounds { index: i64, length: usize },
+
     /// VM停止時に未使用の値がスタックへ残っていました。
     UnusedStackValues { count: usize },
 }
@@ -103,7 +106,14 @@ enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
-    Aggregate { type_id: usize, fields: Vec<Value> },
+    Aggregate {
+        type_id: usize,
+        fields: Vec<Value>,
+    },
+    Array {
+        element: ArrayElementType,
+        values: Vec<Value>,
+    },
 }
 
 impl Value {
@@ -114,6 +124,10 @@ impl Value {
             Self::F32(_) => Type::F32,
             Self::F64(_) => Type::F64,
             Self::Aggregate { type_id, .. } => Type::Named(*type_id),
+            Self::Array { element, values } => Type::Array {
+                element: *element,
+                length: values.len(),
+            },
         }
     }
 }
@@ -409,6 +423,68 @@ fn execute_frame_inner(
                 stack.push(field);
             }
 
+            InstructionKind::ConstructArray { element, length } => {
+                let expected = array_element_type(*element);
+                let mut values = Vec::with_capacity(*length);
+                for _ in 0..*length {
+                    let value = at_instruction(pop_value(&mut stack), pc)?;
+                    if value.ty() != expected {
+                        return Err(VmError::new(
+                            VmErrorKind::TypeMismatch {
+                                expected,
+                                actual: value.ty(),
+                            },
+                            pc,
+                        ));
+                    }
+                    values.push(value);
+                }
+                values.reverse();
+                stack.push(Value::Array {
+                    element: *element,
+                    values,
+                });
+            }
+
+            InstructionKind::Index { element, length } => {
+                let index = at_instruction(pop_i64(&mut stack), pc)?;
+                let value = at_instruction(pop_value(&mut stack), pc)?;
+                let expected = Type::Array {
+                    element: *element,
+                    length: *length,
+                };
+                let actual = value.ty();
+                let Value::Array {
+                    element: actual_element,
+                    values,
+                } = value
+                else {
+                    return Err(VmError::new(
+                        VmErrorKind::TypeMismatch { expected, actual },
+                        pc,
+                    ));
+                };
+                if actual_element != *element || values.len() != *length {
+                    return Err(VmError::new(
+                        VmErrorKind::TypeMismatch { expected, actual },
+                        pc,
+                    ));
+                }
+                let value = usize::try_from(index)
+                    .ok()
+                    .and_then(|index| values.get(index).cloned())
+                    .ok_or_else(|| {
+                        VmError::new(
+                            VmErrorKind::ArrayIndexOutOfBounds {
+                                index,
+                                length: *length,
+                            },
+                            pc,
+                        )
+                    })?;
+                stack.push(value);
+            }
+
             InstructionKind::Call {
                 function_id,
                 argument_count,
@@ -648,7 +724,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
             stack.push(Value::F64(value));
         }
 
-        Type::Named(_) => {
+        Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
                 expected: Type::I64,
                 actual: ty,
@@ -701,7 +777,9 @@ fn compare(ty: Type, stack: &mut Vec<Value>, comparison: Comparison) -> VmResult
             let left = pop_f64(stack)?;
             compare_values(left, right, comparison)
         }
-        Type::Named(_) => return Err(VmErrorKind::InvalidComparisonType { ty }),
+        Type::Named(_) | Type::Array { .. } => {
+            return Err(VmErrorKind::InvalidComparisonType { ty });
+        }
     };
 
     stack.push(Value::Bool(result));
@@ -746,7 +824,7 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
             stack.push(Value::F64(-value));
         }
 
-        Type::Named(_) => {
+        Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
                 expected: Type::I64,
                 actual: ty,
@@ -755,6 +833,15 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
     }
 
     Ok(())
+}
+
+const fn array_element_type(element: ArrayElementType) -> Type {
+    match element {
+        ArrayElementType::Bool => Type::Bool,
+        ArrayElementType::I64 => Type::I64,
+        ArrayElementType::F32 => Type::F32,
+        ArrayElementType::F64 => Type::F64,
+    }
 }
 
 fn pop_value(stack: &mut Vec<Value>) -> VmResult<Value> {

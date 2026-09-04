@@ -13,6 +13,18 @@ pub enum Type {
     F32,
     F64,
     Named(usize),
+    Array {
+        element: ArrayElementType,
+        length: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayElementType {
+    Bool,
+    I64,
+    F32,
+    F64,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +120,14 @@ pub enum InstructionKind {
     FieldGet {
         type_id: usize,
         field_id: usize,
+    },
+    ConstructArray {
+        element: ArrayElementType,
+        length: usize,
+    },
+    Index {
+        element: ArrayElementType,
+        length: usize,
     },
     Call {
         function_id: usize,
@@ -563,8 +583,8 @@ impl Compiler {
                 ir::Type::Bool => {
                     unreachable!("boolean cannot be emitted as float");
                 }
-                ir::Type::Named(_) => {
-                    unreachable!("a float literal cannot have a product type");
+                ir::Type::Named(_) | ir::Type::Array { .. } => {
+                    unreachable!("a float literal cannot have an aggregate type");
                 }
             },
 
@@ -613,6 +633,37 @@ impl Compiler {
                     InstructionKind::FieldGet {
                         type_id: type_id.0,
                         field_id: field_id.0,
+                    },
+                    expr.span,
+                );
+            }
+
+            ExprKind::Array(values) => {
+                for value in values {
+                    self.emit_expr(value);
+                }
+                let ir::Type::Array { element, length } = expr.ty else {
+                    unreachable!("array expressions must have an array type")
+                };
+                self.emit_source(
+                    InstructionKind::ConstructArray {
+                        element: element.into(),
+                        length,
+                    },
+                    expr.span,
+                );
+            }
+
+            ExprKind::Index { base, index } => {
+                self.emit_expr(base);
+                self.emit_expr(index);
+                let ir::Type::Array { element, length } = base.ty else {
+                    unreachable!("indexed expressions must have an array base")
+                };
+                self.emit_source(
+                    InstructionKind::Index {
+                        element: element.into(),
+                        length,
                     },
                     expr.span,
                 );
@@ -741,6 +792,21 @@ impl From<ir::Type> for Type {
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),
+            ir::Type::Array { element, length } => Self::Array {
+                element: element.into(),
+                length,
+            },
+        }
+    }
+}
+
+impl From<ir::ArrayElementType> for ArrayElementType {
+    fn from(value: ir::ArrayElementType) -> Self {
+        match value {
+            ir::ArrayElementType::Bool => Self::Bool,
+            ir::ArrayElementType::I64 => Self::I64,
+            ir::ArrayElementType::F32 => Self::F32,
+            ir::ArrayElementType::F64 => Self::F64,
         }
     }
 }
@@ -812,6 +878,24 @@ fn format_instruction(
                 output,
                 "field.get %{}@{}.%{}@{}",
                 definition.name, type_id, definition.fields[*field_id].name, field_id
+            )
+            .unwrap();
+        }
+
+        InstructionKind::ConstructArray { element, length } => {
+            writeln!(
+                output,
+                "array.new {} {length}",
+                array_element_name(*element)
+            )
+            .unwrap();
+        }
+
+        InstructionKind::Index { element, length } => {
+            writeln!(
+                output,
+                "array.get {} {length}",
+                array_element_name(*element)
             )
             .unwrap();
         }
@@ -909,6 +993,18 @@ fn type_name(ty: Type, program: &BytecodeProgram) -> String {
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
+        Type::Array { element, length } => {
+            format!("[{}; {length}]", array_element_name(element))
+        }
+    }
+}
+
+const fn array_element_name(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "bool",
+        ArrayElementType::I64 => "i64",
+        ArrayElementType::F32 => "f32",
+        ArrayElementType::F64 => "f64",
     }
 }
 

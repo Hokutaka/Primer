@@ -67,6 +67,13 @@ pub enum Instruction {
     LoadF64FromStack(isize),
     StoreF64ToStack(isize),
 
+    CheckedArrayLoad {
+        ty: Type,
+        base_offset: isize,
+        length: usize,
+        label: usize,
+    },
+
     StoreParameter {
         index: usize,
         ty: Type,

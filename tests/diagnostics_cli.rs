@@ -67,6 +67,11 @@ fn parser_product_field_assignment_matches_expected_diagnostic() {
 }
 
 #[test]
+fn parser_array_element_assignment_matches_expected_diagnostic() {
+    assert_diagnostic("parser-array-element-assignment", "check", "check.stderr");
+}
+
+#[test]
 fn parser_for_missing_left_parenthesis_matches_expected_diagnostic() {
     assert_diagnostic(
         "parser-for-missing-left-parenthesis",
@@ -112,6 +117,36 @@ fn semantic_duplicate_product_field_matches_expected_diagnostic() {
 #[test]
 fn semantic_recursive_product_type_matches_expected_diagnostic() {
     assert_diagnostic("semantic-recursive-product-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_array_length_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-array-length", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_array_element_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-array-element-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_array_index_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-array-index-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_index_non_array_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-index-non-array", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_array_signature_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-array-signature", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_array_field_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-array-field", "check", "check.stderr");
 }
 
 #[test]
@@ -211,4 +246,9 @@ fn run_compilation_error_matches_expected_diagnostic() {
 #[test]
 fn run_vm_error_matches_expected_diagnostic() {
     assert_diagnostic("vm-division-by-zero", "run", "run.stderr");
+}
+
+#[test]
+fn run_array_index_out_of_bounds_matches_expected_diagnostic() {
+    assert_diagnostic("vm-array-index-out-of-bounds", "run", "run.stderr");
 }

@@ -1,0 +1,2 @@
+value: i64 = 1;
+print(value[0]);

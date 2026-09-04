@@ -60,10 +60,13 @@ type_spec   := "i64"
              | "f32"
              | "f64"
              | "bool"
+             | fixed_array_type
              | IDENT
              | "infer"
 
-type_ref    := "i64" | "f32" | "f64" | "bool" | IDENT
+type_ref    := "i64" | "f32" | "f64" | "bool" | fixed_array_type | IDENT
+
+fixed_array_type := "[" ("i64" | "f32" | "f64" | "bool") ";" INTEGER "]"
 
 expression  := equality
 
@@ -78,12 +81,13 @@ multiply    := unary (("*" | "/") unary)*
 unary       := ("-" | "!") unary
              | postfix
 
-postfix     := primary ("." IDENT)*
+postfix     := primary (("." IDENT) | ("[" expression "]"))*
 
 primary     := "true"
              | "false"
              | INTEGER
              | FLOAT
+             | "[" expression ("," expression)* ","? "]"
              | IDENT
              | IDENT "(" arguments? ")"
              | IDENT "{" field_value ("," field_value)* ","? "}"
@@ -151,6 +155,32 @@ Empty product types, empty construction expressions, infinitely sized recursion 
 
 See [Named product type design](../design/product-types.en.md) for the detailed design and backend representations.
 
+## Fixed arrays
+
+A fixed array is a value containing a known number of boxes of the same type. `[i64; 4]` means an array with four `i64` boxes.
+
+```primer
+values: [i64; 4] = [2, 4, 6, 8];
+print(values[2]);
+```
+
+The length is part of the type, so `[i64; 3]` and `[i64; 4]` are different types. Primer reports an error when a literal has the wrong number of elements or its element types differ. Empty array literals are not currently available because they provide no element type to infer.
+
+An index has type `i64`, and the first index is `0`. In the example above, `values[2]` reads the third value, `6`. A negative index or an index greater than or equal to the length stops execution in both the Primer VM and generated programs. Every backend leaves this bounds check visible in its artifact.
+
+An array is copied as one value. Reassigning the original `mut` binding after a copy does not change the earlier copy.
+
+```primer
+mut first: [i64; 2] = [10, 20];
+second: [i64; 2] = first;
+first = [30, 40];
+print(second[0]); // 10
+```
+
+Current element types are `bool`, `i64`, `f32`, and `f64`. Nested arrays, array fields in product types, array parameters, and array results are not yet supported. Direct element assignment such as `values[0] = 1;` is also unavailable. Primer diagnoses these forms instead of silently assigning them another meaning.
+
+See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
+
 ## Functions and entrypoint
 
 `fn` defines a named computation. Every parameter and the return type are explicit.
@@ -179,7 +209,7 @@ Function names are resolved across the whole file, so a call may precede its def
 
 Top-level executable statements receive a compiler-generated entrypoint. A program may instead define `fn main() -> void`, but an explicit `main` cannot be combined with top-level executable statements. `main` takes no parameters.
 
-Current function signatures are limited to `bool`, `i64`, `f32`, and `f64`, with at most four parameters. Named product arguments and results, recursion, and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
+Current function signatures are limited to `bool`, `i64`, `f32`, and `f64`, with at most four parameters. Named product or fixed-array arguments and results, recursion, and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
 
 Primer IR and bytecode expose function IDs, parameter binding IDs, calls, and returns. Backend artifacts expose how those entities become function symbols, arguments, local storage, and ABI registers or memory. See [Function design](../design/functions.en.md) for details.
 
@@ -291,13 +321,14 @@ Primer IR assigns deterministic IDs to bindings so references remain unambiguous
 
 ## Types
 
-Primer v0.1 has one boolean type, three numeric types, and user-defined named product types:
+Primer v0.1 has one boolean type, three numeric types, fixed arrays, and user-defined named product types:
 
 ```text
 bool
 i64
 f32
 f64
+fixed arrays
 named product types
 ```
 
@@ -409,7 +440,7 @@ Comparison operands must also have the same type. Primer IR exposes the operand 
 
 ## Output
 
-`print(expression);` accepts the current boolean and numeric types. Select a field to print a named product value.
+`print(expression);` accepts the current boolean and numeric types. Select a field of a named product or an element of a fixed array before printing it.
 
 Primer keeps floating-point output precise enough to expose the behavior being observed.
 

@@ -59,7 +59,7 @@ Primer IRはABI registerやstack offsetを決めません。これらはbackend 
 
 ## 現在の制約
 
-関数シグネチャはscalar型に限り、parameterは最大4個です。これは最初のABI実装をすべての出力経路で一致させるための制約です。関数本体では名前付きproduct typeをローカル値として使用できます。
+関数シグネチャはscalar型に限り、parameterは最大4個です。これは最初のABI実装をすべての出力経路で一致させるための制約です。関数本体では名前付きproduct typeや固定長配列をローカル値として使用できます。
 
 再帰は直接呼び出しと間接呼び出しの両方を診断します。現在のWebAssembly backendではproduct型の一時memoryを呼び出しごとに分離していないためです。再帰を許可すると、一部の出力経路だけで値が壊れる可能性があります。
 

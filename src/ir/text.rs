@@ -246,6 +246,23 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
             )
             .unwrap();
         }
+        ExprKind::Array(values) => {
+            output.push_str("array[");
+            for (index, value) in values.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                emit_expr(value, program, output);
+            }
+            write!(output, "]:{}", type_name(expr.ty, program)).unwrap();
+        }
+        ExprKind::Index { base, index } => {
+            output.push_str("index(");
+            emit_expr(base, program, output);
+            output.push_str(", ");
+            emit_expr(index, program, output);
+            write!(output, "):{}", type_name(expr.ty, program)).unwrap();
+        }
         ExprKind::Call {
             function_id,
             function_name,
@@ -303,6 +320,18 @@ fn type_name(ty: Type, program: &Program) -> String {
             let definition = &program.type_definitions[id.0];
             format!("%{}@{}", definition.name, id.0)
         }
+        Type::Array { element, length } => {
+            format!("[{}; {length}]", array_element_name(element))
+        }
+    }
+}
+
+const fn array_element_name(element: super::ArrayElementType) -> &'static str {
+    match element {
+        super::ArrayElementType::Bool => "bool",
+        super::ArrayElementType::I64 => "i64",
+        super::ArrayElementType::F32 => "f32",
+        super::ArrayElementType::F64 => "f64",
     }
 }
 
@@ -374,6 +403,7 @@ mod tests {
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(TypeRef {
                         name: "f32".into(),
+                        array_length: None,
                         span: Span::empty(0),
                     }),
                     value: ast_expr(AstExprKind::Binary {

@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId,
-    Temp, Type,
+    ArrayElementType, BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand,
+    PrintFormat, Slot, SlotId, Temp, Type,
 };
 
 pub fn emit(module: &Module) -> String {
@@ -41,7 +41,17 @@ pub fn emit(module: &Module) -> String {
         output.push_str("declare i32 @puts(ptr)\n");
     }
 
+    let array_types = array_types(module);
+    if !array_types.is_empty() {
+        output.push_str("declare void @llvm.trap()\n");
+    }
+
     output.push('\n');
+
+    for (element, length) in array_types {
+        emit_array_get(element, length, &mut output);
+        output.push('\n');
+    }
 
     for function in &module.functions {
         emit_function(function, module, &mut output);
@@ -207,6 +217,30 @@ fn emit_instruction(
             .unwrap();
         }
 
+        Instruction::ArrayGet {
+            dest,
+            element,
+            length,
+            array,
+            index,
+        } => {
+            let array_ty = Type::Array {
+                element: *element,
+                length: *length,
+            };
+            writeln!(
+                output,
+                "  {} = call {} @{}({} {}, i64 {})",
+                temp(*dest),
+                array_element_type_name(*element),
+                array_get_name(*element, *length),
+                type_name(array_ty, module),
+                operand(*array),
+                operand(*index),
+            )
+            .unwrap();
+        }
+
         Instruction::Call {
             dest,
             function_id,
@@ -363,6 +397,9 @@ fn type_name(ty: Type, module: &Module) -> String {
             let definition = &module.type_definitions[id];
             format!("%primer.type.{}.{}", definition.name, id)
         }
+        Type::Array { element, length } => {
+            format!("[{length} x {}]", array_element_type_name(element))
+        }
     }
 }
 
@@ -402,7 +439,9 @@ fn compare_name(op: CompareOp, ty: Type) -> &'static str {
         ) => {
             unreachable!("semantic analysis rejects boolean ordering")
         }
-        (_, Type::Named(_)) => unreachable!("semantic analysis rejects aggregate comparison"),
+        (_, Type::Named(_) | Type::Array { .. }) => {
+            unreachable!("semantic analysis rejects aggregate comparison")
+        }
     }
 }
 
@@ -447,4 +486,93 @@ fn uses_bool_print(module: &Module) -> bool {
                 .flat_map(|function| function.instructions.iter()),
         )
         .any(|instruction| matches!(instruction, Instruction::CallPuts { .. }))
+}
+
+fn array_types(module: &Module) -> Vec<(ArrayElementType, usize)> {
+    let mut result = Vec::new();
+    for ty in module
+        .slots
+        .iter()
+        .map(|slot| slot.ty)
+        .chain(module.functions.iter().flat_map(|function| {
+            function
+                .slots
+                .iter()
+                .map(|slot| slot.ty)
+                .chain(function.return_type)
+        }))
+    {
+        if let Type::Array { element, length } = ty
+            && !result.contains(&(element, length))
+        {
+            result.push((element, length));
+        }
+    }
+    for instruction in module.instructions.iter().chain(
+        module
+            .functions
+            .iter()
+            .flat_map(|function| function.instructions.iter()),
+    ) {
+        if let Instruction::ArrayGet {
+            element, length, ..
+        } = instruction
+            && !result.contains(&(*element, *length))
+        {
+            result.push((*element, *length));
+        }
+    }
+    result
+}
+
+fn emit_array_get(element: ArrayElementType, length: usize, output: &mut String) {
+    let element_ty = array_element_type_name(element);
+    let array_ty = format!("[{length} x {element_ty}]");
+    writeln!(
+        output,
+        "define internal {element_ty} @{}({array_ty} %value, i64 %index) {{",
+        array_get_name(element, length)
+    )
+    .unwrap();
+    output.push_str("entry:\n");
+    output.push_str("  %index.low = icmp slt i64 %index, 0\n");
+    writeln!(output, "  %index.high = icmp sge i64 %index, {length}").unwrap();
+    output.push_str("  %index.outside = or i1 %index.low, %index.high\n");
+    output.push_str("  br i1 %index.outside, label %out_of_bounds, label %in_bounds\n");
+    output.push_str("out_of_bounds:\n");
+    output.push_str("  call void @llvm.trap()\n");
+    output.push_str("  unreachable\n");
+    output.push_str("in_bounds:\n");
+    writeln!(output, "  %array = alloca {array_ty}").unwrap();
+    writeln!(output, "  store {array_ty} %value, ptr %array").unwrap();
+    writeln!(
+        output,
+        "  %element = getelementptr inbounds {array_ty}, ptr %array, i64 0, i64 %index"
+    )
+    .unwrap();
+    writeln!(output, "  %result = load {element_ty}, ptr %element").unwrap();
+    writeln!(output, "  ret {element_ty} %result").unwrap();
+    output.push_str("}\n");
+}
+
+const fn array_element_type_name(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "i1",
+        ArrayElementType::I64 => "i64",
+        ArrayElementType::Float => "float",
+        ArrayElementType::Double => "double",
+    }
+}
+
+fn array_get_name(element: ArrayElementType, length: usize) -> String {
+    format!("primer.array.get.{}.{length}", array_element_name(element))
+}
+
+const fn array_element_name(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "bool",
+        ArrayElementType::I64 => "i64",
+        ArrayElementType::Float => "f32",
+        ArrayElementType::Double => "f64",
+    }
 }

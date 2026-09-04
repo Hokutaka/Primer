@@ -96,9 +96,12 @@ Primer IR is the typed, backend-independent representation produced after parsin
 Every Primer IR expression has a resolved concrete type:
 
 ```text
+bool
 i64
 f32
 f64
+named product types
+fixed arrays
 ```
 
 `infer` is resolved before Primer IR is produced and therefore does not appear as a runtime or backend type.

@@ -72,6 +72,11 @@ pub enum Instruction {
         offset: u32,
     },
 
+    I32WrapI64,
+    I32Add,
+    I32Mul,
+    Unreachable,
+
     If {
         then_instructions: Vec<Instruction>,
         else_instructions: Vec<Instruction>,

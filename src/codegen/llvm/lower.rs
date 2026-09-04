@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
-    Slot, SlotId, Temp, Type, TypeDefinition,
+    ArrayElementType, BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand,
+    Parameter, PrintFormat, Slot, SlotId, Temp, Type, TypeDefinition,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -427,8 +427,8 @@ impl Lowerer {
                 primer_ir::Type::Bool => {
                     unreachable!("boolean cannot be lowered as float")
                 }
-                primer_ir::Type::Named(_) => {
-                    unreachable!("a float literal cannot have a product type")
+                primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                    unreachable!("a float literal cannot have an aggregate type")
                 }
             },
 
@@ -480,7 +480,7 @@ impl Lowerer {
                     | (primer_ir::UnaryOp::Not, Type::I64 | Type::Float | Type::Double) => {
                         unreachable!("semantic analysis rejects invalid unary operands");
                     }
-                    (_, Type::Named(_)) => {
+                    (_, Type::Named(_) | Type::Array { .. }) => {
                         unreachable!("semantic analysis rejects aggregate unary operands");
                     }
                 }
@@ -561,6 +561,46 @@ impl Lowerer {
                     operand: Operand::Temp(dest),
                 }
             }
+            primer_ir::ExprKind::Array(values) => {
+                let ty = expr.ty.into();
+                let mut aggregate = Operand::Poison;
+                for (index, value) in values.iter().enumerate() {
+                    let value = self.lower_expr(value);
+                    let dest = self.next_temp();
+                    self.instructions.push(Instruction::InsertValue {
+                        dest,
+                        ty,
+                        aggregate,
+                        value_ty: value.ty,
+                        value: value.operand,
+                        field: index,
+                    });
+                    aggregate = Operand::Temp(dest);
+                }
+                Value {
+                    ty,
+                    operand: aggregate,
+                }
+            }
+            primer_ir::ExprKind::Index { base, index } => {
+                let array = self.lower_expr(base);
+                let index = self.lower_expr(index);
+                let Type::Array { element, length } = array.ty else {
+                    unreachable!("indexed expression must have an array base")
+                };
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::ArrayGet {
+                    dest,
+                    element,
+                    length,
+                    array: array.operand,
+                    index: index.operand,
+                });
+                Value {
+                    ty: expr.ty.into(),
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::Call {
                 function_id,
                 arguments,
@@ -633,7 +673,9 @@ impl Lowerer {
                     value: value.operand,
                 });
             }
-            Type::Named(_) => unreachable!("semantic analysis rejects aggregate printing"),
+            Type::Named(_) | Type::Array { .. } => {
+                unreachable!("semantic analysis rejects aggregate printing")
+            }
         }
     }
 
@@ -725,6 +767,15 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
+            primer_ir::Type::Array { element, length } => Self::Array {
+                element: match element {
+                    primer_ir::ArrayElementType::Bool => ArrayElementType::Bool,
+                    primer_ir::ArrayElementType::I64 => ArrayElementType::I64,
+                    primer_ir::ArrayElementType::F32 => ArrayElementType::Float,
+                    primer_ir::ArrayElementType::F64 => ArrayElementType::Double,
+                },
+                length,
+            },
         }
     }
 }
@@ -751,6 +802,13 @@ fn binary_op(op: primer_ir::BinaryOp, ty: Type) -> BinaryOp {
             | primer_ir::BinaryOp::Multiply
             | primer_ir::BinaryOp::Divide,
             Type::Named(_),
+        )
+        | (
+            primer_ir::BinaryOp::Add
+            | primer_ir::BinaryOp::Subtract
+            | primer_ir::BinaryOp::Multiply
+            | primer_ir::BinaryOp::Divide,
+            Type::Array { .. },
         )
         | (primer_ir::BinaryOp::Equal, _)
         | (primer_ir::BinaryOp::NotEqual, _)

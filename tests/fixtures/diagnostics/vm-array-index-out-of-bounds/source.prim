@@ -1,0 +1,2 @@
+values: [i64; 2] = [10, 20];
+print(values[2]);

@@ -133,7 +133,10 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, run_vm};
+    use super::{
+        RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, compile_to_llvm,
+        compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, run_vm,
+    };
     use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
 
     #[test]
@@ -220,6 +223,136 @@ mod tests {
         ";
 
         assert_eq!(run_vm(source).unwrap(), "1\n4\n");
+    }
+
+    #[test]
+    fn fixed_arrays_run_with_value_semantics_and_checked_indexing() {
+        let source = "
+            mut values: [i64; 4] = [2, 4, 6, 8];
+            copy: [i64; 4] = values;
+            values = [1, 2, 3, 4];
+            mut total: i64 = 0;
+            for (mut index: i64 = 0; index < 4; index = index + 1) {
+                total = total + copy[index];
+            }
+            print(total);
+            print(values[2]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "20\n3\n");
+
+        let ir = compile_to_ir_text(source).unwrap();
+        assert!(ir.contains("[i64; 4]"));
+        assert!(ir.contains("array[2i64, 4i64, 6i64, 8i64]:[i64; 4]"));
+        assert!(ir.contains("index(%copy@1:[i64; 4], %index@3:i64):i64"));
+
+        let bytecode = compile_to_bytecode_text(source).unwrap();
+        assert!(bytecode.contains("array.new i64 4"));
+        assert!(bytecode.contains("array.get i64 4"));
+
+        let c = compile_to_c(source).unwrap();
+        assert!(c.contains("primer_array_i64_4"));
+        assert!(c.contains("primer_array_get_i64_4"));
+
+        let llvm = compile_to_llvm(source).unwrap();
+        assert!(llvm.contains("@primer.array.get.i64.4"));
+        assert!(llvm.contains("icmp sge i64 %index, 4"));
+
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("i64.lt_s"));
+        assert!(wat.contains("unreachable"));
+
+        let qbe = compile_to_qbe(source).unwrap();
+        assert!(qbe.contains("array_index_out_of_bounds"));
+        assert!(qbe.contains("call $abort()"));
+
+        let asm = compile_to_x86_64_win_asm(source).unwrap();
+        assert!(asm.contains("array_oob"));
+        assert!(asm.contains("ud2"));
+    }
+
+    #[test]
+    fn fixed_array_out_of_bounds_keeps_its_source_origin() {
+        let source = "values: [i64; 2] = [10, 20]; print(values[2]);";
+        let RunError::Execution(error) = run_vm(source).unwrap_err() else {
+            panic!("expected a VM execution error");
+        };
+
+        assert_eq!(
+            error.vm_error().kind(),
+            VmErrorKind::ArrayIndexOutOfBounds {
+                index: 2,
+                length: 2,
+            }
+        );
+        assert_eq!(
+            error.origin(),
+            Some(InstructionOrigin::Source(Span::new(35, 44)))
+        );
+
+        let RunError::Execution(error) =
+            run_vm("values: [i64; 2] = [10, 20]; print(values[-1]);").unwrap_err()
+        else {
+            panic!("expected a VM execution error");
+        };
+        assert_eq!(
+            error.vm_error().kind(),
+            VmErrorKind::ArrayIndexOutOfBounds {
+                index: -1,
+                length: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn fixed_array_literal_can_be_indexed_directly() {
+        let source = "print([1, 2][1]);";
+
+        assert_eq!(run_vm(source).unwrap(), "2\n");
+        assert!(
+            compile_to_llvm(source)
+                .unwrap()
+                .contains("define internal i64 @primer.array.get.i64.2")
+        );
+    }
+
+    #[test]
+    fn fixed_arrays_support_every_scalar_element_type() {
+        let source = "
+            flags: [bool; 2] = [false, true];
+            integers: [i64; 2] = [1, 2];
+            singles: [f32; 2] = [0.5, 1.25];
+            doubles: [f64; 2] = [1.5, 2.5];
+            print(flags[1]);
+            print(integers[1]);
+            print(singles[1]);
+            print(doubles[1]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "true\n2\n1.25\n2.5\n");
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn fixed_arrays_can_be_local_to_functions() {
+        let source = "
+            fn pick(index: i64) -> i64 {
+                values: [i64; 3] = [10, 20, 30];
+                return values[index];
+            }
+            print(pick(1));
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "20\n");
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
     }
 
     #[test]

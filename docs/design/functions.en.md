@@ -59,7 +59,7 @@ Primer IR does not choose ABI registers or stack offsets. Those are backend-lowe
 
 ## Current limits
 
-Function signatures currently use scalar types and at most four parameters. This keeps the first ABI implementation consistent across every output route. A function body may still use named product types as local values.
+Function signatures currently use scalar types and at most four parameters. This keeps the first ABI implementation consistent across every output route. A function body may still use named product types and fixed arrays as local values.
 
 Both direct and indirect recursion produce a diagnostic. The current WebAssembly backend does not yet separate product temporary memory per invocation, so enabling recursion could corrupt values in only some routes.
 

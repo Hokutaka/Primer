@@ -702,15 +702,15 @@ Emission Map
 
 ### 4. ユーザー定義型と複合型
 
-ユーザー定義型は、Primerを汎用言語にするための必要条件とします。複数の値をまとめる複合型（aggregate type）は、その最初の具体化として検討します。
+ユーザー定義型は、Primerを汎用言語にするための必要条件とします。複数の値をまとめる複合型（aggregate type）は、名前付きproduct typeと固定長配列として最初の具体化を実装しました。
 
-名前付きproduct typeについて合意した内容と残る判断は、[名前付きproduct typeの設計](product-types.ja.md)に分離して整理します。
+名前付きproduct typeは[名前付きproduct typeの設計](product-types.ja.md)、固定長配列は[固定長配列の設計](fixed-arrays.ja.md)に分離して整理します。
 
 次を設計します。
 
 - 名前付き型を、名前によって区別するnominalな型にするか、構造だけで区別するか
 - 既存の型へ別名を付けるtype aliasと、新しい型を作る定義をどう区別するか
-- 最初に名前付きproduct type（複数のfieldをまとめる型）、tuple、array、sum type（複数の形のいずれかを持つ型）のどれを導入するか
+- tuple、sum type（複数の形のいずれかを持つ型）をどの順序で導入するか
 - 値の作成とfield accessをどう表すか
 - aggregateを値として扱う範囲
 - 不変性、更新、copy、move、borrowなどの意味をどこまで導入するか
@@ -718,7 +718,7 @@ Emission Map
 - memory layoutをどの段階で決定するか
 - ABIとの境界をどこに置くか
 
-第一候補は、意味の異なる名前付き型を区別できるnominalな型を基本とし、名前付きで作成後にfieldを書き換えないproduct typeを最初の実装にすることです。tuple、array、sum type、generic type、再帰型、参照、custom layoutは、同じ型システム上で必要性と依存関係を整理して追加します。
+名前付きproduct typeはnominalな型として、固定長配列は要素型と長さで区別する型として実装しました。どちらも値としてコピーし、内部の一部を直接書き換えません。tuple、sum type、generic type、再帰型、参照、custom layoutは、同じ型システム上で必要性と依存関係を整理します。
 
 Primer IRでは型名、field、型引数などの意味を保持し、サイズ、配置、アラインメント、calling conventionは原則としてbackend lowering以降で決定します。型がfield、メモリ、レジスタ、命令へ分解される過程と、型の抽象化が失われる地点を出自と変換記録で追跡します。
 

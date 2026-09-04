@@ -60,10 +60,13 @@ type_spec   := "i64"
              | "f32"
              | "f64"
              | "bool"
+             | fixed_array_type
              | IDENT
              | "infer"
 
-type_ref    := "i64" | "f32" | "f64" | "bool" | IDENT
+type_ref    := "i64" | "f32" | "f64" | "bool" | fixed_array_type | IDENT
+
+fixed_array_type := "[" ("i64" | "f32" | "f64" | "bool") ";" INTEGER "]"
 
 expression  := equality
 
@@ -78,12 +81,13 @@ multiply    := unary (("*" | "/") unary)*
 unary       := ("-" | "!") unary
              | postfix
 
-postfix     := primary ("." IDENT)*
+postfix     := primary (("." IDENT) | ("[" expression "]"))*
 
 primary     := "true"
              | "false"
              | INTEGER
              | FLOAT
+             | "[" expression ("," expression)* ","? "]"
              | IDENT
              | IDENT "(" arguments? ")"
              | IDENT "{" field_value ("," field_value)* ","? "}"
@@ -151,6 +155,32 @@ if (Flags { enabled: true, }).enabled {
 
 詳細な設計と各backendの表現は[名前付きproduct typeの設計](../design/product-types.ja.md)で説明します。
 
+## 固定長配列
+
+固定長配列は、同じ型の箱を決まった数だけ横に並べた値です。`[i64; 4]`は「`i64`の箱が4個ある配列」という意味です。
+
+```primer
+values: [i64; 4] = [2, 4, 6, 8];
+print(values[2]);
+```
+
+長さは型の一部です。したがって、`[i64; 3]`と`[i64; 4]`は別の型です。配列リテラルの要素数と宣言した長さが違う場合や、要素の型がそろわない場合はエラーになります。空の配列は、要素型を決められないため現在は使えません。
+
+添字は`i64`で、先頭は`0`です。上の例の`values[2]`は3番目の値`6`を読み取ります。負の添字や長さ以上の添字は、Primer VMと生成されたプログラムのどちらでも実行時に停止します。境界検査は各backendの生成物にも残るため、どこで安全を確かめているか観測できます。
+
+配列は一つの値としてコピーされます。コピーした後で元の`mut`束縛へ新しい配列を再代入しても、先に作ったコピーは変わりません。
+
+```primer
+mut first: [i64; 2] = [10, 20];
+second: [i64; 2] = first;
+first = [30, 40];
+print(second[0]); // 10
+```
+
+現在の要素型は`bool`、`i64`、`f32`、`f64`です。配列の入れ子、product typeのfield、関数のparameterや戻り値にはまだ配列を使えません。`values[0] = 1;`のような要素への直接代入も未対応です。これらは黙って別の意味にせず、診断として報告します。
+
+詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
+
 ## 関数とentry point
 
 `fn`は、名前を付けた処理を定義します。parameterと戻り値の型は必ず書きます。
@@ -179,7 +209,7 @@ show(answer);
 
 トップレベルに実行文がある場合、compilerがentry pointを生成します。代わりに`fn main() -> void`を明示できますが、明示的な`main`とトップレベル実行文は同時に書けません。`main`はparameterを受け取れません。
 
-現在の関数シグネチャは`bool`、`i64`、`f32`、`f64`に限り、parameterは最大4個です。名前付きproduct typeの受け渡し、再帰、command-line argumentはまだサポートしません。未対応の書き方は黙って別の意味にせず、診断します。
+現在の関数シグネチャは`bool`、`i64`、`f32`、`f64`に限り、parameterは最大4個です。名前付きproduct typeや固定長配列の受け渡し、再帰、command-line argumentはまだサポートしません。未対応の書き方は黙って別の意味にせず、診断します。
 
 Primer IRとbytecodeでは、関数ID、parameterの束縛ID、呼び出し、戻り値を観測できます。各backendの成果物では、これらが関数シンボル、引数、ローカル領域、ABI上のレジスタやメモリへ変わった結果を観測できます。詳細は[関数の設計](../design/functions.ja.md)を参照してください。
 
@@ -291,13 +321,14 @@ Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言
 
 ## 型
 
-Primer v0.1には、一つの真偽値型、三つの数値型、ユーザーが定義する名前付きproduct typeがあります。
+Primer v0.1には、一つの真偽値型、三つの数値型、固定長配列、ユーザーが定義する名前付きproduct typeがあります。
 
 ```text
 bool
 i64
 f32
 f64
+固定長配列
 名前付きproduct type
 ```
 
@@ -409,7 +440,7 @@ x: f32 = 0.1 + 0.2;
 
 ## 出力
 
-`print(expression);`は、現在の真偽値型と数値型を受け付けます。名前付きproduct typeは、そのfieldを指定して出力します。
+`print(expression);`は、現在の真偽値型と数値型を受け付けます。名前付きproduct typeはfieldを、固定長配列は要素を指定して出力します。
 
 Primerは、観測対象となる浮動小数点数の挙動が見えるだけの精度を保って出力します。
 

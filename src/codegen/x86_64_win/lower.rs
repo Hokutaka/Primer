@@ -120,7 +120,15 @@ struct LoopContext {
 #[derive(Debug, Clone, Copy)]
 enum Value {
     Scalar(Type),
-    Aggregate { type_id: usize, base_slot: usize },
+    Aggregate {
+        type_id: usize,
+        base_slot: usize,
+    },
+    Array {
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        base_slot: usize,
+    },
 }
 
 impl Lowerer<'_> {
@@ -150,6 +158,18 @@ impl Lowerer<'_> {
                     ) => {
                         debug_assert_eq!(type_id.0, actual);
                         self.copy_aggregate(type_id.0, source, destination);
+                    }
+                    (
+                        primer_ir::Type::Array { element, length },
+                        Value::Array {
+                            element: actual_element,
+                            length: actual_length,
+                            base_slot: source,
+                        },
+                    ) => {
+                        debug_assert_eq!(element, actual_element);
+                        debug_assert_eq!(length, actual_length);
+                        self.copy_array(element, length, source, destination);
                     }
                     (scalar, Value::Scalar(actual)) => {
                         debug_assert_eq!(scalar_type(scalar), actual);
@@ -355,6 +375,11 @@ impl Lowerer<'_> {
                     type_id: type_id.0,
                     base_slot: self.binding_slot(*id),
                 },
+                primer_ir::Type::Array { element, length } => Value::Array {
+                    element,
+                    length,
+                    base_slot: self.binding_slot(*id),
+                },
                 scalar => {
                     let ty = scalar_type(scalar);
                     self.load_scalar(ty, self.binding_offset(*id));
@@ -492,6 +517,47 @@ impl Lowerer<'_> {
                     }
                 }
             }
+            primer_ir::ExprKind::Array(values) => {
+                let primer_ir::Type::Array { element, length } = expr.ty else {
+                    unreachable!("array expression must have an array type")
+                };
+                let destination = self.allocate_aggregate(expr.ty);
+                let ty = array_element_scalar_type(element);
+                for (index, value) in values.iter().enumerate() {
+                    let Value::Scalar(actual) = self.lower_expr(value, depth) else {
+                        unreachable!("array elements are scalar values")
+                    };
+                    debug_assert_eq!(actual, ty);
+                    self.store_scalar(ty, slot_offset(destination + index));
+                }
+                Value::Array {
+                    element,
+                    length,
+                    base_slot: destination,
+                }
+            }
+            primer_ir::ExprKind::Index { base, index } => {
+                let Value::Array {
+                    element,
+                    length,
+                    base_slot,
+                } = self.lower_expr(base, depth)
+                else {
+                    unreachable!("indexed expression must have an array base")
+                };
+                let Value::Scalar(Type::I64) = self.lower_expr(index, depth) else {
+                    unreachable!("array index must be i64")
+                };
+                let ty = array_element_scalar_type(element);
+                let label = self.next_label();
+                self.instructions.push(Instruction::CheckedArrayLoad {
+                    ty,
+                    base_offset: slot_offset(base_slot),
+                    length,
+                    label,
+                });
+                Value::Scalar(ty)
+            }
             primer_ir::ExprKind::Call {
                 function_id,
                 arguments,
@@ -536,6 +602,20 @@ impl Lowerer<'_> {
                     self.store_scalar(ty, slot_offset(destination + offset));
                 }
             }
+        }
+    }
+
+    fn copy_array(
+        &mut self,
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        source: usize,
+        destination: usize,
+    ) {
+        let ty = array_element_scalar_type(element);
+        for index in 0..length {
+            self.load_scalar(ty, slot_offset(source + index));
+            self.store_scalar(ty, slot_offset(destination + index));
         }
     }
 
@@ -703,6 +783,7 @@ fn type_slot_count(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
             .iter()
             .map(|field| type_slot_count(program, field.ty))
             .sum(),
+        primer_ir::Type::Array { length, .. } => length,
     }
 }
 
@@ -771,6 +852,12 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
                 .sum::<usize>()
         }
         primer_ir::ExprKind::FieldAccess { base, .. } => 1 + count_expr_nodes(base),
+        primer_ir::ExprKind::Array(values) => {
+            1 + values.iter().map(count_expr_nodes).sum::<usize>()
+        }
+        primer_ir::ExprKind::Index { base, index } => {
+            1 + count_expr_nodes(base) + count_expr_nodes(index)
+        }
         primer_ir::ExprKind::Call { arguments, .. } => {
             1 + arguments.iter().map(count_expr_nodes).sum::<usize>()
         }
@@ -828,6 +915,14 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
         | primer_ir::ExprKind::FieldAccess { base: value, .. } => {
             required_expr_scratch(value, depth)
         }
+        primer_ir::ExprKind::Array(values) => values
+            .iter()
+            .map(|value| required_expr_scratch(value, depth))
+            .max()
+            .unwrap_or(0),
+        primer_ir::ExprKind::Index { base, index } => {
+            required_expr_scratch(base, depth).max(required_expr_scratch(index, depth))
+        }
         primer_ir::ExprKind::Binary { left, right, .. } => (depth + 1)
             .max(required_expr_scratch(left, depth + 1))
             .max(required_expr_scratch(right, depth + 1)),
@@ -851,7 +946,18 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
         primer_ir::Type::I64 => Type::I64,
         primer_ir::Type::F32 => Type::F32,
         primer_ir::Type::F64 => Type::F64,
-        primer_ir::Type::Named(_) => unreachable!("expected a scalar type"),
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("expected a scalar type")
+        }
+    }
+}
+
+const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+    match element {
+        primer_ir::ArrayElementType::Bool => Type::Bool,
+        primer_ir::ArrayElementType::I64 => Type::I64,
+        primer_ir::ArrayElementType::F32 => Type::F32,
+        primer_ir::ArrayElementType::F64 => Type::F64,
     }
 }
 

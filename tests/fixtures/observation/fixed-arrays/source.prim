@@ -1,0 +1,5 @@
+mut values: [i64; 3] = [2, 4, 6];
+copy: [i64; 3] = values;
+values = [1, 3, 5];
+print(copy[2]);
+print(values[1]);
