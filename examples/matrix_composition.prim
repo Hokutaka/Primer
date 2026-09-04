@@ -1,0 +1,50 @@
+type Matrix2 {
+    rows: [[f64; 2]; 2],
+}
+
+fn multiply(left: Matrix2, right: Matrix2) -> Matrix2 {
+    return Matrix2 {
+        rows: [
+            [
+                left.rows[0][0] * right.rows[0][0]
+                    + left.rows[0][1] * right.rows[1][0],
+                left.rows[0][0] * right.rows[0][1]
+                    + left.rows[0][1] * right.rows[1][1],
+            ],
+            [
+                left.rows[1][0] * right.rows[0][0]
+                    + left.rows[1][1] * right.rows[1][0],
+                left.rows[1][0] * right.rows[0][1]
+                    + left.rows[1][1] * right.rows[1][1],
+            ],
+        ],
+    };
+}
+
+fn transform(matrix: Matrix2, vector: [f64; 2]) -> [f64; 2] {
+    return [
+        matrix.rows[0][0] * vector[0] + matrix.rows[0][1] * vector[1],
+        matrix.rows[1][0] * vector[0] + matrix.rows[1][1] * vector[1],
+    ];
+}
+
+scale: Matrix2 = Matrix2 {
+    rows: [[2.0, 0.0], [0.0, 3.0]],
+};
+swap_axes: Matrix2 = Matrix2 {
+    rows: [[0.0, 1.0], [1.0, 0.0]],
+};
+input: [f64; 2] = [4.0, 5.0];
+
+// 合成して得た行列と入力vectorを、次の関数へ値として渡す。
+combined: Matrix2 = multiply(swap_axes, scale);
+output: [f64; 2] = transform(combined, input);
+
+print(combined.rows[0][0]);
+print(combined.rows[0][1]);
+print(combined.rows[1][0]);
+print(combined.rows[1][1]);
+print(input[0]);
+print(input[1]);
+print(output[0]);
+print(output[1]);
