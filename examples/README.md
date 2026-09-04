@@ -39,9 +39,12 @@
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | 繰り返し二乗法による累乗 |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | 入れ子の`for`によるピタゴラス数の探索 |
 | [fixed_arrays.prim](fixed_arrays.prim) | 配列の合計と線形探索 |
+| [xor_neural_network.prim](xor_neural_network.prim) | 固定長配列の重みを使う小さなニューラルネットのXOR推論 |
 
 ## 現在の範囲
 
 これらは、数値、真偽値、束縛、関数、条件分岐、ループ、名前付きproduct type、固定長配列で表現できるプログラムです。
 
 配列の要素は読み取れますが、まだ直接書き換えられません。そのため、探索や集計は自然に書けますが、in-place sortや配列を更新する動的計画法には要素の更新機能が必要です。文字列、再帰、動的な長さのcollectionもまだありません。
+
+`xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。重みを変えて答えを学ぶ処理はまだ含みません。

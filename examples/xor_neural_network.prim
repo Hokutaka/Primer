@@ -1,0 +1,48 @@
+// 0以上なら1、それ以外なら0を返すニューロンです。
+fn step(value: f64) -> f64 {
+    if value >= 0.0 {
+        return 1.0;
+    }
+    return 0.0;
+}
+
+// 4問分の入力と正解です。2個ずつで一つの問題になります。
+inputs: [f64; 8] = [0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0];
+answers: [f64; 4] = [0.0, 1.0, 1.0, 0.0];
+
+// 中間層にはORを調べるニューロンとNANDを調べるニューロンがあります。
+hidden_weights: [f64; 4] = [1.0, 1.0, -1.0, -1.0];
+hidden_biases: [f64; 2] = [-0.5, 1.5];
+
+// ORとNANDの両方が1なら、XORの答えは1になります。
+output_weights: [f64; 2] = [1.0, 1.0];
+output_bias: f64 = -1.5;
+
+for (mut sample: i64 = 0; sample < 4; sample = sample + 1) {
+    input_offset: i64 = sample * 2;
+    input: [f64; 2] = [inputs[input_offset], inputs[input_offset + 1]];
+
+    hidden: [f64; 2] = [
+        step(
+            input[0] * hidden_weights[0]
+                + input[1] * hidden_weights[1]
+                + hidden_biases[0]
+        ),
+        step(
+            input[0] * hidden_weights[2]
+                + input[1] * hidden_weights[3]
+                + hidden_biases[1]
+        ),
+    ];
+
+    prediction: f64 = step(
+        hidden[0] * output_weights[0]
+            + hidden[1] * output_weights[1]
+            + output_bias
+    );
+
+    print(input[0]);
+    print(input[1]);
+    print(prediction);
+    print(prediction == answers[sample]);
+}

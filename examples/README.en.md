@@ -39,9 +39,12 @@ This directory contains programs that can be read and executed with the current 
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | exponentiation by squaring |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
 | [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
+| [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
 
 ## Current scope
 
 These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, named product types, and fixed arrays.
 
 Array elements can be read but not assigned directly yet. Search and aggregation are therefore natural, while in-place sorting and array-updating dynamic programming still require element assignment. Strings, recursion, and dynamically sized collections are also not available yet.
+
+`xor_neural_network.prim` demonstrates inference with predetermined weights. It does not yet train those weights from examples.

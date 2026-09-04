@@ -165,3 +165,16 @@ fn fixed_arrays_example_runs() {
 
     assert_eq!(output, "108\n4\n");
 }
+
+#[test]
+fn xor_neural_network_example_runs() {
+    let output = run_vm(include_str!("../examples/xor_neural_network.prim")).unwrap();
+
+    assert_eq!(
+        output,
+        concat!(
+            "0\n", "0\n", "0\n", "true\n", "0\n", "1\n", "1\n", "true\n", "1\n", "0\n", "1\n",
+            "true\n", "1\n", "1\n", "0\n", "true\n",
+        )
+    );
+}
