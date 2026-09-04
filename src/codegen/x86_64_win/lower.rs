@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use crate::ir as primer_ir;
 
-use super::ir::{BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type};
+use super::ir::{
+    Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
+};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     let mut float_id = 0;
@@ -12,6 +14,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         let lowered = lower_body(
             program,
             &function.parameters,
+            Some(&function.return_type),
             &function.body,
             &mut float_id,
             true,
@@ -25,7 +28,14 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         });
     }
 
-    let lowered = lower_body(program, &[], &program.statements, &mut float_id, false);
+    let lowered = lower_body(
+        program,
+        &[],
+        None,
+        &program.statements,
+        &mut float_id,
+        false,
+    );
     float_constants.extend(lowered.float_constants);
 
     Module {
@@ -50,6 +60,7 @@ struct LoweredBody {
 fn lower_body(
     program: &primer_ir::Program,
     parameters: &[primer_ir::Parameter],
+    return_type: Option<&primer_ir::ReturnType>,
     statements: &[primer_ir::Statement],
     float_id: &mut usize,
     is_function: bool,
@@ -73,14 +84,46 @@ fn lower_body(
         instructions: Vec::new(),
         label: 0,
         loops: Vec::new(),
+        aggregate_return_pointer_slot: None,
     };
 
     for (index, parameter) in parameters.iter().enumerate() {
-        lowerer.instructions.push(Instruction::StoreParameter {
-            index,
-            ty: scalar_type(&parameter.ty),
-            offset: lowerer.binding_offset(parameter.id),
-        });
+        match &parameter.ty {
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => {
+                lowerer.instructions.push(Instruction::StoreParameter {
+                    index,
+                    ty: scalar_type(&parameter.ty),
+                    offset: lowerer.binding_offset(parameter.id),
+                });
+            }
+            primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                lowerer
+                    .instructions
+                    .push(Instruction::StoreAggregateParameter {
+                        index,
+                        slots: type_slot_count(program, &parameter.ty),
+                        destination_offset: lowerer.binding_offset(parameter.id),
+                    });
+            }
+        }
+    }
+    if matches!(
+        return_type,
+        Some(primer_ir::ReturnType::Value(
+            primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }
+        ))
+    ) {
+        let slot = lowerer.next_aggregate_slot;
+        lowerer.next_aggregate_slot += 1;
+        lowerer.aggregate_return_pointer_slot = Some(slot);
+        lowerer
+            .instructions
+            .push(Instruction::StoreAggregateReturnPointer {
+                offset: slot_offset(slot),
+            });
     }
     let terminates = lowerer.lower_statements(statements);
     if is_function && !terminates {
@@ -109,6 +152,7 @@ struct Lowerer<'a> {
     instructions: Vec<Instruction>,
     label: usize,
     loops: Vec<LoopContext>,
+    aggregate_return_pointer_slot: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -343,14 +387,24 @@ impl Lowerer<'_> {
                 arguments,
                 ..
             } => {
-                self.lower_call(function_id.0, arguments, 0);
+                self.lower_call(function_id.0, arguments, None, 0);
                 false
             }
             primer_ir::StatementKind::Return { value } => {
                 if let Some(value) = value {
-                    let Value::Scalar(_) = self.lower_expr(value, 0) else {
-                        unreachable!("function signatures currently use scalar types")
-                    };
+                    match self.lower_expr(value, 0) {
+                        Value::Scalar(_) => {}
+                        Value::Aggregate { base_slot, .. } | Value::Array { base_slot, .. } => {
+                            let pointer_slot = self
+                                .aggregate_return_pointer_slot
+                                .expect("aggregate returns have a result pointer");
+                            self.instructions.push(Instruction::CopyToAggregateReturn {
+                                source_offset: slot_offset(base_slot),
+                                slots: type_slot_count(self.program, &value.ty),
+                                pointer_offset: slot_offset(pointer_slot),
+                            });
+                        }
+                    }
                 }
                 self.instructions.push(Instruction::Return);
                 true
@@ -669,27 +723,71 @@ impl Lowerer<'_> {
                 function_id,
                 arguments,
                 ..
-            } => {
-                self.lower_call(function_id.0, arguments, depth);
-                Value::Scalar(scalar_type(&expr.ty))
-            }
+            } => self
+                .lower_call(function_id.0, arguments, Some(&expr.ty), depth)
+                .expect("value-producing calls have a result"),
         }
     }
 
-    fn lower_call(&mut self, function_id: usize, arguments: &[primer_ir::Expr], depth: usize) {
+    fn lower_call(
+        &mut self,
+        function_id: usize,
+        arguments: &[primer_ir::Expr],
+        result_type: Option<&primer_ir::Type>,
+        depth: usize,
+    ) -> Option<Value> {
         let mut lowered_arguments = Vec::with_capacity(arguments.len());
         for (index, argument) in arguments.iter().enumerate() {
-            let Value::Scalar(ty) = self.lower_expr(argument, depth + 4) else {
-                unreachable!("function signatures currently use scalar types")
-            };
-            let offset = self.scratch_offset(depth + index);
-            self.store_scalar(ty, offset);
-            lowered_arguments.push((ty, offset));
+            match self.lower_expr(argument, depth + 4) {
+                Value::Scalar(ty) => {
+                    let offset = self.scratch_offset(depth + index);
+                    self.store_scalar(ty, offset);
+                    lowered_arguments.push(Argument::Scalar { ty, offset });
+                }
+                Value::Aggregate { base_slot, .. } | Value::Array { base_slot, .. } => {
+                    lowered_arguments.push(Argument::Aggregate {
+                        offset: slot_offset(base_slot),
+                    });
+                }
+            }
         }
+
+        let aggregate_result = result_type.and_then(|ty| match ty {
+            primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                Some((ty, self.allocate_aggregate(ty)))
+            }
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => None,
+        });
         self.instructions.push(Instruction::Call {
             function_id,
             arguments: lowered_arguments,
+            aggregate_result_offset: aggregate_result
+                .as_ref()
+                .map(|(_, slot)| slot_offset(*slot)),
         });
+
+        if let Some((ty, base_slot)) = aggregate_result {
+            return Some(match ty {
+                primer_ir::Type::Named(type_id) => Value::Aggregate {
+                    type_id: type_id.0,
+                    base_slot,
+                },
+                primer_ir::Type::Array { element, length } => Value::Array {
+                    element: array_element_type(element),
+                    length: *length,
+                    base_slot,
+                },
+                primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
+            });
+        }
+
+        result_type.map(|ty| Value::Scalar(scalar_type(ty)))
     }
 
     fn copy_aggregate(&mut self, type_id: usize, source: usize, destination: usize) {
@@ -846,7 +944,7 @@ fn assign_binding_slots(
     let mut next = 0;
     for parameter in parameters {
         slots.insert(parameter.id, next);
-        next += 1;
+        next += type_slot_count(program, &parameter.ty);
     }
     collect_binding_slots(statements, program, &mut slots, &mut next);
     (slots, next)

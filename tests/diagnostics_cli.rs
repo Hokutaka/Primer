@@ -145,11 +145,6 @@ fn semantic_index_non_array_matches_expected_diagnostic() {
 }
 
 #[test]
-fn semantic_function_array_signature_matches_expected_diagnostic() {
-    assert_diagnostic("semantic-function-array-signature", "check", "check.stderr");
-}
-
-#[test]
 fn semantic_immutable_assignment_matches_expected_diagnostic() {
     assert_diagnostic("semantic-immutable-assignment", "check", "check.stderr");
 }
@@ -222,15 +217,6 @@ fn semantic_function_invalid_main_matches_expected_diagnostic() {
 #[test]
 fn semantic_function_recursion_matches_expected_diagnostic() {
     assert_diagnostic("semantic-function-recursion", "check", "check.stderr");
-}
-
-#[test]
-fn semantic_function_product_signature_matches_expected_diagnostic() {
-    assert_diagnostic(
-        "semantic-function-product-signature",
-        "check",
-        "check.stderr",
-    );
 }
 
 #[test]

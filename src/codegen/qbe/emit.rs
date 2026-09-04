@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Module, Operand, PrintFormat, Slot, Temp, Type,
+    BinaryOp, CompareOp, Function, Instruction, Module, Operand, ParameterPassing, PrintFormat,
+    Slot, Temp, Type,
 };
 
 pub fn emit(module: &Module) -> String {
@@ -60,11 +61,21 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         write!(output, "{} ", type_name(return_type)).unwrap();
     }
     write!(output, "${}(", function_name(function)).unwrap();
+    let mut has_parameter = false;
+    if function.aggregate_return_size.is_some() {
+        output.push_str("l %result");
+        has_parameter = true;
+    }
     for (index, parameter) in function.parameters.iter().enumerate() {
-        if index > 0 {
+        if has_parameter {
             output.push_str(", ");
         }
-        write!(output, "{} %arg{index}", type_name(parameter.ty)).unwrap();
+        let ty = match parameter.passing {
+            ParameterPassing::Scalar(ty) => ty,
+            ParameterPassing::Aggregate { .. } => Type::Pointer,
+        };
+        write!(output, "{} %arg{index}", type_name(ty)).unwrap();
+        has_parameter = true;
     }
     output.push_str(") {\n@start\n");
 
@@ -72,13 +83,25 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         writeln!(output, "  %slot_{} =l alloc8 {}", slot.name, slot.size).unwrap();
     }
     for (index, parameter) in function.parameters.iter().enumerate() {
-        writeln!(
-            output,
-            "  {} %arg{index}, %slot_{}",
-            store_name(parameter.ty),
-            function.slots[parameter.slot].name
-        )
-        .unwrap();
+        match parameter.passing {
+            ParameterPassing::Scalar(ty) => {
+                writeln!(
+                    output,
+                    "  {} %arg{index}, %slot_{}",
+                    store_name(ty),
+                    function.slots[parameter.slot].name
+                )
+                .unwrap();
+            }
+            ParameterPassing::Aggregate { size } => {
+                writeln!(
+                    output,
+                    "  blit %arg{index}, %slot_{}, {size}",
+                    function.slots[parameter.slot].name
+                )
+                .unwrap();
+            }
+        }
     }
     for instruction in &function.instructions {
         emit_instruction(instruction, &function.slots, module, output);
@@ -335,6 +358,7 @@ fn type_name(ty: Type) -> &'static str {
         Type::I64 => "l",
         Type::Single => "s",
         Type::Double => "d",
+        Type::Pointer => "l",
     }
 }
 
@@ -344,6 +368,7 @@ fn store_name(ty: Type) -> &'static str {
         Type::I64 => "storel",
         Type::Single => "stores",
         Type::Double => "stored",
+        Type::Pointer => unreachable!("pointers are passed without scalar stores"),
     }
 }
 
@@ -353,6 +378,7 @@ fn load_name(ty: Type) -> &'static str {
         Type::I64 => "loadl",
         Type::Single => "loads",
         Type::Double => "loadd",
+        Type::Pointer => unreachable!("pointers are passed without scalar loads"),
     }
 }
 
@@ -388,6 +414,7 @@ fn compare_name(op: CompareOp, ty: Type) -> &'static str {
         ) => {
             unreachable!("semantic analysis rejects boolean ordering")
         }
+        (_, Type::Pointer) => unreachable!("pointers are not Primer comparison operands"),
     }
 }
 
@@ -416,6 +443,7 @@ fn operand(value: &Operand, slots: &[Slot]) -> String {
         Operand::Float64(text) => format!("d_{text}"),
         Operand::Temp(temp) => self::temp(*temp),
         Operand::Slot(slot) => format!("%slot_{}", slots[*slot].name),
+        Operand::ReturnPointer => "%result".into(),
     }
 }
 

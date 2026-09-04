@@ -1,0 +1,27 @@
+type Point {
+    x: i64,
+    y: i64,
+}
+
+fn move_right(point: Point, distance: i64) -> Point {
+    return Point {
+        x: point.x + distance,
+        y: point.y,
+    };
+}
+
+fn first_row(matrix: [[i64; 2]; 2]) -> [i64; 2] {
+    return matrix[0];
+}
+
+start: Point = Point { x: 10, y: 20, };
+finish: Point = move_right(start, 5);
+matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+row: [i64; 2] = first_row(matrix);
+
+// 関数へ渡した値はコピーなので、元の値はそのまま残る。
+print(start.x);
+print(finish.x);
+print(finish.y);
+print(row[0]);
+print(row[1]);

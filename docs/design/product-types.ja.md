@@ -417,6 +417,7 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 - 明示値と既定値によるaggregate構築
 - field access
 - aggregate全体の束縛と再代入
+- 関数のparameterと戻り値としての値受け渡し
 - 型名のfile-wideな解決
 - 値として無限サイズになる型循環の診断
 - Primer IRでの型、field、構築、field access、値の出自
@@ -443,4 +444,4 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 
 ## 検証
 
-積型の観測fixtureでは、既定値、値コピー、束縛全体の再代入、入れ子のfield accessを同じソースから各成果物へ変換します。C、LLVM、Windows x86-64については、生成物を`clang`でも検査できます。WATとQBEの実行系がない環境では、構造化IRとsnapshotで生成結果を検査します。
+積型の観測fixtureでは、既定値、値コピー、束縛全体の再代入、入れ子のfield accessを同じソースから各成果物へ変換します。関数境界のfixtureでは、product typeと入れ子の固定長配列をparameterと戻り値に使います。C、LLVM、Windows x86-64については、生成物を`clang`でも検査できます。WATとQBEの実行系がない環境では、構造化IRとsnapshotで生成結果を検査します。

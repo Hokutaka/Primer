@@ -208,7 +208,7 @@ matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
 print(matrix[1][2]); // 6
 ```
 
-Array parameters and results and direct element assignment such as `values[0] = 1;` are not yet supported. Primer diagnoses these forms instead of silently assigning them another meaning.
+Fixed arrays may be used as function parameters and results. They remain values and are copied across the function boundary. Direct element assignment such as `values[0] = 1;` is not yet supported.
 
 See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
 
@@ -240,7 +240,7 @@ Function names are resolved across the whole file, so a call may precede its def
 
 Top-level executable statements receive a compiler-generated entrypoint. A program may instead define `fn main() -> void`, but an explicit `main` cannot be combined with top-level executable statements. `main` takes no parameters.
 
-Current function signatures are limited to `bool`, `i64`, `f32`, and `f64`, with at most four parameters. Named product or fixed-array arguments and results, recursion, and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
+Function parameters and results may use `bool`, `i64`, `f32`, `f64`, named product types, and fixed arrays. Products and arrays are passed as values, so the received value and the caller's value do not share a mutable location. Functions accept at most four parameters. Recursion and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
 
 Primer IR and bytecode expose function IDs, parameter binding IDs, calls, and returns. Backend artifacts expose how those entities become function symbols, arguments, local storage, and ABI registers or memory. See [Function design](../design/functions.en.md) for details.
 

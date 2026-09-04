@@ -160,6 +160,13 @@ fn functions_example_runs() {
 }
 
 #[test]
+fn function_values_example_runs() {
+    let output = run_vm(include_str!("../examples/function_values.prim")).unwrap();
+
+    assert_eq!(output, "10\n15\n20\n1\n2\n");
+}
+
+#[test]
 fn fixed_arrays_example_runs() {
     let output = run_vm(include_str!("../examples/fixed_arrays.prim")).unwrap();
 

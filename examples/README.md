@@ -16,6 +16,7 @@
 | [for_sum.prim](for_sum.prim) | `for`と開始文の再代入 |
 | [product-point.prim](product-point.prim) | 名前付きproduct type、既定値、field access |
 | [functions.prim](functions.prim) | 型付き関数、parameter、戻り値、`void`関数 |
+| [function_values.prim](function_values.prim) | product typeと入れ子の固定長配列を関数へ値として渡す |
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列、添字参照、配列の値コピー |
 | [product_arrays.prim](product_arrays.prim) | 点の配列、product typeの添字参照、配列の値コピー |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | 入れ子の固定長配列と二段の添字参照 |

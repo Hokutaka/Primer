@@ -1,0 +1,39 @@
+type Point {
+    x: i64,
+    y: i64,
+}
+
+fn move_x(point: Point, amount: i64) -> Point {
+    return Point {
+        x: point.x + amount,
+        y: point.y,
+    };
+}
+
+fn move_twice(point: Point, amount: i64) -> Point {
+    return move_x(move_x(point, amount), amount);
+}
+
+fn first_row(matrix: [[i64; 2]; 2]) -> [i64; 2] {
+    return matrix[0];
+}
+
+fn duplicate(row: [i64; 2]) -> [[i64; 2]; 2] {
+    return [row, row];
+}
+
+fn duplicate_first_row(matrix: [[i64; 2]; 2]) -> [[i64; 2]; 2] {
+    return duplicate(first_row(matrix));
+}
+
+original: Point = Point { x: 2, y: 3, };
+moved: Point = move_twice(original, 5);
+matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+rows: [[i64; 2]; 2] = duplicate_first_row(matrix);
+
+print(original.x);
+print(moved.x);
+print(moved.y);
+print(matrix[1][0]);
+print(rows[0][1]);
+print(rows[1][0]);

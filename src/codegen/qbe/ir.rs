@@ -12,6 +12,7 @@ pub struct Function {
     pub name: String,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
+    pub aggregate_return_size: Option<usize>,
     pub slots: Vec<Slot>,
     pub instructions: Vec<Instruction>,
 }
@@ -19,8 +20,17 @@ pub struct Function {
 #[derive(Debug, Clone)]
 pub struct Parameter {
     pub name: String,
-    pub ty: Type,
+    pub passing: ParameterPassing,
     pub slot: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ParameterPassing {
+    Scalar(Type),
+    /// 呼び出し側の値のaddress。関数開始時に自身のslotへコピーします。
+    Aggregate {
+        size: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +45,8 @@ pub enum Type {
     I64,
     Single,
     Double,
+    /// 集約値をコピーする間だけ使うbackend内部のaddressです。
+    Pointer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +60,8 @@ pub enum Operand {
     Float64(String),
     Temp(Temp),
     Slot(usize),
+    /// 呼び出し側が用意した集約戻り値の保存先です。
+    ReturnPointer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

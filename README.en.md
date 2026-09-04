@@ -82,7 +82,7 @@ Primer currently supports:
 - `bool`, `i64`, `f32`, and `f64`;
 - named product types, default field values, and field access;
 - nestable fixed arrays of fixed-size values that may also be product-type fields, indexing, value copies, and runtime bounds checks;
-- typed functions, `void`, and explicit `return`;
+- typed functions accepting scalars, product types, and fixed arrays, plus `void` and explicit `return`;
 - top-level executable statements or an explicit `fn main() -> void`;
 - explicit type declarations;
 - explicit type inference with `infer`;
