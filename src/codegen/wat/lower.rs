@@ -64,7 +64,7 @@ fn lower_function(
         .parameters
         .iter()
         .map(|parameter| {
-            let ty = scalar_type(parameter.ty);
+            let ty = scalar_type(&parameter.ty);
             locations.insert(parameter.id, Location::Scalar(parameter.name.clone()));
             name_counts.insert(parameter.name.clone(), 1);
             Local {
@@ -104,7 +104,7 @@ fn lower_function(
         id: function.id.0,
         name: function.name.clone(),
         parameters,
-        return_type: match function.return_type {
+        return_type: match &function.return_type {
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(ty) => Some(scalar_type(ty)),
         },
@@ -121,7 +121,7 @@ enum Location {
         address: usize,
     },
     Array {
-        element: primer_ir::ArrayElementType,
+        element: Type,
         length: usize,
         address: usize,
     },
@@ -135,7 +135,7 @@ enum Value {
         address: usize,
     },
     Array {
-        element: primer_ir::ArrayElementType,
+        element: Type,
         length: usize,
         address: usize,
     },
@@ -365,7 +365,7 @@ impl LoweringContext<'_> {
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::Float { text } => {
-                let ty = scalar_type(expr.ty);
+                let ty = scalar_type(&expr.ty);
                 match ty {
                     Type::F32 => instructions.push(Instruction::F32Const(text.clone())),
                     Type::F64 => instructions.push(Instruction::F64Const(text.clone())),
@@ -376,7 +376,7 @@ impl LoweringContext<'_> {
             primer_ir::ExprKind::Variable { id, .. } => match &self.locations[id] {
                 Location::Scalar(name) => {
                     instructions.push(Instruction::LocalGet(name.clone()));
-                    Value::Scalar(scalar_type(expr.ty))
+                    Value::Scalar(scalar_type(&expr.ty))
                 }
                 Location::Aggregate { type_id, address } => Value::Aggregate {
                     type_id: *type_id,
@@ -395,12 +395,12 @@ impl LoweringContext<'_> {
             primer_ir::ExprKind::Construct {
                 type_id, fields, ..
             } => {
-                let address = self.allocate(type_size(self.program, expr.ty));
+                let address = self.allocate(type_size(self.program, &expr.ty));
                 for field in fields {
                     let field_definition =
                         &self.program.type_definitions[type_id.0].fields[field.id.0];
                     let destination = address + field_offset(self.program, type_id.0, field.id.0);
-                    match field_definition.ty {
+                    match &field_definition.ty {
                         primer_ir::Type::Named(nested) => {
                             let Value::Aggregate {
                                 type_id: source_type,
@@ -438,7 +438,7 @@ impl LoweringContext<'_> {
                     unreachable!("semantic analysis requires an aggregate field base")
                 };
                 let address = address + field_offset(self.program, type_id.0, field_id.0);
-                match expr.ty {
+                match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
                         address,
@@ -452,10 +452,10 @@ impl LoweringContext<'_> {
                 }
             }
             primer_ir::ExprKind::Array(values) => {
-                let primer_ir::Type::Array { element, length } = expr.ty else {
+                let primer_ir::Type::Array { element, length } = &expr.ty else {
                     unreachable!("array expression must have an array type")
                 };
-                let address = self.allocate(type_size(self.program, expr.ty));
+                let address = self.allocate(type_size(self.program, &expr.ty));
                 let ty = array_element_scalar_type(element);
                 for (index, value) in values.iter().enumerate() {
                     instructions.push(Instruction::I32Const((address + index * 8) as i32));
@@ -466,8 +466,8 @@ impl LoweringContext<'_> {
                     instructions.push(store_instruction(ty, 0));
                 }
                 Value::Array {
-                    element,
-                    length,
+                    element: ty,
+                    length: *length,
                     address,
                 }
             }
@@ -514,12 +514,12 @@ impl LoweringContext<'_> {
                 instructions.push(Instruction::I32Const(8));
                 instructions.push(Instruction::I32Mul);
                 instructions.push(Instruction::I32Add);
-                let ty = array_element_scalar_type(element);
+                let ty = element;
                 instructions.push(load_instruction(ty, 0));
                 Value::Scalar(ty)
             }
             primer_ir::ExprKind::Unary { op, value } => {
-                let ty = scalar_type(expr.ty);
+                let ty = scalar_type(&expr.ty);
                 match (*op, ty) {
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         instructions.push(Instruction::I64Const(0));
@@ -550,8 +550,8 @@ impl LoweringContext<'_> {
                     unreachable!("semantic analysis rejects aggregate binary operands")
                 };
                 debug_assert_eq!(left_ty, right_ty);
-                instructions.push(lower_binary(*op, left.ty));
-                Value::Scalar(scalar_type(expr.ty))
+                instructions.push(lower_binary(*op, left.ty.clone()));
+                Value::Scalar(scalar_type(&expr.ty))
             }
             primer_ir::ExprKind::Call {
                 function_id,
@@ -566,7 +566,7 @@ impl LoweringContext<'_> {
                 instructions.push(Instruction::Call {
                     function_id: function_id.0,
                 });
-                Value::Scalar(scalar_type(expr.ty))
+                Value::Scalar(scalar_type(&expr.ty))
             }
         }
     }
@@ -584,7 +584,7 @@ impl LoweringContext<'_> {
             .enumerate()
         {
             let offset = field_offset(self.program, type_id, field_id);
-            match field.ty {
+            match &field.ty {
                 primer_ir::Type::Named(nested) => self.copy_aggregate(
                     nested.0,
                     source + offset,
@@ -604,19 +604,18 @@ impl LoweringContext<'_> {
 
     fn copy_array(
         &self,
-        element: primer_ir::ArrayElementType,
+        element: Type,
         length: usize,
         source: usize,
         destination: usize,
         instructions: &mut Vec<Instruction>,
     ) {
-        let ty = array_element_scalar_type(element);
         for index in 0..length {
             let offset = index * 8;
             instructions.push(Instruction::I32Const((destination + offset) as i32));
             instructions.push(Instruction::I32Const((source + offset) as i32));
-            instructions.push(load_instruction(ty, 0));
-            instructions.push(store_instruction(ty, 0));
+            instructions.push(load_instruction(element, 0));
+            instructions.push(store_instruction(element, 0));
         }
     }
 
@@ -640,7 +639,7 @@ fn collect_locations(
             primer_ir::StatementKind::Binding { id, name, ty, .. } => match ty {
                 primer_ir::Type::Named(type_id) => {
                     let address = *next_address;
-                    *next_address += type_size(program, *ty);
+                    *next_address += type_size(program, ty);
                     locations.insert(
                         *id,
                         Location::Aggregate {
@@ -651,11 +650,11 @@ fn collect_locations(
                 }
                 primer_ir::Type::Array { element, length } => {
                     let address = *next_address;
-                    *next_address += type_size(program, *ty);
+                    *next_address += type_size(program, ty);
                     locations.insert(
                         *id,
                         Location::Array {
-                            element: *element,
+                            element: array_element_scalar_type(element),
                             length: *length,
                             address,
                         },
@@ -671,7 +670,7 @@ fn collect_locations(
                     *count += 1;
                     locals.push(Local {
                         name: lowered_name.clone(),
-                        ty: scalar_type(*scalar),
+                        ty: scalar_type(scalar),
                     });
                     locations.insert(*id, Location::Scalar(lowered_name));
                 }
@@ -735,7 +734,7 @@ fn collect_locations(
     }
 }
 
-fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
+fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
         | primer_ir::Type::I64
@@ -744,7 +743,7 @@ fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
             .fields
             .iter()
-            .map(|field| type_size(program, field.ty))
+            .map(|field| type_size(program, &field.ty))
             .sum(),
         primer_ir::Type::Array { length, .. } => length * 8,
     }
@@ -753,11 +752,11 @@ fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
 fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -> usize {
     program.type_definitions[type_id].fields[..field_id]
         .iter()
-        .map(|field| type_size(program, field.ty))
+        .map(|field| type_size(program, &field.ty))
         .sum()
 }
 
-fn scalar_type(ty: primer_ir::Type) -> Type {
+fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::I64 => Type::I64,
@@ -769,12 +768,15 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
     }
 }
 
-const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+fn array_element_scalar_type(element: &primer_ir::Type) -> Type {
     match element {
-        primer_ir::ArrayElementType::Bool => Type::Bool,
-        primer_ir::ArrayElementType::I64 => Type::I64,
-        primer_ir::ArrayElementType::F32 => Type::F32,
-        primer_ir::ArrayElementType::F64 => Type::F64,
+        primer_ir::Type::Bool => Type::Bool,
+        primer_ir::Type::I64 => Type::I64,
+        primer_ir::Type::F32 => Type::F32,
+        primer_ir::Type::F64 => Type::F64,
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently requires scalar array elements")
+        }
     }
 }
 

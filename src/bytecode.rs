@@ -183,7 +183,7 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
                 .iter()
                 .map(|field| FieldDefinition {
                     name: field.name.clone(),
-                    ty: field.ty.into(),
+                    ty: field.ty.clone().into(),
                 })
                 .collect(),
         })
@@ -198,7 +198,7 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
                 let slot = slots.len();
                 slots.push(Slot {
                     name: parameter.name.clone(),
-                    ty: parameter.ty.into(),
+                    ty: parameter.ty.clone().into(),
                     mutable: false,
                 });
                 slot_map.insert(parameter.id, slot);
@@ -220,9 +220,9 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
             BytecodeFunction {
                 name: function.name.clone(),
                 parameter_count: function.parameters.len(),
-                return_type: match function.return_type {
+                return_type: match &function.return_type {
                     ir::ReturnType::Void => ReturnType::Void,
-                    ir::ReturnType::Value(ty) => ReturnType::Value(ty.into()),
+                    ir::ReturnType::Value(ty) => ReturnType::Value(ty.clone().into()),
                 },
                 slots,
                 instructions: compiler.instructions,
@@ -389,7 +389,10 @@ impl Compiler {
             StatementKind::Print { value } => {
                 self.emit_expr(value);
 
-                self.emit_source(InstructionKind::Print(value.ty.into()), statement.span);
+                self.emit_source(
+                    InstructionKind::Print(value.ty.clone().into()),
+                    statement.span,
+                );
                 false
             }
 
@@ -642,13 +645,13 @@ impl Compiler {
                 for value in values {
                     self.emit_expr(value);
                 }
-                let ir::Type::Array { element, length } = expr.ty else {
+                let ir::Type::Array { element, length } = &expr.ty else {
                     unreachable!("array expressions must have an array type")
                 };
                 self.emit_source(
                     InstructionKind::ConstructArray {
-                        element: element.into(),
-                        length,
+                        element: scalar_array_element_type(element),
+                        length: *length,
                     },
                     expr.span,
                 );
@@ -657,13 +660,13 @@ impl Compiler {
             ExprKind::Index { base, index } => {
                 self.emit_expr(base);
                 self.emit_expr(index);
-                let ir::Type::Array { element, length } = base.ty else {
+                let ir::Type::Array { element, length } = &base.ty else {
                     unreachable!("indexed expressions must have an array base")
                 };
                 self.emit_source(
                     InstructionKind::Index {
-                        element: element.into(),
-                        length,
+                        element: scalar_array_element_type(element),
+                        length: *length,
                     },
                     expr.span,
                 );
@@ -691,7 +694,10 @@ impl Compiler {
 
                 match *op {
                     UnaryOp::Negate => {
-                        self.emit_source(InstructionKind::Negate(expr.ty.into()), expr.span);
+                        self.emit_source(
+                            InstructionKind::Negate(expr.ty.clone().into()),
+                            expr.span,
+                        );
                     }
                     UnaryOp::Not => {
                         self.emit_source(InstructionKind::Not, expr.span);
@@ -704,16 +710,16 @@ impl Compiler {
                 self.emit_expr(right);
 
                 let instruction = match *op {
-                    BinaryOp::Add => InstructionKind::Add(expr.ty.into()),
-                    BinaryOp::Subtract => InstructionKind::Subtract(expr.ty.into()),
-                    BinaryOp::Multiply => InstructionKind::Multiply(expr.ty.into()),
-                    BinaryOp::Divide => InstructionKind::Divide(expr.ty.into()),
-                    BinaryOp::Equal => InstructionKind::Equal(left.ty.into()),
-                    BinaryOp::NotEqual => InstructionKind::NotEqual(left.ty.into()),
-                    BinaryOp::Less => InstructionKind::Less(left.ty.into()),
-                    BinaryOp::LessEqual => InstructionKind::LessEqual(left.ty.into()),
-                    BinaryOp::Greater => InstructionKind::Greater(left.ty.into()),
-                    BinaryOp::GreaterEqual => InstructionKind::GreaterEqual(left.ty.into()),
+                    BinaryOp::Add => InstructionKind::Add(expr.ty.clone().into()),
+                    BinaryOp::Subtract => InstructionKind::Subtract(expr.ty.clone().into()),
+                    BinaryOp::Multiply => InstructionKind::Multiply(expr.ty.clone().into()),
+                    BinaryOp::Divide => InstructionKind::Divide(expr.ty.clone().into()),
+                    BinaryOp::Equal => InstructionKind::Equal(left.ty.clone().into()),
+                    BinaryOp::NotEqual => InstructionKind::NotEqual(left.ty.clone().into()),
+                    BinaryOp::Less => InstructionKind::Less(left.ty.clone().into()),
+                    BinaryOp::LessEqual => InstructionKind::LessEqual(left.ty.clone().into()),
+                    BinaryOp::Greater => InstructionKind::Greater(left.ty.clone().into()),
+                    BinaryOp::GreaterEqual => InstructionKind::GreaterEqual(left.ty.clone().into()),
                 };
 
                 self.emit_source(instruction, expr.span);
@@ -752,7 +758,7 @@ fn collect_slots(
                 let index = slots.len();
                 slots.push(Slot {
                     name: name.clone(),
-                    ty: (*ty).into(),
+                    ty: ty.clone().into(),
                     mutable: *mutable,
                 });
                 slot_map.insert(*id, index);
@@ -793,20 +799,21 @@ impl From<ir::Type> for Type {
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),
             ir::Type::Array { element, length } => Self::Array {
-                element: element.into(),
+                element: scalar_array_element_type(&element),
                 length,
             },
         }
     }
 }
 
-impl From<ir::ArrayElementType> for ArrayElementType {
-    fn from(value: ir::ArrayElementType) -> Self {
-        match value {
-            ir::ArrayElementType::Bool => Self::Bool,
-            ir::ArrayElementType::I64 => Self::I64,
-            ir::ArrayElementType::F32 => Self::F32,
-            ir::ArrayElementType::F64 => Self::F64,
+fn scalar_array_element_type(value: &ir::Type) -> ArrayElementType {
+    match value {
+        ir::Type::Bool => ArrayElementType::Bool,
+        ir::Type::I64 => ArrayElementType::I64,
+        ir::Type::F32 => ArrayElementType::F32,
+        ir::Type::F64 => ArrayElementType::F64,
+        ir::Type::Named(_) | ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently requires scalar array elements")
         }
     }
 }

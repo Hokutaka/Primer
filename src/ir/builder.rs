@@ -53,7 +53,7 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     })
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct ResolvedBinding {
     id: BindingId,
     info: BindingInfo,
@@ -76,7 +76,9 @@ impl Builder<'_> {
             .resolve_function_name(&function.name, function.name_span)?;
         let definition = self.model.function_definition(semantic_id);
         let previous_scopes = std::mem::replace(&mut self.scopes, vec![HashMap::new()]);
-        let previous_return_type = self.current_return_type.replace(definition.return_type);
+        let previous_return_type = self
+            .current_return_type
+            .replace(definition.return_type.clone());
 
         let result = (|| {
             let mut parameters = Vec::new();
@@ -88,7 +90,7 @@ impl Builder<'_> {
                     ResolvedBinding {
                         id,
                         info: BindingInfo {
-                            ty: parameter.ty,
+                            ty: parameter.ty.clone(),
                             mutable: false,
                         },
                     },
@@ -96,7 +98,7 @@ impl Builder<'_> {
                 parameters.push(Parameter {
                     id,
                     name: parameter.name.clone(),
-                    ty: ir_type(parameter.ty),
+                    ty: ir_type(parameter.ty.clone()),
                     span: parameter.span,
                 });
             }
@@ -104,9 +106,9 @@ impl Builder<'_> {
                 id: FunctionId(definition.id.0),
                 name: definition.name.clone(),
                 parameters,
-                return_type: match definition.return_type {
+                return_type: match &definition.return_type {
                     semantic::ReturnType::Void => ReturnType::Void,
-                    semantic::ReturnType::Value(ty) => ReturnType::Value(ir_type(ty)),
+                    semantic::ReturnType::Value(ty) => ReturnType::Value(ir_type(ty.clone())),
                 },
                 body: self.build_statements(&function.body)?,
                 span: function.span,
@@ -130,11 +132,11 @@ impl Builder<'_> {
                 Ok(FieldDefinition {
                     id: FieldId(field.id.0),
                     name: field.name.clone(),
-                    ty: ir_type(field.ty),
+                    ty: ir_type(field.ty.clone()),
                     default: field
                         .default
                         .as_ref()
-                        .map(|value| self.build_expr(value, Some(field.ty), &bindings))
+                        .map(|value| self.build_expr(value, Some(field.ty.clone()), &bindings))
                         .transpose()?,
                     span: field.span,
                 })
@@ -170,7 +172,7 @@ impl Builder<'_> {
                     ast::TypeSpec::Explicit(ty) => self.model.resolve_type_ref(ty)?,
                     ast::TypeSpec::Infer => self.model.type_of_expr(value, &bindings)?,
                 };
-                let value = self.build_expr(value, Some(ty), &bindings)?;
+                let value = self.build_expr(value, Some(ty.clone()), &bindings)?;
                 let id = BindingId(self.next_binding_id);
                 self.next_binding_id += 1;
 
@@ -182,7 +184,7 @@ impl Builder<'_> {
                         ResolvedBinding {
                             id,
                             info: BindingInfo {
-                                ty,
+                                ty: ty.clone(),
                                 mutable: *mutable,
                             },
                         },
@@ -204,7 +206,7 @@ impl Builder<'_> {
                 StatementKind::Assignment {
                     id: binding.id,
                     name: name.clone(),
-                    ty: ir_type(binding.info.ty),
+                    ty: ir_type(binding.info.ty.clone()),
                     value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
                 }
             }
@@ -232,7 +234,7 @@ impl Builder<'_> {
                 }
             }
             ast::StmtKind::Return { value } => {
-                let value = match (self.current_return_type, value) {
+                let value = match (self.current_return_type.clone(), value) {
                     (Some(semantic::ReturnType::Value(ty)), Some(value)) => {
                         Some(self.build_expr(value, Some(ty), &bindings)?)
                     }
@@ -336,7 +338,11 @@ impl Builder<'_> {
                     values.push(FieldValue {
                         id: FieldId(field.id.0),
                         name: field.name.clone(),
-                        value: self.build_expr(&field_value.value, Some(field.ty), bindings)?,
+                        value: self.build_expr(
+                            &field_value.value,
+                            Some(field.ty.clone()),
+                            bindings,
+                        )?,
                         origin: FieldValueOrigin::Explicit {
                             span: field_value.span,
                         },
@@ -356,7 +362,11 @@ impl Builder<'_> {
                     values.push(FieldValue {
                         id: FieldId(field.id.0),
                         name: field.name.clone(),
-                        value: self.build_expr(default, Some(field.ty), &default_bindings)?,
+                        value: self.build_expr(
+                            default,
+                            Some(field.ty.clone()),
+                            &default_bindings,
+                        )?,
                         origin: FieldValueOrigin::Default {
                             definition_span: field.span,
                         },
@@ -391,14 +401,16 @@ impl Builder<'_> {
                 }
             }
             ast::ExprKind::Array(values) => {
-                let semantic::Type::Array { element, .. } = ty else {
+                let semantic::Type::Array { element, .. } = &ty else {
                     unreachable!("semantic analysis must assign an array type")
                 };
-                let expected_element = semantic_array_element_type(element);
+                let expected_element = (**element).clone();
                 ExprKind::Array(
                     values
                         .iter()
-                        .map(|value| self.build_expr(value, Some(expected_element), bindings))
+                        .map(|value| {
+                            self.build_expr(value, Some(expected_element.clone()), bindings)
+                        })
                         .collect::<Result<_, _>>()?,
                 )
             }
@@ -421,13 +433,13 @@ impl Builder<'_> {
             }
             ast::ExprKind::Unary { op, value } => ExprKind::Unary {
                 op: (*op).into(),
-                value: Box::new(self.build_expr(value, Some(ty), bindings)?),
+                value: Box::new(self.build_expr(value, Some(ty.clone()), bindings)?),
             },
             ast::ExprKind::Binary { op, left, right } => {
                 let (left_expected, right_expected) = if is_comparison(*op) {
                     semantic::comparison_operand_types(left, right, bindings, self.model)?
                 } else {
-                    (ty, ty)
+                    (ty.clone(), ty.clone())
                 };
 
                 ExprKind::Binary {
@@ -449,7 +461,7 @@ impl Builder<'_> {
         self.scopes
             .iter()
             .rev()
-            .find_map(|scope| scope.get(name).copied())
+            .find_map(|scope| scope.get(name).cloned())
     }
 
     fn build_call(
@@ -464,7 +476,9 @@ impl Builder<'_> {
         let arguments = arguments
             .iter()
             .zip(&function.parameters)
-            .map(|(argument, parameter)| self.build_expr(argument, Some(parameter.ty), bindings))
+            .map(|(argument, parameter)| {
+                self.build_expr(argument, Some(parameter.ty.clone()), bindings)
+            })
             .collect::<Result<_, _>>()?;
         Ok((FunctionId(semantic_id.0), arguments))
     }
@@ -475,7 +489,7 @@ impl Builder<'_> {
             bindings.extend(
                 scope
                     .iter()
-                    .map(|(name, binding)| (name.clone(), binding.info)),
+                    .map(|(name, binding)| (name.clone(), binding.info.clone())),
             );
         }
         bindings
@@ -500,23 +514,9 @@ fn ir_type(value: semantic::Type) -> Type {
         semantic::Type::F64 => Type::F64,
         semantic::Type::Named(id) => Type::Named(TypeId(id.0)),
         semantic::Type::Array { element, length } => Type::Array {
-            element: match element {
-                semantic::ArrayElementType::Bool => super::ArrayElementType::Bool,
-                semantic::ArrayElementType::I64 => super::ArrayElementType::I64,
-                semantic::ArrayElementType::F32 => super::ArrayElementType::F32,
-                semantic::ArrayElementType::F64 => super::ArrayElementType::F64,
-            },
+            element: Box::new(ir_type(*element)),
             length,
         },
-    }
-}
-
-const fn semantic_array_element_type(element: semantic::ArrayElementType) -> semantic::Type {
-    match element {
-        semantic::ArrayElementType::Bool => semantic::Type::Bool,
-        semantic::ArrayElementType::I64 => semantic::Type::I64,
-        semantic::ArrayElementType::F32 => semantic::Type::F32,
-        semantic::ArrayElementType::F64 => semantic::Type::F64,
     }
 }
 

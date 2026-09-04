@@ -18,28 +18,17 @@ pub struct FieldId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
     I64,
     F32,
     F64,
     Named(TypeId),
-    Array {
-        element: ArrayElementType,
-        length: usize,
-    },
+    Array { element: Box<Type>, length: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArrayElementType {
-    Bool,
-    I64,
-    F32,
-    F64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BindingInfo {
     pub ty: Type,
     pub mutable: bool,
@@ -65,7 +54,7 @@ pub struct TypeDefinition {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReturnType {
     Void,
     Value(Type),
@@ -146,7 +135,7 @@ impl SemanticModel {
             Type::F64 => "f64".into(),
             Type::Named(id) => self.type_definition(id).name.clone(),
             Type::Array { element, length } => {
-                format!("[{}; {length}]", array_element_name(element))
+                format!("[{}; {length}]", self.type_name(*element))
             }
         }
     }
@@ -251,7 +240,7 @@ fn resolve_function_definitions(
                 ));
             }
             let ty = resolve_type_ref(&parameter.type_ref, type_names)?;
-            if let Some(message) = unsupported_signature_type_message(ty) {
+            if let Some(message) = unsupported_signature_type_message(&ty) {
                 return Err(Diagnostic::new(message, parameter.type_ref.span));
             }
             parameters.push(ParameterDefinition {
@@ -265,7 +254,7 @@ fn resolve_function_definitions(
             ast::ReturnTypeRef::Void(_) => ReturnType::Void,
             ast::ReturnTypeRef::Value(type_ref) => {
                 let ty = resolve_type_ref(type_ref, type_names)?;
-                if let Some(message) = unsupported_signature_type_message(ty) {
+                if let Some(message) = unsupported_signature_type_message(&ty) {
                     return Err(Diagnostic::new(message, type_ref.span));
                 }
                 ReturnType::Value(ty)
@@ -298,7 +287,7 @@ fn check_function(function: &ast::FunctionDefinition, model: &SemanticModel) -> 
         parameter_scope.insert(
             parameter.name.clone(),
             BindingInfo {
-                ty: parameter.ty,
+                ty: parameter.ty.clone(),
                 mutable: false,
             },
         );
@@ -308,7 +297,7 @@ fn check_function(function: &ast::FunctionDefinition, model: &SemanticModel) -> 
         &function.body,
         &mut scopes,
         0,
-        Some(definition.return_type),
+        Some(&definition.return_type),
         model,
     )?;
     if matches!(definition.return_type, ReturnType::Value(_))
@@ -583,44 +572,26 @@ fn resolve_type_ref(
         ast::TypeRefKind::Array { element, length } => (element, *length),
     };
     let element = resolve_type_ref(element, type_names)?;
-    let element = match element {
-        Type::Bool => ArrayElementType::Bool,
-        Type::I64 => ArrayElementType::I64,
-        Type::F32 => ArrayElementType::F32,
-        Type::F64 => ArrayElementType::F64,
+    match &element {
+        Type::Bool | Type::I64 | Type::F32 | Type::F64 => {}
         Type::Named(_) | Type::Array { .. } => {
             return Err(Diagnostic::new(
                 "array elements currently require a scalar type",
                 type_ref.span,
             ));
         }
-    };
-    Ok(Type::Array { element, length })
-}
-
-const fn array_element_type(element: ArrayElementType) -> Type {
-    match element {
-        ArrayElementType::Bool => Type::Bool,
-        ArrayElementType::I64 => Type::I64,
-        ArrayElementType::F32 => Type::F32,
-        ArrayElementType::F64 => Type::F64,
     }
+    Ok(Type::Array {
+        element: Box::new(element),
+        length,
+    })
 }
 
-const fn unsupported_signature_type_message(ty: Type) -> Option<&'static str> {
+fn unsupported_signature_type_message(ty: &Type) -> Option<&'static str> {
     match ty {
         Type::Named(_) => Some("product types in function signatures are not supported yet"),
         Type::Array { .. } => Some("array types in function signatures are not supported yet"),
         Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
-    }
-}
-
-const fn array_element_name(element: ArrayElementType) -> &'static str {
-    match element {
-        ArrayElementType::Bool => "bool",
-        ArrayElementType::I64 => "i64",
-        ArrayElementType::F32 => "f32",
-        ArrayElementType::F64 => "f64",
     }
 }
 
@@ -677,13 +648,13 @@ fn check_defaults(model: &SemanticModel) -> SemanticResult<()> {
             let Some(default) = &field.default else {
                 continue;
             };
-            let actual = model.type_of_expr_expected(default, &bindings, Some(field.ty))?;
+            let actual = model.type_of_expr_expected(default, &bindings, Some(field.ty.clone()))?;
             if actual != field.ty {
                 return Err(Diagnostic::new(
                     format!(
                         "default for field `{}` expects {}, found {}",
                         field.name,
-                        model.type_name(field.ty),
+                        model.type_name(field.ty.clone()),
                         model.type_name(actual)
                     ),
                     default.span,
@@ -698,7 +669,7 @@ fn check_statements(
     statements: &[Stmt],
     scopes: &mut Vec<Bindings>,
     loop_depth: usize,
-    return_type: Option<ReturnType>,
+    return_type: Option<&ReturnType>,
     model: &SemanticModel,
 ) -> SemanticResult<()> {
     for statement in statements {
@@ -726,8 +697,11 @@ fn check_statements(
                     TypeSpec::Explicit(expected) => {
                         let expected = model.resolve_type_ref(expected)?;
                         // 左辺の明示型を右辺へ渡す
-                        let actual =
-                            model.type_of_expr_expected(value, &bindings, Some(expected))?;
+                        let actual = model.type_of_expr_expected(
+                            value,
+                            &bindings,
+                            Some(expected.clone()),
+                        )?;
 
                         if actual != expected {
                             return Err(Diagnostic::new(
@@ -763,7 +737,7 @@ fn check_statements(
                 name_span,
                 value,
             } => {
-                let binding = bindings.get(name).copied().ok_or_else(|| {
+                let binding = bindings.get(name).cloned().ok_or_else(|| {
                     Diagnostic::new(format!("unknown binding `{name}`"), *name_span)
                 })?;
 
@@ -774,7 +748,8 @@ fn check_statements(
                     ));
                 }
 
-                let actual = model.type_of_expr_expected(value, &bindings, Some(binding.ty))?;
+                let actual =
+                    model.type_of_expr_expected(value, &bindings, Some(binding.ty.clone()))?;
 
                 if actual != binding.ty {
                     return Err(Diagnostic::new(
@@ -836,13 +811,16 @@ fn check_statements(
                         ));
                     }
                     (ReturnType::Value(expected), Some(value)) => {
-                        let actual =
-                            model.type_of_expr_expected(value, &bindings, Some(expected))?;
-                        if actual != expected {
+                        let actual = model.type_of_expr_expected(
+                            value,
+                            &bindings,
+                            Some(expected.clone()),
+                        )?;
+                        if actual != *expected {
                             return Err(Diagnostic::new(
                                 format!(
                                     "return expects {}, found {}",
-                                    model.type_name(expected),
+                                    model.type_name(expected.clone()),
                                     model.type_name(actual)
                                 ),
                                 value.span,
@@ -851,7 +829,10 @@ fn check_statements(
                     }
                     (ReturnType::Value(expected), None) => {
                         return Err(Diagnostic::new(
-                            format!("return requires a {} value", model.type_name(expected)),
+                            format!(
+                                "return requires a {} value",
+                                model.type_name(expected.clone())
+                            ),
                             statement.span,
                         ));
                     }
@@ -974,7 +955,11 @@ fn visible_bindings(scopes: &[Bindings]) -> Bindings {
     let mut visible = HashMap::new();
 
     for scope in scopes {
-        visible.extend(scope.iter().map(|(name, binding)| (name.clone(), *binding)));
+        visible.extend(
+            scope
+                .iter()
+                .map(|(name, binding)| (name.clone(), binding.clone())),
+        );
     }
 
     visible
@@ -1009,7 +994,7 @@ fn type_of_expr_expected(
 
         ExprKind::Variable(name) => bindings
             .get(name)
-            .map(|binding| binding.ty)
+            .map(|binding| binding.ty.clone())
             .ok_or_else(|| Diagnostic::new(format!("unknown binding `{name}`"), expr.span)),
 
         ExprKind::Array(values) => {
@@ -1029,37 +1014,37 @@ fn type_of_expr_expected(
                 _ => {
                     let first = values.first().expect("parser rejects empty array literals");
                     let first_ty = model.type_of_expr(first, bindings)?;
-                    let element = match first_ty {
-                        Type::Bool => ArrayElementType::Bool,
-                        Type::I64 => ArrayElementType::I64,
-                        Type::F32 => ArrayElementType::F32,
-                        Type::F64 => ArrayElementType::F64,
+                    match &first_ty {
+                        Type::Bool | Type::I64 | Type::F32 | Type::F64 => {}
                         Type::Named(_) | Type::Array { .. } => {
                             return Err(Diagnostic::new(
                                 "array elements currently require a scalar type",
                                 first.span,
                             ));
                         }
-                    };
-                    (element, values.len())
+                    }
+                    (Box::new(first_ty), values.len())
                 }
             };
-            let expected_element = array_element_type(element);
+            let expected_element = *element;
             for value in values {
                 let actual =
-                    model.type_of_expr_expected(value, bindings, Some(expected_element))?;
+                    model.type_of_expr_expected(value, bindings, Some(expected_element.clone()))?;
                 if actual != expected_element {
                     return Err(Diagnostic::new(
                         format!(
                             "array element expects {}, found {}",
-                            model.type_name(expected_element),
+                            model.type_name(expected_element.clone()),
                             model.type_name(actual)
                         ),
                         value.span,
                     ));
                 }
             }
-            Ok(Type::Array { element, length })
+            Ok(Type::Array {
+                element: Box::new(expected_element),
+                length,
+            })
         }
 
         ExprKind::Index { base, index } => {
@@ -1080,7 +1065,7 @@ fn type_of_expr_expected(
                     index.span,
                 ));
             }
-            Ok(array_element_type(element))
+            Ok(*element)
         }
 
         ExprKind::Construct {
@@ -1111,14 +1096,17 @@ fn type_of_expr_expected(
                     ));
                 }
 
-                let actual =
-                    model.type_of_expr_expected(&field_value.value, bindings, Some(field.ty))?;
+                let actual = model.type_of_expr_expected(
+                    &field_value.value,
+                    bindings,
+                    Some(field.ty.clone()),
+                )?;
                 if actual != field.ty {
                     return Err(Diagnostic::new(
                         format!(
                             "field `{}` expects {}, found {}",
                             field.name,
-                            model.type_name(field.ty),
+                            model.type_name(field.ty.clone()),
                             model.type_name(actual)
                         ),
                         field_value.value.span,
@@ -1159,7 +1147,7 @@ fn type_of_expr_expected(
                 .fields
                 .iter()
                 .find(|field| field.name == *field_name)
-                .map(|field| field.ty)
+                .map(|field| field.ty.clone())
                 .ok_or_else(|| {
                     Diagnostic::new(
                         format!("type `{}` has no field `{field_name}`", definition.name),
@@ -1184,7 +1172,7 @@ fn type_of_expr_expected(
             crate::ast::UnaryOp::Negate => {
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
 
-                if !is_numeric(ty) {
+                if !is_numeric(&ty) {
                     return Err(Diagnostic::new(
                         format!("cannot apply `-` to {}", model.type_name(ty)),
                         expr.span,
@@ -1214,7 +1202,7 @@ fn type_of_expr_expected(
             } else {
                 // 親から来た期待型を左右両方へ伝える
                 (
-                    type_of_expr_expected(left, bindings, expected, model)?,
+                    type_of_expr_expected(left, bindings, expected.clone(), model)?,
                     type_of_expr_expected(right, bindings, expected, model)?,
                 )
             };
@@ -1243,7 +1231,7 @@ fn type_of_expr_expected(
             }
 
             if is_arithmetic(*op) {
-                if !is_numeric(left_type) {
+                if !is_numeric(&left_type) {
                     return Err(Diagnostic::new(
                         format!(
                             "cannot apply `{}` to {}",
@@ -1256,7 +1244,7 @@ fn type_of_expr_expected(
 
                 Ok(left_type)
             } else if is_ordering(*op) {
-                if !is_numeric(left_type) {
+                if !is_numeric(&left_type) {
                     return Err(Diagnostic::new(
                         format!(
                             "cannot apply `{}` to {}",
@@ -1295,20 +1283,20 @@ fn check_call(
         ));
     }
     for (argument, parameter) in arguments.iter().zip(&function.parameters) {
-        let actual = model.type_of_expr_expected(argument, bindings, Some(parameter.ty))?;
+        let actual = model.type_of_expr_expected(argument, bindings, Some(parameter.ty.clone()))?;
         if actual != parameter.ty {
             return Err(Diagnostic::new(
                 format!(
                     "argument `{}` expects {}, found {}",
                     parameter.name,
-                    model.type_name(parameter.ty),
+                    model.type_name(parameter.ty.clone()),
                     model.type_name(actual)
                 ),
                 argument.span,
             ));
         }
     }
-    Ok(function.return_type)
+    Ok(function.return_type.clone())
 }
 
 const fn scalar_type(ty: ast::Type) -> Type {
@@ -1333,13 +1321,13 @@ pub(crate) fn comparison_operand_types(
         return Ok((left_type, right_type));
     }
 
-    let contextual_left = type_of_expr_expected(left, bindings, Some(right_type), model)?;
+    let contextual_left = type_of_expr_expected(left, bindings, Some(right_type.clone()), model)?;
 
     if contextual_left == right_type {
         return Ok((contextual_left, right_type));
     }
 
-    let contextual_right = type_of_expr_expected(right, bindings, Some(left_type), model)?;
+    let contextual_right = type_of_expr_expected(right, bindings, Some(left_type.clone()), model)?;
 
     Ok((left_type, contextual_right))
 }
@@ -1359,7 +1347,7 @@ fn operator_name(op: BinaryOp) -> &'static str {
     }
 }
 
-const fn is_numeric(ty: Type) -> bool {
+const fn is_numeric(ty: &Type) -> bool {
     matches!(ty, Type::I64 | Type::F32 | Type::F64)
 }
 
@@ -1393,7 +1381,10 @@ mod tests {
 
         let bindings = check(&program).unwrap();
 
-        assert_eq!(bindings.get("x").map(|binding| binding.ty), Some(Type::F32));
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::F32)
+        );
     }
 
     #[test]
@@ -1402,7 +1393,10 @@ mod tests {
 
         let bindings = check(&program).unwrap();
 
-        assert_eq!(bindings.get("x").map(|binding| binding.ty), Some(Type::F64));
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::F64)
+        );
     }
 
     #[test]
@@ -1411,7 +1405,10 @@ mod tests {
 
         let bindings = check(&program).unwrap();
 
-        assert_eq!(bindings.get("x").map(|binding| binding.ty), Some(Type::F64));
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::F64)
+        );
     }
 
     #[test]
@@ -1420,7 +1417,10 @@ mod tests {
 
         let bindings = check(&program).unwrap();
 
-        assert_eq!(bindings.get("x").map(|binding| binding.ty), Some(Type::F32));
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::F32)
+        );
     }
 
     #[test]
@@ -1472,7 +1472,10 @@ mod tests {
 
         let bindings = check(&program).unwrap();
 
-        assert_eq!(bindings.get("x").map(|binding| binding.ty), Some(Type::I64));
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::I64)
+        );
         assert_eq!(bindings.get("x").map(|binding| binding.mutable), Some(true));
     }
 
@@ -1518,15 +1521,15 @@ mod tests {
         let bindings = check(&program).unwrap();
 
         assert_eq!(
-            bindings.get("a").map(|binding| binding.ty),
+            bindings.get("a").map(|binding| binding.ty.clone()),
             Some(Type::Bool)
         );
         assert_eq!(
-            bindings.get("b").map(|binding| binding.ty),
+            bindings.get("b").map(|binding| binding.ty.clone()),
             Some(Type::Bool)
         );
         assert_eq!(
-            bindings.get("c").map(|binding| binding.ty),
+            bindings.get("c").map(|binding| binding.ty.clone()),
             Some(Type::Bool)
         );
     }
@@ -1636,7 +1639,7 @@ mod tests {
         assert_eq!(model.type_definitions[1].id.0, 1);
         assert_eq!(model.type_definitions[1].fields[1].id.0, 1);
         assert_eq!(
-            model.bindings.get("line").map(|binding| binding.ty),
+            model.bindings.get("line").map(|binding| binding.ty.clone()),
             Some(Type::Named(super::TypeId(0)))
         );
     }

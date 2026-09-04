@@ -78,7 +78,7 @@ fn lower_body(
     for (index, parameter) in parameters.iter().enumerate() {
         lowerer.instructions.push(Instruction::StoreParameter {
             index,
-            ty: scalar_type(parameter.ty),
+            ty: scalar_type(&parameter.ty),
             offset: lowerer.binding_offset(parameter.id),
         });
     }
@@ -125,7 +125,7 @@ enum Value {
         base_slot: usize,
     },
     Array {
-        element: primer_ir::ArrayElementType,
+        element: Type,
         length: usize,
         base_slot: usize,
     },
@@ -148,7 +148,7 @@ impl Lowerer<'_> {
             | primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
                 let value = self.lower_expr(value, 0);
                 let destination = self.binding_slot(*id);
-                match (*ty, value) {
+                match (ty, value) {
                     (
                         primer_ir::Type::Named(type_id),
                         Value::Aggregate {
@@ -167,9 +167,9 @@ impl Lowerer<'_> {
                             base_slot: source,
                         },
                     ) => {
-                        debug_assert_eq!(element, actual_element);
-                        debug_assert_eq!(length, actual_length);
-                        self.copy_array(element, length, source, destination);
+                        debug_assert_eq!(array_element_scalar_type(element), actual_element);
+                        debug_assert_eq!(*length, actual_length);
+                        self.copy_array(actual_element, *length, source, destination);
                     }
                     (scalar, Value::Scalar(actual)) => {
                         debug_assert_eq!(scalar_type(scalar), actual);
@@ -361,7 +361,7 @@ impl Lowerer<'_> {
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::Float { text } => {
-                let ty = scalar_type(expr.ty);
+                let ty = scalar_type(&expr.ty);
                 let id = self.add_float_constant(text, ty);
                 match ty {
                     Type::F32 => self.instructions.push(Instruction::LoadF32Constant(id)),
@@ -370,14 +370,14 @@ impl Lowerer<'_> {
                 }
                 Value::Scalar(ty)
             }
-            primer_ir::ExprKind::Variable { id, .. } => match expr.ty {
+            primer_ir::ExprKind::Variable { id, .. } => match &expr.ty {
                 primer_ir::Type::Named(type_id) => Value::Aggregate {
                     type_id: type_id.0,
                     base_slot: self.binding_slot(*id),
                 },
                 primer_ir::Type::Array { element, length } => Value::Array {
-                    element,
-                    length,
+                    element: array_element_scalar_type(element),
+                    length: *length,
                     base_slot: self.binding_slot(*id),
                 },
                 scalar => {
@@ -461,18 +461,18 @@ impl Lowerer<'_> {
                     }
                 }
 
-                Value::Scalar(scalar_type(expr.ty))
+                Value::Scalar(scalar_type(&expr.ty))
             }
             primer_ir::ExprKind::Construct {
                 type_id, fields, ..
             } => {
-                let destination = self.allocate_aggregate(expr.ty);
+                let destination = self.allocate_aggregate(&expr.ty);
                 for field in fields {
                     let definition = &self.program.type_definitions[type_id.0].fields[field.id.0];
                     let value = self.lower_expr(&field.value, depth);
                     let field_slot =
                         destination + field_slot_offset(self.program, type_id.0, field.id.0);
-                    match (definition.ty, value) {
+                    match (&definition.ty, value) {
                         (
                             primer_ir::Type::Named(nested),
                             Value::Aggregate {
@@ -505,7 +505,7 @@ impl Lowerer<'_> {
                     unreachable!("semantic analysis requires an aggregate field base")
                 };
                 let field_slot = base_slot + field_slot_offset(self.program, type_id.0, field_id.0);
-                match expr.ty {
+                match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
                         base_slot: field_slot,
@@ -518,10 +518,10 @@ impl Lowerer<'_> {
                 }
             }
             primer_ir::ExprKind::Array(values) => {
-                let primer_ir::Type::Array { element, length } = expr.ty else {
+                let primer_ir::Type::Array { element, length } = &expr.ty else {
                     unreachable!("array expression must have an array type")
                 };
-                let destination = self.allocate_aggregate(expr.ty);
+                let destination = self.allocate_aggregate(&expr.ty);
                 let ty = array_element_scalar_type(element);
                 for (index, value) in values.iter().enumerate() {
                     let Value::Scalar(actual) = self.lower_expr(value, depth) else {
@@ -531,8 +531,8 @@ impl Lowerer<'_> {
                     self.store_scalar(ty, slot_offset(destination + index));
                 }
                 Value::Array {
-                    element,
-                    length,
+                    element: ty,
+                    length: *length,
                     base_slot: destination,
                 }
             }
@@ -548,7 +548,7 @@ impl Lowerer<'_> {
                 let Value::Scalar(Type::I64) = self.lower_expr(index, depth) else {
                     unreachable!("array index must be i64")
                 };
-                let ty = array_element_scalar_type(element);
+                let ty = element;
                 let label = self.next_label();
                 self.instructions.push(Instruction::CheckedArrayLoad {
                     ty,
@@ -564,7 +564,7 @@ impl Lowerer<'_> {
                 ..
             } => {
                 self.lower_call(function_id.0, arguments, depth);
-                Value::Scalar(scalar_type(expr.ty))
+                Value::Scalar(scalar_type(&expr.ty))
             }
         }
     }
@@ -592,7 +592,7 @@ impl Lowerer<'_> {
             .enumerate()
         {
             let offset = field_slot_offset(self.program, type_id, field_id);
-            match field.ty {
+            match &field.ty {
                 primer_ir::Type::Named(nested) => {
                     self.copy_aggregate(nested.0, source + offset, destination + offset)
                 }
@@ -605,17 +605,10 @@ impl Lowerer<'_> {
         }
     }
 
-    fn copy_array(
-        &mut self,
-        element: primer_ir::ArrayElementType,
-        length: usize,
-        source: usize,
-        destination: usize,
-    ) {
-        let ty = array_element_scalar_type(element);
+    fn copy_array(&mut self, element: Type, length: usize, source: usize, destination: usize) {
         for index in 0..length {
-            self.load_scalar(ty, slot_offset(source + index));
-            self.store_scalar(ty, slot_offset(destination + index));
+            self.load_scalar(element, slot_offset(source + index));
+            self.store_scalar(element, slot_offset(destination + index));
         }
     }
 
@@ -689,7 +682,7 @@ impl Lowerer<'_> {
         id
     }
 
-    fn allocate_aggregate(&mut self, ty: primer_ir::Type) -> usize {
+    fn allocate_aggregate(&mut self, ty: &primer_ir::Type) -> usize {
         let base = self.next_aggregate_slot;
         self.next_aggregate_slot += type_slot_count(self.program, ty);
         base
@@ -739,7 +732,7 @@ fn collect_binding_slots(
         match &statement.kind {
             primer_ir::StatementKind::Binding { id, ty, .. } => {
                 slots.insert(*id, *next);
-                *next += type_slot_count(program, *ty);
+                *next += type_slot_count(program, ty);
             }
             primer_ir::StatementKind::If {
                 then_body,
@@ -772,7 +765,7 @@ fn collect_binding_slots(
     }
 }
 
-fn type_slot_count(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
+fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
         | primer_ir::Type::I64
@@ -781,16 +774,16 @@ fn type_slot_count(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
             .fields
             .iter()
-            .map(|field| type_slot_count(program, field.ty))
+            .map(|field| type_slot_count(program, &field.ty))
             .sum(),
-        primer_ir::Type::Array { length, .. } => length,
+        primer_ir::Type::Array { length, .. } => *length,
     }
 }
 
 fn field_slot_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -> usize {
     program.type_definitions[type_id].fields[..field_id]
         .iter()
-        .map(|field| type_slot_count(program, field.ty))
+        .map(|field| type_slot_count(program, &field.ty))
         .sum()
 }
 
@@ -940,7 +933,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
     }
 }
 
-fn scalar_type(ty: primer_ir::Type) -> Type {
+fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::I64 => Type::I64,
@@ -952,12 +945,15 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
     }
 }
 
-const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+fn array_element_scalar_type(element: &primer_ir::Type) -> Type {
     match element {
-        primer_ir::ArrayElementType::Bool => Type::Bool,
-        primer_ir::ArrayElementType::I64 => Type::I64,
-        primer_ir::ArrayElementType::F32 => Type::F32,
-        primer_ir::ArrayElementType::F64 => Type::F64,
+        primer_ir::Type::Bool => Type::Bool,
+        primer_ir::Type::I64 => Type::I64,
+        primer_ir::Type::F32 => Type::F32,
+        primer_ir::Type::F64 => Type::F64,
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently requires scalar array elements")
+        }
     }
 }
 

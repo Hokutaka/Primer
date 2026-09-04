@@ -3,25 +3,14 @@ pub mod text;
 
 use crate::source::Span;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
     I64,
     F32,
     F64,
     Named(TypeId),
-    Array {
-        element: ArrayElementType,
-        length: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ArrayElementType {
-    Bool,
-    I64,
-    F32,
-    F64,
+    Array { element: Box<Type>, length: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +29,7 @@ pub struct FieldId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReturnType {
     Void,
     Value(Type),
