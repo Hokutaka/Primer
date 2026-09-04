@@ -73,7 +73,7 @@ QBE, WebAssembly, and Windows x86-64 currently use an 8-byte stride even for 4-b
 
 Observable array types, lengths, binding IDs, instruction numbers, and memory addresses do not grant authority to modify a running array. Observation remains separate from external interference.
 
-Bounds checks stop execution before an invalid memory access. Arrays do not, however, hide secrets. Elements may be visible in artifacts and observations. Rules for secret values belong to the separate `Secret` design.
+Bounds checks stop execution before an invalid memory access. Arrays do not, however, hide secrets. Elements may be visible in artifacts and observations. The current language specification provides no mechanism for hiding secret values.
 
 ## Current limits
 
