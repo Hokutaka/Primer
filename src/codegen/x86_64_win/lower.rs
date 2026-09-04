@@ -185,6 +185,12 @@ enum ArrayElement {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+enum ArrayAddress {
+    Direct(isize),
+    Indirect(isize),
+}
+
 impl Lowerer<'_> {
     fn lower_statements(&mut self, statements: &[primer_ir::Statement]) -> bool {
         for statement in statements {
@@ -198,39 +204,54 @@ impl Lowerer<'_> {
 
     fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
-            primer_ir::StatementKind::Binding { id, ty, value, .. }
-            | primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
+            primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 let value = self.lower_expr(value, 0);
                 let destination = self.binding_slot(*id);
-                match (ty, value) {
-                    (
-                        primer_ir::Type::Named(type_id),
-                        Value::Aggregate {
-                            type_id: actual,
-                            base_slot: source,
-                        },
-                    ) => {
-                        debug_assert_eq!(type_id.0, actual);
-                        self.copy_aggregate(type_id.0, source, destination);
-                    }
-                    (
-                        primer_ir::Type::Array { element, length },
-                        Value::Array {
-                            element: actual_element,
-                            length: actual_length,
-                            base_slot: source,
-                        },
-                    ) => {
-                        debug_assert_eq!(array_element_type(element), actual_element);
-                        debug_assert_eq!(*length, actual_length);
-                        self.copy_array(&actual_element, *length, source, destination);
-                    }
-                    (scalar, Value::Scalar(actual)) => {
-                        debug_assert_eq!(scalar_type(scalar), actual);
-                        self.store_scalar(actual, slot_offset(destination));
-                    }
-                    _ => unreachable!("semantic analysis keeps assignment types equal"),
+                self.store_value(ty, value, destination);
+                false
+            }
+
+            primer_ir::StatementKind::Assignment { target, value } => {
+                if target.projections.is_empty() {
+                    let value = self.lower_expr(value, 0);
+                    self.store_value(&target.root_ty, value, self.binding_slot(target.id));
+                    return false;
                 }
+
+                let mut address = ArrayAddress::Direct(self.binding_offset(target.id));
+                for projection in &target.projections {
+                    let primer_ir::AssignmentProjection::Index {
+                        index,
+                        element,
+                        length,
+                        ..
+                    } = projection;
+                    let Value::Scalar(Type::I64) = self.lower_expr(index, 0) else {
+                        unreachable!("array index must be i64")
+                    };
+                    let pointer_slot = self.next_aggregate_slot;
+                    self.next_aggregate_slot += 1;
+                    let (base_offset, base_is_pointer) = match address {
+                        ArrayAddress::Direct(offset) => (offset, false),
+                        ArrayAddress::Indirect(offset) => (offset, true),
+                    };
+                    let label = self.next_label();
+                    self.instructions.push(Instruction::CheckedArrayAddress {
+                        base_offset,
+                        base_is_pointer,
+                        length: *length,
+                        element_slots: type_slot_count(self.program, element),
+                        destination_offset: slot_offset(pointer_slot),
+                        label,
+                    });
+                    address = ArrayAddress::Indirect(slot_offset(pointer_slot));
+                }
+
+                let value = self.lower_expr(value, 0);
+                let ArrayAddress::Indirect(pointer_offset) = address else {
+                    unreachable!("indexed assignment produces an indirect address")
+                };
+                self.store_value_to_pointer(&target.ty, value, pointer_offset);
                 false
             }
 
@@ -813,6 +834,76 @@ impl Lowerer<'_> {
                     self.store_scalar(ty, slot_offset(destination + offset));
                 }
             }
+        }
+    }
+
+    fn store_value(&mut self, ty: &primer_ir::Type, value: Value, destination: usize) {
+        match (ty, value) {
+            (
+                primer_ir::Type::Named(type_id),
+                Value::Aggregate {
+                    type_id: actual,
+                    base_slot: source,
+                },
+            ) => {
+                debug_assert_eq!(type_id.0, actual);
+                self.copy_aggregate(type_id.0, source, destination);
+            }
+            (
+                primer_ir::Type::Array { element, length },
+                Value::Array {
+                    element: actual_element,
+                    length: actual_length,
+                    base_slot: source,
+                },
+            ) => {
+                debug_assert_eq!(array_element_type(element), actual_element);
+                debug_assert_eq!(*length, actual_length);
+                self.copy_array(&actual_element, *length, source, destination);
+            }
+            (scalar, Value::Scalar(actual)) => {
+                debug_assert_eq!(scalar_type(scalar), actual);
+                self.store_scalar(actual, slot_offset(destination));
+            }
+            _ => unreachable!("semantic analysis keeps assignment types equal"),
+        }
+    }
+
+    fn store_value_to_pointer(
+        &mut self,
+        ty: &primer_ir::Type,
+        value: Value,
+        pointer_offset: isize,
+    ) {
+        match (ty, value) {
+            (primer_ir::Type::Bool | primer_ir::Type::I64, Value::Scalar(actual)) => {
+                debug_assert!(matches!(actual, Type::Bool | Type::I64));
+                self.instructions
+                    .push(Instruction::StoreI64ToPointer(pointer_offset));
+            }
+            (primer_ir::Type::F32, Value::Scalar(Type::F32)) => self
+                .instructions
+                .push(Instruction::StoreF32ToPointer(pointer_offset)),
+            (primer_ir::Type::F64, Value::Scalar(Type::F64)) => self
+                .instructions
+                .push(Instruction::StoreF64ToPointer(pointer_offset)),
+            (
+                primer_ir::Type::Named(_),
+                Value::Aggregate {
+                    base_slot: source, ..
+                },
+            )
+            | (
+                primer_ir::Type::Array { .. },
+                Value::Array {
+                    base_slot: source, ..
+                },
+            ) => self.instructions.push(Instruction::CopyToPointer {
+                source_offset: slot_offset(source),
+                slots: type_slot_count(self.program, ty),
+                pointer_offset,
+            }),
+            _ => unreachable!("semantic analysis keeps assignment types equal"),
         }
     }
 

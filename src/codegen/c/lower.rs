@@ -1,13 +1,14 @@
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module, Parameter,
-    PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
+    ArrayProjection, AssignmentTarget, BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue,
+    Function, Module, Parameter, PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     Module {
         array_types: collect_array_types(program),
+        array_assignment_types: collect_array_assignment_types(program),
         type_definitions: lower_type_definitions(program),
         functions: program
             .function_definitions
@@ -37,6 +38,61 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .map(|function| function.id.0),
         statements: program.statements.iter().map(lower_statement).collect(),
     }
+}
+
+fn collect_array_assignment_types(program: &primer_ir::Program) -> Vec<Type> {
+    fn visit(statements: &[primer_ir::Statement], result: &mut Vec<Type>) {
+        for statement in statements {
+            match &statement.kind {
+                primer_ir::StatementKind::Assignment { target, .. } => {
+                    for projection in &target.projections {
+                        let primer_ir::AssignmentProjection::Index {
+                            element, length, ..
+                        } = projection;
+                        let ty = Type::Array {
+                            element: Box::new(element.clone().into()),
+                            length: *length,
+                        };
+                        if !result.contains(&ty) {
+                            result.push(ty);
+                        }
+                    }
+                }
+                primer_ir::StatementKind::If {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
+                    visit(then_body, result);
+                    visit(else_body, result);
+                }
+                primer_ir::StatementKind::While { body, .. } => visit(body, result),
+                primer_ir::StatementKind::For {
+                    initializer,
+                    update,
+                    body,
+                    ..
+                } => {
+                    visit(std::slice::from_ref(initializer), result);
+                    visit(std::slice::from_ref(update), result);
+                    visit(body, result);
+                }
+                primer_ir::StatementKind::Binding { .. }
+                | primer_ir::StatementKind::Print { .. }
+                | primer_ir::StatementKind::Call { .. }
+                | primer_ir::StatementKind::Return { .. }
+                | primer_ir::StatementKind::Break
+                | primer_ir::StatementKind::Continue => {}
+            }
+        }
+    }
+
+    let mut result = Vec::new();
+    for function in &program.function_definitions {
+        visit(&function.body, &mut result);
+    }
+    visit(&program.statements, &mut result);
+    result
 }
 
 fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
@@ -99,8 +155,28 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
             value: lower_expr(value),
         },
 
-        primer_ir::StatementKind::Assignment { name, value, .. } => Statement::Assignment {
-            name: name.clone(),
+        primer_ir::StatementKind::Assignment { target, value } => Statement::Assignment {
+            target: AssignmentTarget {
+                name: target.name.clone(),
+                projections: target
+                    .projections
+                    .iter()
+                    .map(|projection| {
+                        let primer_ir::AssignmentProjection::Index {
+                            index,
+                            element,
+                            length,
+                            ..
+                        } = projection;
+                        ArrayProjection {
+                            index: lower_expr(index),
+                            element: element.clone().into(),
+                            length: *length,
+                        }
+                    })
+                    .collect(),
+                ty: target.ty.clone().into(),
+            },
             value: lower_expr(value),
         },
 
@@ -303,8 +379,15 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
                 add(ty, types);
                 visit_expr(value, types);
             }
-            primer_ir::StatementKind::Assignment { value, .. }
-            | primer_ir::StatementKind::Print { value }
+            primer_ir::StatementKind::Assignment { target, value } => {
+                add(&target.root_ty, types);
+                for projection in &target.projections {
+                    let primer_ir::AssignmentProjection::Index { index, .. } = projection;
+                    visit_expr(index, types);
+                }
+                visit_expr(value, types);
+            }
+            primer_ir::StatementKind::Print { value }
             | primer_ir::StatementKind::Return { value: Some(value) } => visit_expr(value, types),
             primer_ir::StatementKind::Call { arguments, .. } => {
                 for argument in arguments {

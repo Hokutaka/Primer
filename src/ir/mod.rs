@@ -92,9 +92,7 @@ pub enum StatementKind {
         value: Expr,
     },
     Assignment {
-        id: BindingId,
-        name: String,
-        ty: Type,
+        target: AssignmentTarget,
         value: Expr,
     },
     Print {
@@ -125,6 +123,25 @@ pub enum StatementKind {
     },
     Break,
     Continue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignmentTarget {
+    pub id: BindingId,
+    pub name: String,
+    pub root_ty: Type,
+    pub projections: Vec<AssignmentProjection>,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssignmentProjection {
+    Index {
+        index: Expr,
+        element: Type,
+        length: usize,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

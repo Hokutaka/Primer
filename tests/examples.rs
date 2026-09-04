@@ -174,6 +174,13 @@ fn fixed_arrays_example_runs() {
 }
 
 #[test]
+fn bubble_sort_example_runs() {
+    let output = run_vm(include_str!("../examples/bubble_sort.prim")).unwrap();
+
+    assert_eq!(output, "1\n2\n3\n4\n5\n8\n");
+}
+
+#[test]
 fn product_arrays_example_runs() {
     let output = run_vm(include_str!("../examples/product_arrays.prim")).unwrap();
 

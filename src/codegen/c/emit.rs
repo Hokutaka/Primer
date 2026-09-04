@@ -132,15 +132,55 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
             output.push_str(";\n");
         }
 
-        Statement::Assignment { name, value } => {
-            output.push_str(&prefix);
-            output.push_str("primer_");
-            output.push_str(name);
-            output.push_str(" = ");
-
-            emit_expr(value, module, output);
-
-            output.push_str(";\n");
+        Statement::Assignment { target, value } => {
+            if target.projections.is_empty() {
+                output.push_str(&prefix);
+                output.push_str("primer_");
+                output.push_str(&target.name);
+                output.push_str(" = ");
+                emit_expr(value, module, output);
+                output.push_str(";\n");
+            } else {
+                output.push_str(&prefix);
+                output.push_str("{\n");
+                for (index, projection) in target.projections.iter().enumerate() {
+                    output.push_str(&prefix);
+                    output.push_str("    ");
+                    output.push_str(&c_type(&projection.element, module));
+                    output.push_str(" *primer_assignment_target_");
+                    output.push_str(&index.to_string());
+                    output.push_str(" = ");
+                    output.push_str(&array_at_name(
+                        &projection.element,
+                        projection.length,
+                        module,
+                    ));
+                    output.push('(');
+                    if index == 0 {
+                        output.push_str("&primer_");
+                        output.push_str(&target.name);
+                    } else {
+                        output.push_str("primer_assignment_target_");
+                        output.push_str(&(index - 1).to_string());
+                    }
+                    output.push_str(", ");
+                    emit_expr(&projection.index, module, output);
+                    output.push(')');
+                    output.push_str(";\n");
+                }
+                output.push_str(&prefix);
+                output.push_str("    ");
+                output.push_str(&c_type(&target.ty, module));
+                output.push_str(" primer_assignment_value = ");
+                emit_expr(value, module, output);
+                output.push_str(";\n");
+                output.push_str(&prefix);
+                output.push_str("    *primer_assignment_target_");
+                output.push_str(&(target.projections.len() - 1).to_string());
+                output.push_str(" = primer_assignment_value;\n");
+                output.push_str(&prefix);
+                output.push_str("}\n");
+            }
         }
 
         Statement::Print { format, value } => {
@@ -254,9 +294,10 @@ fn emit_for_clause(statement: &Statement, module: &Module, output: &mut String) 
             output.push_str(" = ");
             emit_expr(value, module, output);
         }
-        Statement::Assignment { name, value } => {
+        Statement::Assignment { target, value } => {
+            debug_assert!(target.projections.is_empty());
             output.push_str("primer_");
-            output.push_str(name);
+            output.push_str(&target.name);
             output.push_str(" = ");
             emit_expr(value, module, output);
         }
@@ -558,6 +599,22 @@ fn emit_array_support(ty: &Type, module: &Module, output: &mut String) {
     output.push_str("        fputs(\"primer: array index out of bounds\\n\", stderr);\n");
     output.push_str("        abort();\n    }\n");
     output.push_str("    return value.items[index];\n}\n\n");
+
+    if module.array_assignment_types.contains(ty) {
+        output.push_str("static ");
+        output.push_str(&c_type(element, module));
+        output.push_str(" *");
+        output.push_str(&array_at_name(element, *length, module));
+        output.push('(');
+        output.push_str(&name);
+        output.push_str(" *value, int64_t index) {\n");
+        output.push_str("    if (index < 0 || index >= ");
+        output.push_str(&length.to_string());
+        output.push_str(") {\n");
+        output.push_str("        fputs(\"primer: array index out of bounds\\n\", stderr);\n");
+        output.push_str("        abort();\n    }\n");
+        output.push_str("    return &value->items[index];\n}\n\n");
+    }
 }
 
 fn array_type_name(element: &Type, length: usize, module: &Module) -> String {
@@ -571,6 +628,14 @@ fn array_type_name(element: &Type, length: usize, module: &Module) -> String {
 fn array_get_name(element: &Type, length: usize, module: &Module) -> String {
     format!(
         "primer_array_get_{}_{}",
+        array_element_name(element, module),
+        length
+    )
+}
+
+fn array_at_name(element: &Type, length: usize, module: &Module) -> String {
+    format!(
+        "primer_array_at_{}_{}",
         array_element_name(element, module),
         length
     )

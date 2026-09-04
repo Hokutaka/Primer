@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use super::{
-    BinaryOp, Expr, ExprKind, FieldValueOrigin, Program, ReturnType, Statement, StatementKind,
-    Type, UnaryOp,
+    AssignmentProjection, BinaryOp, Expr, ExprKind, FieldValueOrigin, Program, ReturnType,
+    Statement, StatementKind, Type, UnaryOp,
 };
 
 pub fn emit(program: &Program) -> String {
@@ -97,19 +97,25 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
-        StatementKind::Assignment {
-            id,
-            name,
-            ty,
-            value,
-        } => {
+        StatementKind::Assignment { target, value } => {
             write!(
                 output,
-                "{prefix}set %{name}@{}:{} = ",
-                id.0,
-                type_name(ty, program)
+                "{prefix}set %{}@{}:{}",
+                target.name,
+                target.id.0,
+                type_name(&target.root_ty, program)
             )
             .unwrap();
+            for projection in &target.projections {
+                let AssignmentProjection::Index { index, .. } = projection;
+                output.push('[');
+                emit_expr(index, program, output);
+                output.push(']');
+            }
+            if !target.projections.is_empty() {
+                write!(output, ":{}", type_name(&target.ty, program)).unwrap();
+            }
+            output.push_str(" = ");
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }

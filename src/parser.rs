@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, FunctionDefinition, Item, Parameter,
-    Program, ReturnTypeRef, Stmt, StmtKind, Type, TypeDefinition, TypeRef, TypeRefKind, TypeSpec,
-    UnaryOp,
+    AssignmentProjection, AssignmentTarget, BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue,
+    FunctionDefinition, Item, Parameter, Program, ReturnTypeRef, Stmt, StmtKind, Type,
+    TypeDefinition, TypeRef, TypeRefKind, TypeSpec, UnaryOp,
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
@@ -170,14 +170,10 @@ impl Parser {
             TokenKind::Mut => self.parse_binding(),
             TokenKind::Identifier(_) => match &self.peek_next().kind {
                 TokenKind::Colon => self.parse_binding(),
-                TokenKind::Equal => self.parse_assignment(),
+                TokenKind::Equal | TokenKind::LeftBracket => self.parse_assignment(),
                 TokenKind::LeftParen => self.parse_call_statement(),
                 TokenKind::Dot => Err(Diagnostic::new(
                     "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding",
-                    self.peek_next().span,
-                )),
-                TokenKind::LeftBracket => Err(Diagnostic::new(
-                    "array elements cannot be assigned directly; construct a new array and reassign the whole mutable binding",
                     self.peek_next().span,
                 )),
                 other => Err(Diagnostic::new(
@@ -254,14 +250,38 @@ impl Parser {
             }
         };
 
+        let mut projections = Vec::new();
+        let mut target_end = name_span.end();
+        while matches!(&self.peek().kind, TokenKind::LeftBracket) {
+            let projection_start = self.advance().span.start();
+            let index = self.parse_expression()?;
+            let end = self.expect_simple(TokenKind::RightBracket)?.end();
+            projections.push(AssignmentProjection::Index {
+                index,
+                span: Span::new(projection_start, end),
+            });
+            target_end = end;
+        }
+
+        if matches!(&self.peek().kind, TokenKind::Dot) {
+            return Err(Diagnostic::new(
+                "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding",
+                self.peek().span,
+            ));
+        }
+
         self.expect_simple(TokenKind::Equal)?;
         let value = self.parse_expression()?;
         let end = value.span.end();
 
         Ok(Stmt {
             kind: StmtKind::Assignment {
-                name,
-                name_span,
+                target: AssignmentTarget {
+                    name,
+                    name_span,
+                    projections,
+                    span: Span::new(start, target_end),
+                },
                 value,
             },
             span: Span::new(start, end),
@@ -1102,19 +1122,28 @@ mod tests {
     fn parses_assignment() {
         let program = parse(lex("x = x + 1;").unwrap()).unwrap();
 
-        let StmtKind::Assignment {
-            name,
-            name_span,
-            value,
-        } = &program.statement(0).kind
-        else {
+        let StmtKind::Assignment { target, value } = &program.statement(0).kind else {
             panic!("expected assignment");
         };
 
-        assert_eq!(name, "x");
-        assert_eq!(*name_span, Span::new(0, 1));
+        assert_eq!(target.name, "x");
+        assert_eq!(target.name_span, Span::new(0, 1));
+        assert!(target.projections.is_empty());
         assert_eq!(value.span, Span::new(4, 9));
         assert_eq!(program.statement(0).span, Span::new(0, 10));
+    }
+
+    #[test]
+    fn parses_nested_array_element_assignment() {
+        let program = parse(lex("matrix[row][column] = 42;").unwrap()).unwrap();
+        let StmtKind::Assignment { target, value } = &program.statement(0).kind else {
+            panic!("expected assignment");
+        };
+
+        assert_eq!(target.name, "matrix");
+        assert_eq!(target.projections.len(), 2);
+        assert_eq!(target.span, Span::new(0, 19));
+        assert_eq!(value.span, Span::new(22, 24));
     }
 
     #[test]

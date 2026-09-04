@@ -43,8 +43,8 @@ if_statement := "if" expression block ("else" block)?
 while_statement := "while" expression block
 
 for_statement :=
-    "for" "(" (binding_clause | assignment_clause) ";"
-    expression ";" assignment_clause ")" block
+    "for" "(" (binding_clause | binding_assignment_clause) ";"
+    expression ";" binding_assignment_clause ")" block
 
 block       := "{" statement* "}"
 
@@ -52,9 +52,11 @@ binding     := "mut"? IDENT ":" type_spec "=" expression ";"
 
 binding_clause := "mut"? IDENT ":" type_spec "=" expression
 
-assignment  := assignment_clause ";"
+assignment  := assignment_target "=" expression ";"
 
-assignment_clause := IDENT "=" expression
+assignment_target := IDENT ("[" expression "]")*
+
+binding_assignment_clause := IDENT "=" expression
 
 type_spec   := "i64"
              | "f32"
@@ -208,7 +210,11 @@ matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
 print(matrix[1][2]); // 6
 ```
 
-Fixed arrays may be used as function parameters and results. They remain values and are copied across the function boundary. Direct element assignment such as `values[0] = 1;` is not yet supported.
+Fixed arrays may be used as function parameters and results. They remain values and are copied across the function boundary.
+
+An element of a `mut` array can be updated with `values[index] = value;`. Nested arrays support forms such as `matrix[row][column] = value;`. Indices are evaluated from left to right and each is bounds-checked immediately. The right-hand side is evaluated only after every check succeeds, followed by one write. If a check fails, the right-hand side is not evaluated and the array is unchanged.
+
+Updating one copy of an array does not change another copy. The assigned value must have the declared element type. Updating through an immutable binding is an error, just like reassigning the complete array.
 
 See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
 
@@ -254,7 +260,7 @@ count = count + 2;
 print(count);
 ```
 
-`mut` is not a type. It specifies that the name `count` may be reassigned. Reassignment does not contain `: type_spec`; this distinction separates a new declaration from assignment to an existing binding.
+`mut` is not a type. It specifies that the name `count` may be reassigned. For arrays, it also permits element updates through that binding. Reassignment does not contain `: type_spec`; this distinction separates a new declaration from assignment to an existing binding.
 
 Reassigning a binding without `mut` is a type-checking error:
 

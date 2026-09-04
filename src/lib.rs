@@ -134,10 +134,14 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RunError, compile_to_bytecode_text, compile_to_c, compile_to_ir_text, compile_to_llvm,
-        compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, run_vm,
+        RunError, compile_to_bytecode, compile_to_bytecode_text, compile_to_c, compile_to_ir_text,
+        compile_to_llvm, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, run_vm,
     };
-    use crate::{bytecode::InstructionOrigin, source::Span, vm::VmErrorKind};
+    use crate::{
+        bytecode::{InstructionKind, InstructionOrigin},
+        source::Span,
+        vm::VmErrorKind,
+    };
 
     #[test]
     fn emits_primer_ir_with_resolved_types() {
@@ -269,6 +273,86 @@ mod tests {
         let asm = compile_to_x86_64_win_asm(source).unwrap();
         assert!(asm.contains("array_oob"));
         assert!(asm.contains("ud2"));
+    }
+
+    #[test]
+    fn fixed_array_elements_can_be_updated_without_changing_copies() {
+        let source = "
+            type Point { x: i64, y: i64, }
+            mut matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+            original: [[i64; 2]; 2] = matrix;
+            matrix[0][1] = 20;
+            matrix[1] = [30, 40];
+            mut points: [Point; 2] = [
+                Point { x: 1, y: 2, },
+                Point { x: 3, y: 4, },
+            ];
+            points[0] = Point { x: 10, y: 20, };
+            print(original[0][1]);
+            print(matrix[0][1]);
+            print(matrix[1][0]);
+            print(points[0].y);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "2\n20\n30\n20\n");
+        let ir = compile_to_ir_text(source).unwrap();
+        assert!(ir.contains("set %matrix@0:[[i64; 2]; 2]["));
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn array_assignment_checks_indices_before_evaluating_its_value() {
+        let source = "
+            fn row() -> i64 { print(1); return 0; }
+            fn column() -> i64 { print(2); return 1; }
+            fn replacement() -> i64 { print(3); return 9; }
+            mut matrix: [[i64; 2]; 2] = [[0, 0], [0, 0]];
+            matrix[row()][column()] = replacement();
+            print(matrix[0][1]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "1\n2\n3\n9\n");
+
+        let bytecode = compile_to_bytecode(source).unwrap();
+        let observable_order: Vec<String> = bytecode
+            .instructions
+            .iter()
+            .filter_map(|instruction| match &instruction.kind {
+                InstructionKind::Call { function_id, .. } => Some(format!("call {function_id}")),
+                InstructionKind::ArrayCheck { path, .. } => Some(format!("check {}", path.len())),
+                InstructionKind::ArrayAssign { .. } => Some("assign".into()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            observable_order,
+            ["call 0", "check 1", "call 1", "check 2", "call 2", "assign"]
+        );
+    }
+
+    #[test]
+    fn array_assignment_out_of_bounds_points_to_the_failing_projection() {
+        let source = "mut values: [i64; 2] = [1, 2]; values[2] = 3;";
+        let RunError::Execution(error) = run_vm(source).unwrap_err() else {
+            panic!("expected a VM execution error");
+        };
+
+        assert_eq!(
+            error.vm_error().kind(),
+            VmErrorKind::ArrayIndexOutOfBounds {
+                index: 2,
+                length: 2,
+            }
+        );
+        let start = source.rfind("[2]").unwrap();
+        assert_eq!(
+            error.origin(),
+            Some(InstructionOrigin::Source(Span::new(start, start + 3)))
+        );
     }
 
     #[test]

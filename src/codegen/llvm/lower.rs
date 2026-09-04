@@ -157,14 +157,70 @@ impl Lowerer {
                 false
             }
 
-            primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
-                let slot = self.slot(*id);
-                let ty = ty.clone().into();
-                let value = self.lower_expr(value);
+            primer_ir::StatementKind::Assignment { target, value } => {
+                let slot = self.slot(target.id);
+                let root_ty: Type = target.root_ty.clone().into();
+                if target.projections.is_empty() {
+                    let value = self.lower_expr(value);
+                    self.instructions.push(Instruction::Store {
+                        ty: root_ty,
+                        value: value.operand,
+                        slot,
+                    });
+                    return false;
+                }
 
+                let root = self.next_temp();
+                self.instructions.push(Instruction::Load {
+                    dest: root,
+                    ty: root_ty.clone(),
+                    slot,
+                });
+                let mut current = Value {
+                    ty: root_ty.clone(),
+                    operand: Operand::Temp(root),
+                };
+                let mut parents = Vec::with_capacity(target.projections.len());
+                for projection in &target.projections {
+                    let primer_ir::AssignmentProjection::Index {
+                        index,
+                        element,
+                        length,
+                        ..
+                    } = projection;
+                    let index = self.lower_expr(index);
+                    let element: Type = element.clone().into();
+                    let dest = self.next_temp();
+                    self.instructions.push(Instruction::ArrayGet {
+                        dest,
+                        element: element.clone(),
+                        length: *length,
+                        array: current.operand,
+                        index: index.operand,
+                    });
+                    parents.push((current.operand, index.operand, element.clone(), *length));
+                    current = Value {
+                        ty: element,
+                        operand: Operand::Temp(dest),
+                    };
+                }
+
+                let mut updated = self.lower_expr(value).operand;
+                for (array, index, element, length) in parents.into_iter().rev() {
+                    let dest = self.next_temp();
+                    self.instructions.push(Instruction::ArraySet {
+                        dest,
+                        element: element.clone(),
+                        length,
+                        array,
+                        index,
+                        value: updated,
+                    });
+                    updated = Operand::Temp(dest);
+                }
                 self.instructions.push(Instruction::Store {
-                    ty,
-                    value: value.operand,
+                    ty: root_ty,
+                    value: updated,
                     slot,
                 });
                 false

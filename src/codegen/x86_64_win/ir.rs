@@ -92,6 +92,22 @@ pub enum Instruction {
         destination_offset: isize,
         label: usize,
     },
+    CheckedArrayAddress {
+        base_offset: isize,
+        base_is_pointer: bool,
+        length: usize,
+        element_slots: usize,
+        destination_offset: isize,
+        label: usize,
+    },
+    StoreI64ToPointer(isize),
+    StoreF32ToPointer(isize),
+    StoreF64ToPointer(isize),
+    CopyToPointer {
+        source_offset: isize,
+        slots: usize,
+        pointer_offset: isize,
+    },
 
     StoreParameter {
         index: usize,

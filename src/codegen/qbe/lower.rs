@@ -199,57 +199,31 @@ impl Lowerer<'_> {
 
     fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
-            primer_ir::StatementKind::Binding { id, ty, value, .. }
-            | primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
+            primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 let value = self.lower_expr(value);
                 let destination = Operand::Slot(self.slot(*id));
-                match (ty, value) {
-                    (
-                        primer_ir::Type::Named(type_id),
-                        Value::Aggregate {
-                            type_id: actual,
-                            address,
-                        },
-                    ) => {
-                        debug_assert_eq!(type_id.0, actual);
-                        self.instructions.push(Instruction::Blit {
-                            source: address,
-                            destination,
-                            size: type_size(self.program, ty),
-                        });
-                    }
-                    (
-                        primer_ir::Type::Array { element, length },
-                        Value::Array {
-                            element: actual_element,
-                            length: actual_length,
-                            address,
-                        },
-                    ) => {
-                        debug_assert_eq!(array_element_type(element), actual_element);
-                        debug_assert_eq!(*length, actual_length);
-                        self.instructions.push(Instruction::Blit {
-                            source: address,
-                            destination,
-                            size: type_size(self.program, ty),
-                        });
-                    }
-                    (
-                        scalar,
-                        Value::Scalar {
-                            ty: actual,
-                            operand,
-                        },
-                    ) => {
-                        debug_assert_eq!(scalar_type(scalar), actual);
-                        self.instructions.push(Instruction::Store {
-                            address: destination,
-                            ty: actual,
-                            value: operand,
-                        });
-                    }
-                    _ => unreachable!("semantic analysis keeps assignment types equal"),
+                self.store_value(ty, value, destination);
+                false
+            }
+
+            primer_ir::StatementKind::Assignment { target, value } => {
+                let mut destination = Operand::Slot(self.slot(target.id));
+                for projection in &target.projections {
+                    let primer_ir::AssignmentProjection::Index {
+                        index,
+                        element,
+                        length,
+                        ..
+                    } = projection;
+                    destination = self.lower_checked_array_address(
+                        destination,
+                        &array_element_type(element),
+                        *length,
+                        index,
+                    );
                 }
+                let value = self.lower_expr(value);
+                self.store_value(&target.ty, value, destination);
                 false
             }
 
@@ -694,73 +668,13 @@ impl Lowerer<'_> {
                 else {
                     unreachable!("indexed expression must have an array base")
                 };
-                let (index_ty, index) = self.lower_scalar_expr(index);
-                debug_assert_eq!(index_ty, Type::I64);
-
-                let non_negative = self.next_label();
-                let in_bounds = self.next_label();
-                let out_of_bounds = self.next_label();
-                let is_negative = self.next_temp();
-                self.instructions.push(Instruction::Compare {
-                    dest: is_negative,
-                    op: CompareOp::Less,
-                    operand_ty: Type::I64,
-                    left: index.clone(),
-                    right: Operand::Integer(0),
-                });
-                self.instructions.push(Instruction::Branch {
-                    condition: Operand::Temp(is_negative),
-                    then_label: out_of_bounds,
-                    else_label: non_negative,
-                });
-                self.instructions.push(Instruction::Label {
-                    id: non_negative,
-                    name: "array_index_non_negative",
-                });
-                let is_too_large = self.next_temp();
-                self.instructions.push(Instruction::Compare {
-                    dest: is_too_large,
-                    op: CompareOp::GreaterEqual,
-                    operand_ty: Type::I64,
-                    left: index.clone(),
-                    right: Operand::Integer(length as i64),
-                });
-                self.instructions.push(Instruction::Branch {
-                    condition: Operand::Temp(is_too_large),
-                    then_label: out_of_bounds,
-                    else_label: in_bounds,
-                });
-                self.instructions.push(Instruction::Label {
-                    id: out_of_bounds,
-                    name: "array_index_out_of_bounds",
-                });
-                self.instructions.push(Instruction::Abort);
-                self.instructions.push(Instruction::Label {
-                    id: in_bounds,
-                    name: "array_index_in_bounds",
-                });
-                let scaled = self.next_temp();
-                self.instructions.push(Instruction::Binary {
-                    dest: scaled,
-                    op: BinaryOp::Multiply,
-                    ty: Type::I64,
-                    left: index,
-                    right: Operand::Integer(array_element_size(self.program, &element) as i64),
-                });
-                let address = self.next_temp();
-                self.instructions.push(Instruction::Binary {
-                    dest: address,
-                    op: BinaryOp::Add,
-                    ty: Type::I64,
-                    left: base,
-                    right: Operand::Temp(scaled),
-                });
+                let address = self.lower_checked_array_address(base, &element, length, index);
                 match element {
                     ArrayElement::Scalar(ty) => {
                         let dest = self.next_temp();
                         self.instructions.push(Instruction::Load {
                             dest,
-                            address: Operand::Temp(address),
+                            address: address.clone(),
                             ty,
                         });
                         Value::Scalar {
@@ -770,12 +684,12 @@ impl Lowerer<'_> {
                     }
                     ArrayElement::Named(type_id) => Value::Aggregate {
                         type_id,
-                        address: Operand::Temp(address),
+                        address: address.clone(),
                     },
                     ArrayElement::Array { element, length } => Value::Array {
                         element: *element,
                         length,
-                        address: Operand::Temp(address),
+                        address,
                     },
                 }
             }
@@ -787,6 +701,126 @@ impl Lowerer<'_> {
                 .lower_call(function_id.0, arguments, Some(&expr.ty))
                 .expect("call expressions produce a value"),
         }
+    }
+
+    fn store_value(&mut self, ty: &primer_ir::Type, value: Value, destination: Operand) {
+        match (ty, value) {
+            (
+                primer_ir::Type::Named(type_id),
+                Value::Aggregate {
+                    type_id: actual,
+                    address,
+                },
+            ) => {
+                debug_assert_eq!(type_id.0, actual);
+                self.instructions.push(Instruction::Blit {
+                    source: address,
+                    destination,
+                    size: type_size(self.program, ty),
+                });
+            }
+            (
+                primer_ir::Type::Array { element, length },
+                Value::Array {
+                    element: actual_element,
+                    length: actual_length,
+                    address,
+                },
+            ) => {
+                debug_assert_eq!(array_element_type(element), actual_element);
+                debug_assert_eq!(*length, actual_length);
+                self.instructions.push(Instruction::Blit {
+                    source: address,
+                    destination,
+                    size: type_size(self.program, ty),
+                });
+            }
+            (
+                scalar,
+                Value::Scalar {
+                    ty: actual,
+                    operand,
+                },
+            ) => {
+                debug_assert_eq!(scalar_type(scalar), actual);
+                self.instructions.push(Instruction::Store {
+                    address: destination,
+                    ty: actual,
+                    value: operand,
+                });
+            }
+            _ => unreachable!("semantic analysis keeps assignment types equal"),
+        }
+    }
+
+    fn lower_checked_array_address(
+        &mut self,
+        base: Operand,
+        element: &ArrayElement,
+        length: usize,
+        index: &primer_ir::Expr,
+    ) -> Operand {
+        let (index_ty, index) = self.lower_scalar_expr(index);
+        debug_assert_eq!(index_ty, Type::I64);
+        let non_negative = self.next_label();
+        let in_bounds = self.next_label();
+        let out_of_bounds = self.next_label();
+        let is_negative = self.next_temp();
+        self.instructions.push(Instruction::Compare {
+            dest: is_negative,
+            op: CompareOp::Less,
+            operand_ty: Type::I64,
+            left: index.clone(),
+            right: Operand::Integer(0),
+        });
+        self.instructions.push(Instruction::Branch {
+            condition: Operand::Temp(is_negative),
+            then_label: out_of_bounds,
+            else_label: non_negative,
+        });
+        self.instructions.push(Instruction::Label {
+            id: non_negative,
+            name: "array_index_non_negative",
+        });
+        let is_too_large = self.next_temp();
+        self.instructions.push(Instruction::Compare {
+            dest: is_too_large,
+            op: CompareOp::GreaterEqual,
+            operand_ty: Type::I64,
+            left: index.clone(),
+            right: Operand::Integer(length as i64),
+        });
+        self.instructions.push(Instruction::Branch {
+            condition: Operand::Temp(is_too_large),
+            then_label: out_of_bounds,
+            else_label: in_bounds,
+        });
+        self.instructions.push(Instruction::Label {
+            id: out_of_bounds,
+            name: "array_index_out_of_bounds",
+        });
+        self.instructions.push(Instruction::Abort);
+        self.instructions.push(Instruction::Label {
+            id: in_bounds,
+            name: "array_index_in_bounds",
+        });
+        let scaled = self.next_temp();
+        self.instructions.push(Instruction::Binary {
+            dest: scaled,
+            op: BinaryOp::Multiply,
+            ty: Type::I64,
+            left: index,
+            right: Operand::Integer(array_element_size(self.program, element) as i64),
+        });
+        let address = self.next_temp();
+        self.instructions.push(Instruction::Binary {
+            dest: address,
+            op: BinaryOp::Add,
+            ty: Type::I64,
+            left: base,
+            right: Operand::Temp(scaled),
+        });
+        Operand::Temp(address)
     }
 
     fn lower_call(

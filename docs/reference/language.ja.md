@@ -43,8 +43,8 @@ if_statement := "if" expression block ("else" block)?
 while_statement := "while" expression block
 
 for_statement :=
-    "for" "(" (binding_clause | assignment_clause) ";"
-    expression ";" assignment_clause ")" block
+    "for" "(" (binding_clause | binding_assignment_clause) ";"
+    expression ";" binding_assignment_clause ")" block
 
 block       := "{" statement* "}"
 
@@ -52,9 +52,11 @@ binding     := "mut"? IDENT ":" type_spec "=" expression ";"
 
 binding_clause := "mut"? IDENT ":" type_spec "=" expression
 
-assignment  := assignment_clause ";"
+assignment  := assignment_target "=" expression ";"
 
-assignment_clause := IDENT "=" expression
+assignment_target := IDENT ("[" expression "]")*
+
+binding_assignment_clause := IDENT "=" expression
 
 type_spec   := "i64"
              | "f32"
@@ -208,7 +210,11 @@ matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
 print(matrix[1][2]); // 6
 ```
 
-固定長配列は関数のparameterと戻り値にも使えます。関数をまたぐときも配列は値としてコピーされます。`values[0] = 1;`のように要素へ直接代入することは未対応です。
+固定長配列は関数のparameterと戻り値にも使えます。関数をまたぐときも配列は値としてコピーされます。
+
+`mut`な配列では、`values[index] = value;`で一つの要素を更新できます。入れ子の配列も`matrix[row][column] = value;`のように更新できます。すべての添字は左から順に評価して、その都度境界を検査します。すべての検査に成功した後で右辺を評価し、最後に一度だけ書き込みます。途中で検査に失敗した場合、右辺は評価せず、配列も変更しません。
+
+配列をコピーした場合、片方の要素を更新してももう片方は変わりません。要素の型は配列定義と同じでなければなりません。不変な束縛を通した更新は、配列全体への再代入と同様にエラーです。
 
 詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
 
@@ -254,7 +260,7 @@ count = count + 2;
 print(count);
 ```
 
-`mut`は型ではなく、名前`count`へ再代入できることを指定します。再代入では`: type_spec`を書きません。この違いにより、新しい宣言と既存の束縛への代入を区別します。
+`mut`は型ではなく、名前`count`へ再代入できることを指定します。配列の場合は、その束縛を通した要素更新も許可します。再代入では`: type_spec`を書きません。この違いにより、新しい宣言と既存の束縛への代入を区別します。
 
 `mut`のない束縛へ再代入すると型検査エラーになります。
 

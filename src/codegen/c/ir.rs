@@ -11,6 +11,7 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     pub array_types: Vec<Type>,
+    pub array_assignment_types: Vec<Type>,
     pub type_definitions: Vec<TypeDefinition>,
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
@@ -53,7 +54,7 @@ pub enum Statement {
         value: Expr,
     },
     Assignment {
-        name: String,
+        target: AssignmentTarget,
         value: Expr,
     },
     Print {
@@ -83,6 +84,20 @@ pub enum Statement {
     },
     Break,
     Continue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignmentTarget {
+    pub name: String,
+    pub projections: Vec<ArrayProjection>,
+    pub ty: Type,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArrayProjection {
+    pub index: Expr,
+    pub element: Type,
+    pub length: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{self, BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind, TypeSpec},
+    ast::{
+        self, AssignmentProjection, BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind,
+        TypeSpec,
+    },
     diagnostic::Diagnostic,
     source::Span,
 };
@@ -362,9 +365,15 @@ fn collect_function_calls(
     for statement in statements {
         match &statement.kind {
             StmtKind::Binding { value, .. }
-            | StmtKind::Assignment { value, .. }
             | StmtKind::Print { value }
             | StmtKind::Call { value } => collect_calls_in_expr(value, model, calls),
+            StmtKind::Assignment { target, value } => {
+                for projection in &target.projections {
+                    let AssignmentProjection::Index { index, .. } = projection;
+                    collect_calls_in_expr(index, model, calls);
+                }
+                collect_calls_in_expr(value, model, calls);
+            }
             StmtKind::Return { value } => {
                 if let Some(value) = value {
                     collect_calls_in_expr(value, model, calls);
@@ -709,30 +718,57 @@ fn check_statements(
                 );
             }
 
-            StmtKind::Assignment {
-                name,
-                name_span,
-                value,
-            } => {
-                let binding = bindings.get(name).cloned().ok_or_else(|| {
-                    Diagnostic::new(format!("unknown binding `{name}`"), *name_span)
+            StmtKind::Assignment { target, value } => {
+                let binding = bindings.get(&target.name).cloned().ok_or_else(|| {
+                    Diagnostic::new(
+                        format!("unknown binding `{}`", target.name),
+                        target.name_span,
+                    )
                 })?;
 
                 if !binding.mutable {
                     return Err(Diagnostic::new(
-                        format!("cannot assign to immutable binding `{name}`"),
-                        *name_span,
+                        format!("cannot assign to immutable binding `{}`", target.name),
+                        target.name_span,
                     ));
                 }
 
-                let actual =
-                    model.type_of_expr_expected(value, &bindings, Some(binding.ty.clone()))?;
+                let mut target_ty = binding.ty;
+                for projection in &target.projections {
+                    let AssignmentProjection::Index { index, span } = projection;
+                    let Type::Array { element, .. } = target_ty else {
+                        return Err(Diagnostic::new(
+                            format!(
+                                "cannot index assignment target of type {}",
+                                model.type_name(target_ty)
+                            ),
+                            *span,
+                        ));
+                    };
 
-                if actual != binding.ty {
+                    let index_ty =
+                        model.type_of_expr_expected(index, &bindings, Some(Type::I64))?;
+                    if index_ty != Type::I64 {
+                        return Err(Diagnostic::new(
+                            format!(
+                                "array index must be i64, found {}",
+                                model.type_name(index_ty)
+                            ),
+                            index.span,
+                        ));
+                    }
+                    target_ty = *element;
+                }
+
+                let actual =
+                    model.type_of_expr_expected(value, &bindings, Some(target_ty.clone()))?;
+
+                if actual != target_ty {
                     return Err(Diagnostic::new(
                         format!(
-                            "type mismatch for assignment to `{name}`: expected {}, found {}",
-                            model.type_name(binding.ty),
+                            "type mismatch for assignment to `{}`: expected {}, found {}",
+                            target.name,
+                            model.type_name(target_ty),
                             model.type_name(actual),
                         ),
                         value.span,
@@ -1445,6 +1481,62 @@ mod tests {
             Some(Type::I64)
         );
         assert_eq!(bindings.get("x").map(|binding| binding.mutable), Some(true));
+    }
+
+    #[test]
+    fn accepts_assignment_to_nested_array_element() {
+        let program =
+            parse(lex("mut matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]]; matrix[1][0] = 9;").unwrap())
+                .unwrap();
+
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn rejects_array_element_assignment_through_immutable_binding() {
+        let program = parse(lex("values: [i64; 2] = [1, 2]; values[0] = 3;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "cannot assign to immutable binding `values`"
+        );
+    }
+
+    #[test]
+    fn rejects_indexing_non_array_assignment_target() {
+        let program = parse(lex("mut value: i64 = 1; value[0] = 2;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "cannot index assignment target of type i64"
+        );
+    }
+
+    #[test]
+    fn rejects_array_assignment_index_with_non_integer_type() {
+        let program =
+            parse(lex("mut values: [i64; 2] = [1, 2]; values[true] = 3;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(error.message(), "array index must be i64, found bool");
+    }
+
+    #[test]
+    fn rejects_array_element_assignment_with_different_type() {
+        let program =
+            parse(lex("mut values: [i64; 2] = [1, 2]; values[0] = 0.5;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "type mismatch for assignment to `values`: expected i64, found f64"
+        );
     }
 
     #[test]
