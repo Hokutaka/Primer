@@ -168,10 +168,30 @@ pub struct Expr {
     pub span: Span,
 }
 
+/// 型が決まる前の10進整数リテラルを保持します。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IntegerLiteral {
+    digits: String,
+}
+
+impl IntegerLiteral {
+    /// 符号を含まない10進数字から整数リテラルを作ります。
+    pub fn decimal(digits: impl Into<String>) -> Self {
+        Self {
+            digits: digits.into(),
+        }
+    }
+
+    /// 符号や型接尾辞を含まない10進数字を返します。
+    pub fn digits(&self) -> &str {
+        &self.digits
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
     Boolean(bool),
-    Integer(i64),
+    Integer(IntegerLiteral),
     Float {
         text: String,
         explicit_type: Option<Type>,

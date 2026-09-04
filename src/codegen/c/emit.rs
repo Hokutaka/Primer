@@ -379,7 +379,11 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
         }
 
         ExprKind::Integer(value) => {
-            output.push_str(&value.to_string());
+            if *value == i64::MIN {
+                output.push_str("INT64_MIN");
+            } else {
+                output.push_str(&value.to_string());
+            }
         }
 
         ExprKind::Float { text, suffix_f32 } => {

@@ -19,7 +19,7 @@ pub enum TokenKind {
 
     Identifier(String),
 
-    Integer(i64),
+    Integer(String),
     Float(String),
 
     Equal,
@@ -273,10 +273,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                 if is_float {
                     TokenKind::Float(text.to_owned())
                 } else {
-                    let value = text.parse::<i64>().map_err(|_| {
-                        Diagnostic::new("integer literal out of range", Span::new(start, i))
-                    })?;
-                    TokenKind::Integer(value)
+                    TokenKind::Integer(text.to_owned())
                 }
             }
 
@@ -345,9 +342,9 @@ mod tests {
         assert_eq!(tokens[1].kind, TokenKind::Colon);
         assert_eq!(tokens[2].kind, TokenKind::Identifier("i64".into()));
         assert_eq!(tokens[3].kind, TokenKind::Equal);
-        assert_eq!(tokens[4].kind, TokenKind::Integer(1));
+        assert_eq!(tokens[4].kind, TokenKind::Integer("1".into()));
         assert_eq!(tokens[5].kind, TokenKind::Plus);
-        assert_eq!(tokens[6].kind, TokenKind::Integer(2));
+        assert_eq!(tokens[6].kind, TokenKind::Integer("2".into()));
         assert_eq!(tokens[8].kind, TokenKind::Print);
     }
 
@@ -520,6 +517,16 @@ mod tests {
             tokens
                 .iter()
                 .any(|token| token.kind == TokenKind::Float("2f64".into()))
+        );
+    }
+
+    #[test]
+    fn keeps_integer_digits_beyond_i64() {
+        let tokens = lex("18446744073709551615").unwrap();
+
+        assert_eq!(
+            tokens[0].kind,
+            TokenKind::Integer("18446744073709551615".into())
         );
     }
 

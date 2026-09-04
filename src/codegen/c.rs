@@ -106,6 +106,15 @@ mod tests {
     }
 
     #[test]
+    fn emits_i64_minimum_without_an_out_of_range_c_literal() {
+        let program = compile_to_ir("x: i64 = -9223372036854775808;").unwrap();
+
+        let c = emit_c(&program).unwrap();
+
+        assert!(c.contains("int64_t primer_x = INT64_MIN;"));
+    }
+
+    #[test]
     fn keeps_checked_i64_arithmetic_visible_in_c_ir() {
         let program = compile_to_ir("x: i64 = 1 + 2;").unwrap();
         let module = lower(&program);

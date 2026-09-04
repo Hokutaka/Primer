@@ -1246,6 +1246,22 @@ mod tests {
     }
 
     #[test]
+    fn reports_overflow_when_negating_the_minimum_i64_literal() {
+        let program = compile_to_bytecode("print(--9223372036854775808);").unwrap();
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Negate,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 1);
+    }
+
+    #[test]
     fn rejects_bytecode_assignment_to_immutable_slot() {
         let program = BytecodeProgram {
             type_definitions: Vec::new(),

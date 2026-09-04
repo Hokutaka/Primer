@@ -408,6 +408,8 @@ Integer literals have type `i64`.
 x: i64 = 42;
 ```
 
+An integer literal remains a sequence of decimal digits until its type is known. Once resolved as `i64`, its range is checked and an out-of-range value is a compilation error. The sign is parsed as unary `-`, but `-9223372036854775808` is accepted as the minimum `i64` value.
+
 Floating-point literals without a suffix are contextually typed when an explicit floating-point type is available.
 
 ```primer

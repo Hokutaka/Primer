@@ -987,7 +987,10 @@ fn type_of_expr_expected(
     match &expr.kind {
         ExprKind::Boolean(_) => Ok(Type::Bool),
 
-        ExprKind::Integer(_) => Ok(Type::I64),
+        ExprKind::Integer(literal) => {
+            resolve_i64_literal(literal, expr.span)?;
+            Ok(Type::I64)
+        }
 
         ExprKind::Float { explicit_type, .. } => {
             // suffix付きなら絶対その型
@@ -1174,6 +1177,11 @@ fn type_of_expr_expected(
 
         ExprKind::Unary { op, value } => match op {
             crate::ast::UnaryOp::Negate => {
+                if let ExprKind::Integer(literal) = &value.kind {
+                    resolve_negated_i64_literal(literal, expr.span)?;
+                    return Ok(Type::I64);
+                }
+
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
 
                 if !is_numeric(&ty) {
@@ -1265,6 +1273,45 @@ fn type_of_expr_expected(
             }
         }
     }
+}
+
+pub(crate) fn resolve_i64_literal(
+    literal: &ast::IntegerLiteral,
+    span: Span,
+) -> SemanticResult<i64> {
+    resolve_i64_magnitude(literal, false, span)
+}
+
+pub(crate) fn resolve_negated_i64_literal(
+    literal: &ast::IntegerLiteral,
+    span: Span,
+) -> SemanticResult<i64> {
+    resolve_i64_magnitude(literal, true, span)
+}
+
+fn resolve_i64_magnitude(
+    literal: &ast::IntegerLiteral,
+    negative: bool,
+    span: Span,
+) -> SemanticResult<i64> {
+    let magnitude = literal
+        .digits()
+        .parse::<u64>()
+        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))?;
+    let minimum_magnitude = i64::MAX as u64 + 1;
+
+    if negative {
+        if magnitude > minimum_magnitude {
+            return Err(Diagnostic::new("integer literal does not fit in i64", span));
+        }
+        if magnitude == minimum_magnitude {
+            return Ok(i64::MIN);
+        }
+        return Ok(-(magnitude as i64));
+    }
+
+    i64::try_from(magnitude)
+        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))
 }
 
 fn check_call(
@@ -1435,6 +1482,38 @@ mod tests {
 
         assert_eq!(error.message(), "cannot apply `+` to i64 and f64");
         assert_eq!(error.primary_span(), Some(Span::new(11, 18)));
+    }
+
+    #[test]
+    fn rejects_positive_integer_literal_outside_i64() {
+        let program = parse(lex("x: i64 = 9223372036854775808;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(error.message(), "integer literal does not fit in i64");
+        assert_eq!(error.primary_span(), Some(Span::new(9, 28)));
+    }
+
+    #[test]
+    fn accepts_the_minimum_i64_literal() {
+        let program = parse(lex("x: i64 = -9223372036854775808;").unwrap()).unwrap();
+
+        let bindings = check(&program).unwrap();
+
+        assert_eq!(
+            bindings.get("x").map(|binding| binding.ty.clone()),
+            Some(Type::I64)
+        );
+    }
+
+    #[test]
+    fn rejects_integer_literal_below_i64() {
+        let program = parse(lex("x: i64 = -9223372036854775809;").unwrap()).unwrap();
+
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(error.message(), "integer literal does not fit in i64");
+        assert_eq!(error.primary_span(), Some(Span::new(9, 29)));
     }
 
     #[test]
