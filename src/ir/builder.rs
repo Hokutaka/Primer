@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 use crate::{
     ast,
@@ -8,8 +8,8 @@ use crate::{
 
 use super::{
     AssignmentProjection, AssignmentTarget, BinaryOp, BindingId, Expr, ExprKind, FieldDefinition,
-    FieldId, FieldValue, FieldValueOrigin, FunctionDefinition, FunctionId, Parameter, Program,
-    ReturnType, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
+    FieldId, FieldValue, FieldValueOrigin, FunctionDefinition, FunctionId, NodeId, Parameter,
+    Program, ReturnType, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
@@ -18,6 +18,7 @@ pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
     let mut builder = Builder {
         scopes: vec![HashMap::new()],
         next_binding_id: 0,
+        next_node_id: Cell::new(0),
         current_return_type: None,
         model: &model,
     };
@@ -62,6 +63,7 @@ struct ResolvedBinding {
 struct Builder<'a> {
     scopes: Vec<HashMap<String, ResolvedBinding>>,
     next_binding_id: usize,
+    next_node_id: Cell<usize>,
     current_return_type: Option<semantic::ReturnType>,
     model: &'a SemanticModel,
 }
@@ -159,6 +161,7 @@ impl Builder<'_> {
     }
 
     fn build_statement(&mut self, statement: &ast::Stmt) -> Result<Statement, Diagnostic> {
+        let id = self.allocate_node_id();
         let bindings = self.visible_bindings();
 
         let kind = match &statement.kind {
@@ -298,8 +301,8 @@ impl Builder<'_> {
                 let bindings = builder.visible_bindings();
                 let condition =
                     builder.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
-                let update = Box::new(builder.build_statement(update)?);
                 let body = builder.with_scope(|builder| builder.build_statements(body))?;
+                let update = Box::new(builder.build_statement(update)?);
 
                 Ok(StatementKind::For {
                     initializer,
@@ -313,6 +316,7 @@ impl Builder<'_> {
         };
 
         Ok(Statement {
+            id,
             kind,
             span: statement.span,
         })
@@ -324,6 +328,7 @@ impl Builder<'_> {
         expected: Option<semantic::Type>,
         bindings: &Bindings,
     ) -> Result<Expr, Diagnostic> {
+        let id = self.allocate_node_id();
         let ty = self.model.type_of_expr_expected(expr, bindings, expected)?;
 
         let kind = match &expr.kind {
@@ -473,10 +478,17 @@ impl Builder<'_> {
         };
 
         Ok(Expr {
+            id,
             ty: ir_type(ty),
             kind,
             span: expr.span,
         })
+    }
+
+    fn allocate_node_id(&self) -> NodeId {
+        let id = self.next_node_id.get();
+        self.next_node_id.set(id + 1);
+        NodeId(id)
     }
 
     fn resolve(&self, name: &str) -> Option<ResolvedBinding> {
@@ -723,5 +735,36 @@ mod tests {
         let ir = build(&ast).unwrap();
 
         assert_eq!(ir.statements[0].span, statement_span);
+    }
+
+    #[test]
+    fn assigns_distinct_deterministic_node_ids() {
+        let ast = AstProgram {
+            items: vec![ast_item(AstStmtKind::Print {
+                value: ast_expr(AstExprKind::Binary {
+                    op: AstBinaryOp::Add,
+                    left: Box::new(ast_expr(AstExprKind::Integer(1))),
+                    right: Box::new(ast_expr(AstExprKind::Integer(2))),
+                }),
+            })],
+        };
+
+        let first = build(&ast).unwrap();
+        let second = build(&ast).unwrap();
+        assert_eq!(first, second);
+
+        let statement = &first.statements[0];
+        assert_eq!(statement.id, NodeId(0));
+        let StatementKind::Print { value } = &statement.kind else {
+            panic!("expected print");
+        };
+        assert_eq!(value.id, NodeId(1));
+
+        let ExprKind::Binary { left, right, .. } = &value.kind else {
+            panic!("expected binary expression");
+        };
+        assert_eq!(left.span, right.span);
+        assert_eq!(left.id, NodeId(2));
+        assert_eq!(right.id, NodeId(3));
     }
 }

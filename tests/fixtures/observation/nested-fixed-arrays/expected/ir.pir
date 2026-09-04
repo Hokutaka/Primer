@@ -1,7 +1,8 @@
-; Primer IR v0.1
+; Primer IR v0.2
+; #N identifies one statement or expression in this compilation
 
-mut %matrix@0: [[i64; 3]; 2] = array[array[1i64, 2i64, 3i64]:[i64; 3], array[4i64, 5i64, 6i64]:[i64; 3]]:[[i64; 3]; 2]
-%copy@1: [[i64; 3]; 2] = %matrix@0:[[i64; 3]; 2]
-set %matrix@0:[[i64; 3]; 2] = array[array[7i64, 8i64, 9i64]:[i64; 3], array[10i64, 11i64, 12i64]:[i64; 3]]:[[i64; 3]; 2]
-print.i64 index(index(%copy@1:[[i64; 3]; 2], 1i64):[i64; 3], 2i64):i64
-print.i64 index(index(%matrix@0:[[i64; 3]; 2], 0i64):[i64; 3], 1i64):i64
+#0 mut %matrix@0: [[i64; 3]; 2] = #1 array[#2 array[#3 1i64, #4 2i64, #5 3i64]:[i64; 3], #6 array[#7 4i64, #8 5i64, #9 6i64]:[i64; 3]]:[[i64; 3]; 2]
+#10 %copy@1: [[i64; 3]; 2] = #11 %matrix@0:[[i64; 3]; 2]
+#12 set %matrix@0:[[i64; 3]; 2] = #13 array[#14 array[#15 7i64, #16 8i64, #17 9i64]:[i64; 3], #18 array[#19 10i64, #20 11i64, #21 12i64]:[i64; 3]]:[[i64; 3]; 2]
+#22 print.i64 #23 index(#24 index(#25 %copy@1:[[i64; 3]; 2], #26 1i64):[i64; 3], #27 2i64):i64
+#28 print.i64 #29 index(#30 index(#31 %matrix@0:[[i64; 3]; 2], #32 0i64):[i64; 3], #33 1i64):i64

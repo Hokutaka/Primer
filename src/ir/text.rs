@@ -7,7 +7,12 @@ use super::{
 
 pub fn emit(program: &Program) -> String {
     let mut output = String::new();
-    writeln!(output, "; Primer IR v0.1").unwrap();
+    writeln!(output, "; Primer IR v0.2").unwrap();
+    writeln!(
+        output,
+        "; #N identifies one statement or expression in this compilation"
+    )
+    .unwrap();
 
     if !program.type_definitions.is_empty()
         || !program.function_definitions.is_empty()
@@ -78,6 +83,7 @@ pub fn emit(program: &Program) -> String {
 
 fn emit_statement(statement: &Statement, indent: usize, program: &Program, output: &mut String) {
     let prefix = "  ".repeat(indent);
+    let node = format!("#{} ", statement.id.0);
 
     match &statement.kind {
         StatementKind::Binding {
@@ -89,9 +95,11 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
         } => {
             if *mutable {
                 output.push_str(&prefix);
+                output.push_str(&node);
                 output.push_str("mut ");
             } else {
                 output.push_str(&prefix);
+                output.push_str(&node);
             }
             write!(output, "%{name}@{}: {} = ", id.0, type_name(ty, program)).unwrap();
             emit_expr(value, program, output);
@@ -100,7 +108,7 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
         StatementKind::Assignment { target, value } => {
             write!(
                 output,
-                "{prefix}set %{}@{}:{}",
+                "{prefix}{node}set %{}@{}:{}",
                 target.name,
                 target.id.0,
                 type_name(&target.root_ty, program)
@@ -120,7 +128,12 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             writeln!(output).unwrap();
         }
         StatementKind::Print { value } => {
-            write!(output, "{prefix}print.{} ", type_name(&value.ty, program)).unwrap();
+            write!(
+                output,
+                "{prefix}{node}print.{} ",
+                type_name(&value.ty, program)
+            )
+            .unwrap();
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
@@ -129,12 +142,17 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             function_name,
             arguments,
         } => {
-            write!(output, "{prefix}call %{function_name}@{}(", function_id.0).unwrap();
+            write!(
+                output,
+                "{prefix}{node}call %{function_name}@{}(",
+                function_id.0
+            )
+            .unwrap();
             emit_arguments(arguments, program, output);
             writeln!(output, ")").unwrap();
         }
         StatementKind::Return { value } => {
-            write!(output, "{prefix}return").unwrap();
+            write!(output, "{prefix}{node}return").unwrap();
             if let Some(value) = value {
                 output.push(' ');
                 emit_expr(value, program, output);
@@ -146,7 +164,7 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             then_body,
             else_body,
         } => {
-            write!(output, "{prefix}if.bool ").unwrap();
+            write!(output, "{prefix}{node}if.bool ").unwrap();
             emit_expr(condition, program, output);
             writeln!(output, " {{").unwrap();
             for statement in then_body {
@@ -165,7 +183,7 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             }
         }
         StatementKind::While { condition, body } => {
-            write!(output, "{prefix}while.bool ").unwrap();
+            write!(output, "{prefix}{node}while.bool ").unwrap();
             emit_expr(condition, program, output);
             writeln!(output, " {{").unwrap();
             for statement in body {
@@ -179,7 +197,7 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             update,
             body,
         } => {
-            writeln!(output, "{prefix}for.loop {{").unwrap();
+            writeln!(output, "{prefix}{node}for.loop {{").unwrap();
             writeln!(output, "{prefix}  start {{").unwrap();
             emit_statement(initializer, indent + 2, program, output);
             writeln!(output, "{prefix}  }}").unwrap();
@@ -197,15 +215,17 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             writeln!(output, "{prefix}}}").unwrap();
         }
         StatementKind::Break => {
-            writeln!(output, "{prefix}break").unwrap();
+            writeln!(output, "{prefix}{node}break").unwrap();
         }
         StatementKind::Continue => {
-            writeln!(output, "{prefix}continue").unwrap();
+            writeln!(output, "{prefix}{node}continue").unwrap();
         }
     }
 }
 
 fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
+    write!(output, "#{} ", expr.id.0).unwrap();
+
     match &expr.kind {
         ExprKind::Boolean(value) => {
             write!(output, "{value}:bool").unwrap();
@@ -427,7 +447,12 @@ mod tests {
         let text = emit(&build(&ast).unwrap());
         assert_eq!(
             text,
-            "; Primer IR v0.1\n\n%x@0: f32 = add.f32(0.1f32, 0.2f32)\nprint.f32 %x@0:f32\n"
+            concat!(
+                "; Primer IR v0.2\n",
+                "; #N identifies one statement or expression in this compilation\n\n",
+                "#0 %x@0: f32 = #1 add.f32(#2 0.1f32, #3 0.2f32)\n",
+                "#4 print.f32 #5 %x@0:f32\n",
+            )
         );
     }
 }

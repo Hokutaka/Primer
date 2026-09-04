@@ -29,6 +29,10 @@ pub struct FieldId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionId(pub usize);
 
+/// 一回のコンパイル中で、Primer IRの文と式を一意に識別します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NodeId(pub usize);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReturnType {
     Void,
@@ -77,6 +81,7 @@ pub struct BindingId(pub usize);
 /// Primer IRの文と、その文が由来するソース範囲を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
+    pub id: NodeId,
     pub kind: StatementKind,
     pub span: Span,
 }
@@ -146,6 +151,7 @@ pub enum AssignmentProjection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expr {
+    pub id: NodeId,
     pub ty: Type,
     pub kind: ExprKind,
     pub span: Span,

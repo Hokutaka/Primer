@@ -72,6 +72,7 @@ The following rules are part of the compiler design:
 7. Optimization is not implicit. A future optimization stage must be an explicit, observable pass.
 8. Primer IR gives each binding a deterministic compilation-local ID so references remain explicit across shadowing.
 9. Structured `if`, `while`, `for`, `break`, and `continue` statements remain in Primer IR. A `for` keeps its initializer, condition, body, and update distinct; branches, merge points, update paths, back edges, and loop exits are introduced during lowering into Bytecode and each backend IR.
+10. Every Primer IR statement and expression has a deterministic `NodeId` that is unique within one compilation. A `NodeId` identifies an element, while a `Span` locates source text; neither substitutes for the other.
 
 Conceptually, every backend follows the same structure:
 
@@ -109,6 +110,10 @@ fixed arrays
 Unsuffixed floating-point literals are also resolved before backend lowering. A backend does not need to repeat contextual type inference.
 
 Primer IR deliberately does not attempt to be a universal machine IR or prematurely impose SSA form. It represents Primer semantics closely enough to keep the frontend/backend boundary visible.
+
+Primer IR statements and expressions share one sequence of `NodeId` values. `emit-ir` renders them as `#0`, `#1`, and so on. IDs are allocated deterministically, with a parent before its children and in textual IR order, so the same Primer version and input produce the same IDs.
+
+A `NodeId` refers to an element within one compilation result. It is not stable across source edits or Primer versions. Multiple IR elements with the same `Span` can still have different `NodeId` values. This distinction provides a foundation for recording how one expression is later split into multiple backend instructions without relying on source locations as identity.
 
 ## Backend lowering
 
