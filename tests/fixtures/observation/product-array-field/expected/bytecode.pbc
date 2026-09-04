@@ -1,0 +1,33 @@
+; Primer bytecode v0.1
+
+.type 0 Row
+.field 0.0 values [i64; 3]
+
+.slot 0 mut first %Row@0
+.slot 1 second %Row@0
+
+0000  push.i64 1
+0001  push.i64 2
+0002  push.i64 3
+0003  array.new i64 3
+0004  construct %Row@0 [%values@0:explicit]
+0005  store 0       ; first
+0006  load 0        ; first
+0007  store 1       ; second
+0008  push.i64 4
+0009  push.i64 5
+0010  push.i64 6
+0011  array.new i64 3
+0012  construct %Row@0 [%values@0:explicit]
+0013  assign 0      ; first
+0014  load 1        ; second
+0015  field.get %Row@0.%values@0
+0016  push.i64 1
+0017  array.get i64 3
+0018  print.i64
+0019  load 0        ; first
+0020  field.get %Row@0.%values@0
+0021  push.i64 2
+0022  array.get i64 3
+0023  print.i64
+0024  halt

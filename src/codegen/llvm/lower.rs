@@ -43,7 +43,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
                 fields: definition
                     .fields
                     .iter()
-                    .map(|field| field.ty.into())
+                    .map(|field| field.ty.clone().into())
                     .collect(),
             })
             .collect(),
@@ -69,13 +69,13 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
             let slot = SlotId(slots.len());
             slots.push(Slot {
                 name: parameter.name.clone(),
-                ty: parameter.ty.into(),
+                ty: parameter.ty.clone().into(),
             });
             slot_map.insert(parameter.id, slot);
             name_counts.insert(parameter.name.clone(), 1);
             Parameter {
                 name: parameter.name.clone(),
-                ty: parameter.ty.into(),
+                ty: parameter.ty.clone().into(),
                 slot,
             }
         })
@@ -90,9 +90,9 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
         loops: Vec::new(),
     };
     let terminates = lowerer.lower_statements(&function.body);
-    let return_type = match function.return_type {
+    let return_type = match &function.return_type {
         primer_ir::ReturnType::Void => None,
-        primer_ir::ReturnType::Value(ty) => Some(ty.into()),
+        primer_ir::ReturnType::Value(ty) => Some(ty.clone().into()),
     };
     if !terminates {
         lowerer
@@ -145,7 +145,7 @@ impl Lowerer {
         match &statement.kind {
             primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 let slot = self.slot(*id);
-                let ty = (*ty).into();
+                let ty = ty.clone().into();
 
                 let value = self.lower_expr(value);
 
@@ -159,7 +159,7 @@ impl Lowerer {
 
             primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
                 let slot = self.slot(*id);
-                let ty = (*ty).into();
+                let ty = ty.clone().into();
                 let value = self.lower_expr(value);
 
                 self.instructions.push(Instruction::Store {
@@ -433,7 +433,7 @@ impl Lowerer {
             },
 
             primer_ir::ExprKind::Variable { id, .. } => {
-                let ty = expr.ty.into();
+                let ty = expr.ty.clone().into();
                 let dest = self.next_temp();
                 let slot = self.slot(*id);
 
@@ -515,7 +515,7 @@ impl Lowerer {
                 }
 
                 Value {
-                    ty: expr.ty.into(),
+                    ty: expr.ty.clone().into(),
                     operand: Operand::Temp(dest),
                 }
             }
@@ -557,12 +557,12 @@ impl Lowerer {
                     field: field_id.0,
                 });
                 Value {
-                    ty: expr.ty.into(),
+                    ty: expr.ty.clone().into(),
                     operand: Operand::Temp(dest),
                 }
             }
             primer_ir::ExprKind::Array(values) => {
-                let ty = expr.ty.into();
+                let ty = expr.ty.clone().into();
                 let mut aggregate = Operand::Poison;
                 for (index, value) in values.iter().enumerate() {
                     let value = self.lower_expr(value);
@@ -597,7 +597,7 @@ impl Lowerer {
                     index: index.operand,
                 });
                 Value {
-                    ty: expr.ty.into(),
+                    ty: expr.ty.clone().into(),
                     operand: Operand::Temp(dest),
                 }
             }
@@ -613,7 +613,7 @@ impl Lowerer {
                         (value.ty, value.operand)
                     })
                     .collect();
-                let ty = expr.ty.into();
+                let ty = expr.ty.clone().into();
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::Call {
                     dest: Some(dest),
@@ -719,7 +719,7 @@ fn collect_slots(
                 let slot = SlotId(slots.len());
                 slots.push(Slot {
                     name: lowered_name,
-                    ty: (*ty).into(),
+                    ty: ty.clone().into(),
                 });
                 slot_map.insert(*id, slot);
             }
@@ -768,14 +768,22 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: match element {
-                    primer_ir::ArrayElementType::Bool => ArrayElementType::Bool,
-                    primer_ir::ArrayElementType::I64 => ArrayElementType::I64,
-                    primer_ir::ArrayElementType::F32 => ArrayElementType::Float,
-                    primer_ir::ArrayElementType::F64 => ArrayElementType::Double,
-                },
+                element: array_element_type(&element),
                 length,
             },
+        }
+    }
+}
+
+fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
+    match element {
+        primer_ir::Type::Bool => ArrayElementType::Bool,
+        primer_ir::Type::I64 => ArrayElementType::I64,
+        primer_ir::Type::F32 => ArrayElementType::Float,
+        primer_ir::Type::F64 => ArrayElementType::Double,
+        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
         }
     }
 }

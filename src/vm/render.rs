@@ -114,12 +114,13 @@ fn type_name(ty: Type) -> String {
     }
 }
 
-const fn array_element_name(element: crate::bytecode::ArrayElementType) -> &'static str {
+fn array_element_name(element: crate::bytecode::ArrayElementType) -> String {
     match element {
-        crate::bytecode::ArrayElementType::Bool => "bool",
-        crate::bytecode::ArrayElementType::I64 => "i64",
-        crate::bytecode::ArrayElementType::F32 => "f32",
-        crate::bytecode::ArrayElementType::F64 => "f64",
+        crate::bytecode::ArrayElementType::Bool => "bool".into(),
+        crate::bytecode::ArrayElementType::I64 => "i64".into(),
+        crate::bytecode::ArrayElementType::F32 => "f32".into(),
+        crate::bytecode::ArrayElementType::F64 => "f64".into(),
+        crate::bytecode::ArrayElementType::Named(id) => format!("product type {id}"),
     }
 }
 

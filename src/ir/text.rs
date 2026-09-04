@@ -24,7 +24,7 @@ pub fn emit(program: &Program) -> String {
                 "  field %{}@{}: {}",
                 field.name,
                 field.id.0,
-                type_name(field.ty, program)
+                type_name(&field.ty, program)
             )
             .unwrap();
             if let Some(default) = &field.default {
@@ -50,11 +50,11 @@ pub fn emit(program: &Program) -> String {
                 "%{}@{}: {}",
                 parameter.name,
                 parameter.id.0,
-                type_name(parameter.ty, program)
+                type_name(&parameter.ty, program)
             )
             .unwrap();
         }
-        match function.return_type {
+        match &function.return_type {
             ReturnType::Void => writeln!(output, ") -> void {{").unwrap(),
             ReturnType::Value(ty) => {
                 writeln!(output, ") -> {} {{", type_name(ty, program)).unwrap()
@@ -93,7 +93,7 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
             } else {
                 output.push_str(&prefix);
             }
-            write!(output, "%{name}@{}: {} = ", id.0, type_name(*ty, program)).unwrap();
+            write!(output, "%{name}@{}: {} = ", id.0, type_name(ty, program)).unwrap();
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
@@ -107,14 +107,14 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
                 output,
                 "{prefix}set %{name}@{}:{} = ",
                 id.0,
-                type_name(*ty, program)
+                type_name(ty, program)
             )
             .unwrap();
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
         StatementKind::Print { value } => {
-            write!(output, "{prefix}print.{} ", type_name(value.ty, program)).unwrap();
+            write!(output, "{prefix}print.{} ", type_name(&value.ty, program)).unwrap();
             emit_expr(value, program, output);
             writeln!(output).unwrap();
         }
@@ -208,10 +208,10 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
             write!(output, "{value}i64").unwrap();
         }
         ExprKind::Float { text } => {
-            write!(output, "{text}{}", type_name(expr.ty, program)).unwrap();
+            write!(output, "{text}{}", type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Variable { id, name } => {
-            write!(output, "%{name}@{}:{}", id.0, type_name(expr.ty, program)).unwrap();
+            write!(output, "%{name}@{}:{}", id.0, type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Construct {
             type_id,
@@ -242,7 +242,7 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
                 output,
                 ", %{field_name}@{}):{}",
                 field_id.0,
-                type_name(expr.ty, program)
+                type_name(&expr.ty, program)
             )
             .unwrap();
         }
@@ -254,14 +254,14 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
                 }
                 emit_expr(value, program, output);
             }
-            write!(output, "]:{}", type_name(expr.ty, program)).unwrap();
+            write!(output, "]:{}", type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Index { base, index } => {
             output.push_str("index(");
             emit_expr(base, program, output);
             output.push_str(", ");
             emit_expr(index, program, output);
-            write!(output, "):{}", type_name(expr.ty, program)).unwrap();
+            write!(output, "):{}", type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Call {
             function_id,
@@ -270,21 +270,25 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
         } => {
             write!(output, "call %{function_name}@{}(", function_id.0).unwrap();
             emit_arguments(arguments, program, output);
-            write!(output, "):{}", type_name(expr.ty, program)).unwrap();
+            write!(output, "):{}", type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Unary { op, value } => {
             write!(
                 output,
                 "{}.{}(",
                 unary_name(*op),
-                type_name(expr.ty, program)
+                type_name(&expr.ty, program)
             )
             .unwrap();
             emit_expr(value, program, output);
             output.push(')');
         }
         ExprKind::Binary { op, left, right } => {
-            let operation_type = if is_comparison(*op) { left.ty } else { expr.ty };
+            let operation_type = if is_comparison(*op) {
+                &left.ty
+            } else {
+                &expr.ty
+            };
 
             write!(
                 output,
@@ -310,7 +314,7 @@ fn emit_arguments(arguments: &[Expr], program: &Program, output: &mut String) {
     }
 }
 
-fn type_name(ty: Type, program: &Program) -> String {
+fn type_name(ty: &Type, program: &Program) -> String {
     match ty {
         Type::Bool => "bool".into(),
         Type::I64 => "i64".into(),
@@ -321,17 +325,8 @@ fn type_name(ty: Type, program: &Program) -> String {
             format!("%{}@{}", definition.name, id.0)
         }
         Type::Array { element, length } => {
-            format!("[{}; {length}]", array_element_name(element))
+            format!("[{}; {length}]", type_name(element, program))
         }
-    }
-}
-
-const fn array_element_name(element: super::ArrayElementType) -> &'static str {
-    match element {
-        super::ArrayElementType::Bool => "bool",
-        super::ArrayElementType::I64 => "i64",
-        super::ArrayElementType::F32 => "f32",
-        super::ArrayElementType::F64 => "f64",
     }
 }
 
@@ -402,8 +397,7 @@ mod tests {
                     mutable: false,
                     name: "x".into(),
                     type_spec: TypeSpec::Explicit(TypeRef {
-                        name: "f32".into(),
-                        array_length: None,
+                        kind: crate::ast::TypeRefKind::Named("f32".into()),
                         span: Span::empty(0),
                     }),
                     value: ast_expr(AstExprKind::Binary {

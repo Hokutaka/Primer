@@ -841,6 +841,7 @@ const fn array_element_type(element: ArrayElementType) -> Type {
         ArrayElementType::I64 => Type::I64,
         ArrayElementType::F32 => Type::F32,
         ArrayElementType::F64 => Type::F64,
+        ArrayElementType::Named(id) => Type::Named(id),
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, FunctionDefinition, Item, Parameter,
-    Program, ReturnTypeRef, Stmt, StmtKind, Type, TypeDefinition, TypeRef, TypeSpec, UnaryOp,
+    Program, ReturnTypeRef, Stmt, StmtKind, Type, TypeDefinition, TypeRef, TypeRefKind, TypeSpec,
+    UnaryOp,
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
@@ -60,7 +61,7 @@ impl Parser {
             self.expect_simple(TokenKind::Colon)?;
             let type_ref = self.parse_type_ref()?;
 
-            if type_ref.name == "infer" {
+            if type_ref.is_named("infer") {
                 return Err(Diagnostic::new(
                     "product type fields require an explicit type",
                     type_ref.span,
@@ -115,7 +116,7 @@ impl Parser {
             let (parameter_name, parameter_name_span) = self.expect_identifier()?;
             self.expect_simple(TokenKind::Colon)?;
             let type_ref = self.parse_type_ref()?;
-            if type_ref.name == "infer" {
+            if type_ref.is_named("infer") {
                 return Err(Diagnostic::new(
                     "function parameters require an explicit type",
                     type_ref.span,
@@ -144,7 +145,7 @@ impl Parser {
             ReturnTypeRef::Void(self.advance().span)
         } else {
             let type_ref = self.parse_type_ref()?;
-            if type_ref.name == "infer" {
+            if type_ref.is_named("infer") {
                 return Err(Diagnostic::new(
                     "function return types require an explicit type",
                     type_ref.span,
@@ -270,7 +271,7 @@ impl Parser {
     fn parse_type_spec(&mut self) -> ParseResult<TypeSpec> {
         let type_ref = self.parse_type_ref()?;
 
-        if type_ref.name == "infer" {
+        if type_ref.is_named("infer") {
             Ok(TypeSpec::Infer)
         } else {
             Ok(TypeSpec::Explicit(type_ref))
@@ -280,11 +281,11 @@ impl Parser {
     fn parse_type_ref(&mut self) -> ParseResult<TypeRef> {
         if matches!(&self.peek().kind, TokenKind::LeftBracket) {
             let start = self.advance().span.start();
-            let (name, element_span) = self.expect_identifier()?;
-            if name == "infer" {
+            let element = self.parse_type_ref()?;
+            if element.is_named("infer") {
                 return Err(Diagnostic::new(
                     "array element type must be written explicitly",
-                    element_span,
+                    element.span,
                 ));
             }
             self.expect_simple(TokenKind::Semicolon)?;
@@ -307,15 +308,16 @@ impl Parser {
             };
             let end = self.expect_simple(TokenKind::RightBracket)?.end();
             Ok(TypeRef {
-                name,
-                array_length: Some(length),
+                kind: TypeRefKind::Array {
+                    element: Box::new(element),
+                    length,
+                },
                 span: Span::new(start, end),
             })
         } else {
             let (name, span) = self.expect_identifier()?;
             Ok(TypeRef {
-                name,
-                array_length: None,
+                kind: TypeRefKind::Named(name),
                 span,
             })
         }
@@ -905,7 +907,7 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp, ExprKind, Item, ReturnTypeRef, StmtKind, TypeRef, TypeSpec, UnaryOp,
+        BinaryOp, ExprKind, Item, ReturnTypeRef, StmtKind, TypeRef, TypeRefKind, TypeSpec, UnaryOp,
     };
     use crate::lexer::lex;
     use crate::source::Span;
@@ -931,8 +933,7 @@ mod tests {
         assert_eq!(
             *type_spec,
             TypeSpec::Explicit(TypeRef {
-                name: "i64".into(),
-                array_length: None,
+                kind: TypeRefKind::Named("i64".into()),
                 span: Span::new(3, 6),
             })
         );
@@ -960,7 +961,13 @@ mod tests {
         else {
             panic!("expected binding");
         };
-        assert!(matches!(type_spec, TypeSpec::Explicit(ty) if ty.name == "Point"));
+        assert!(matches!(
+            type_spec,
+            TypeSpec::Explicit(TypeRef {
+                kind: TypeRefKind::Named(name),
+                ..
+            }) if name == "Point"
+        ));
         assert!(matches!(value.kind, ExprKind::Construct { .. }));
 
         let StmtKind::Print { value } = &program.statement(1).kind else {
@@ -983,10 +990,9 @@ mod tests {
         assert!(matches!(
             type_spec,
             TypeSpec::Explicit(TypeRef {
-                name,
-                array_length: Some(2),
+                kind: TypeRefKind::Array { element, length: 2 },
                 ..
-            }) if name == "i64"
+            }) if element.is_named("i64")
         ));
         assert!(matches!(&value.kind, ExprKind::Array(values) if values.len() == 2));
 
@@ -1024,6 +1030,30 @@ mod tests {
     }
 
     #[test]
+    fn preserves_nested_array_type_structure() {
+        let program =
+            parse(lex("values: [[i64; 2]; 3] = [[1, 2], [3, 4], [5, 6]];").unwrap()).unwrap();
+
+        let StmtKind::Binding { type_spec, .. } = &program.statement(0).kind else {
+            panic!("expected binding");
+        };
+        let TypeSpec::Explicit(TypeRef {
+            kind: TypeRefKind::Array { element, length: 3 },
+            ..
+        }) = type_spec
+        else {
+            panic!("expected outer array type");
+        };
+        assert!(matches!(
+            &element.kind,
+            TypeRefKind::Array {
+                element: inner,
+                length: 2,
+            } if inner.is_named("i64")
+        ));
+    }
+
+    #[test]
     fn parses_function_definition_call_and_return() {
         let program = parse(
             lex("fn identity(value: i64) -> i64 { return value; }
@@ -1038,7 +1068,7 @@ mod tests {
         assert_eq!(function.name, "identity");
         assert_eq!(function.parameters.len(), 1);
         assert_eq!(function.parameters[0].name, "value");
-        assert!(matches!(function.return_type, ReturnTypeRef::Value(ref ty) if ty.name == "i64"));
+        assert!(matches!(function.return_type, ReturnTypeRef::Value(ref ty) if ty.is_named("i64")));
         assert!(matches!(function.body[0].kind, StmtKind::Return { .. }));
 
         let StmtKind::Binding { value, .. } = &program.statement(0).kind else {

@@ -63,13 +63,13 @@ fn lower_function(
             let slot = slots.len();
             slots.push(Slot {
                 name: parameter.name.clone(),
-                size: type_size(program, parameter.ty),
+                size: type_size(program, &parameter.ty),
             });
             slot_map.insert(parameter.id, slot);
             name_counts.insert(parameter.name.clone(), 1);
             Parameter {
                 name: parameter.name.clone(),
-                ty: scalar_type(parameter.ty),
+                ty: scalar_type(&parameter.ty),
                 slot,
             }
         })
@@ -103,7 +103,7 @@ fn lower_function(
         id: function.id.0,
         name: function.name.clone(),
         parameters,
-        return_type: match function.return_type {
+        return_type: match &function.return_type {
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(ty) => Some(scalar_type(ty)),
         },
@@ -140,10 +140,16 @@ enum Value {
         address: Operand,
     },
     Array {
-        element: primer_ir::ArrayElementType,
+        element: ArrayElement,
         length: usize,
         address: Operand,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArrayElement {
+    Scalar(Type),
+    Named(usize),
 }
 
 impl Lowerer<'_> {
@@ -163,7 +169,7 @@ impl Lowerer<'_> {
             | primer_ir::StatementKind::Assignment { id, ty, value, .. } => {
                 let value = self.lower_expr(value);
                 let destination = Operand::Slot(self.slot(*id));
-                match (*ty, value) {
+                match (ty, value) {
                     (
                         primer_ir::Type::Named(type_id),
                         Value::Aggregate {
@@ -175,7 +181,7 @@ impl Lowerer<'_> {
                         self.instructions.push(Instruction::Blit {
                             source: address,
                             destination,
-                            size: type_size(self.program, *ty),
+                            size: type_size(self.program, ty),
                         });
                     }
                     (
@@ -186,12 +192,12 @@ impl Lowerer<'_> {
                             address,
                         },
                     ) => {
-                        debug_assert_eq!(element, actual_element);
-                        debug_assert_eq!(length, actual_length);
+                        debug_assert_eq!(array_element_type(element), actual_element);
+                        debug_assert_eq!(*length, actual_length);
                         self.instructions.push(Instruction::Blit {
                             source: address,
                             destination,
-                            size: type_size(self.program, *ty),
+                            size: type_size(self.program, ty),
                         });
                     }
                     (
@@ -408,21 +414,21 @@ impl Lowerer<'_> {
                 operand: Operand::Integer(*value),
             },
             primer_ir::ExprKind::Float { text } => Value::Scalar {
-                ty: scalar_type(expr.ty),
-                operand: match expr.ty {
+                ty: scalar_type(&expr.ty),
+                operand: match &expr.ty {
                     primer_ir::Type::F32 => Operand::Float32(text.clone()),
                     primer_ir::Type::F64 => Operand::Float64(text.clone()),
                     _ => unreachable!("a float literal has a float type"),
                 },
             },
-            primer_ir::ExprKind::Variable { id, .. } => match expr.ty {
+            primer_ir::ExprKind::Variable { id, .. } => match &expr.ty {
                 primer_ir::Type::Named(type_id) => Value::Aggregate {
                     type_id: type_id.0,
                     address: Operand::Slot(self.slot(*id)),
                 },
                 primer_ir::Type::Array { element, length } => Value::Array {
-                    element,
-                    length,
+                    element: array_element_type(element),
+                    length: *length,
                     address: Operand::Slot(self.slot(*id)),
                 },
                 scalar => {
@@ -483,20 +489,20 @@ impl Lowerer<'_> {
                 }
 
                 Value::Scalar {
-                    ty: scalar_type(expr.ty),
+                    ty: scalar_type(&expr.ty),
                     operand: Operand::Temp(dest),
                 }
             }
             primer_ir::ExprKind::Construct {
                 type_id, fields, ..
             } => {
-                let slot = self.allocate_aggregate(type_size(self.program, expr.ty));
+                let slot = self.allocate_aggregate(type_size(self.program, &expr.ty));
                 for field in fields {
                     let definition = &self.program.type_definitions[type_id.0].fields[field.id.0];
                     let value = self.lower_expr(&field.value);
                     let offset = field_offset(self.program, type_id.0, field.id.0);
                     let destination = self.address(Operand::Slot(slot), offset);
-                    match (definition.ty, value) {
+                    match (&definition.ty, value) {
                         (
                             primer_ir::Type::Named(nested),
                             Value::Aggregate {
@@ -508,7 +514,23 @@ impl Lowerer<'_> {
                             self.instructions.push(Instruction::Blit {
                                 source: address,
                                 destination,
-                                size: type_size(self.program, definition.ty),
+                                size: type_size(self.program, &definition.ty),
+                            });
+                        }
+                        (
+                            primer_ir::Type::Array { element, length },
+                            Value::Array {
+                                element: actual_element,
+                                length: actual_length,
+                                address,
+                            },
+                        ) => {
+                            debug_assert_eq!(array_element_type(element), actual_element);
+                            debug_assert_eq!(*length, actual_length);
+                            self.instructions.push(Instruction::Blit {
+                                source: address,
+                                destination,
+                                size: type_size(self.program, &definition.ty),
                             });
                         }
                         (scalar, Value::Scalar { ty, operand }) => {
@@ -538,9 +560,14 @@ impl Lowerer<'_> {
                 };
                 let address =
                     self.address(address, field_offset(self.program, type_id.0, field_id.0));
-                match expr.ty {
+                match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
+                        address,
+                    },
+                    primer_ir::Type::Array { element, length } => Value::Array {
+                        element: array_element_type(element),
+                        length: *length,
                         address,
                     },
                     scalar => {
@@ -556,24 +583,44 @@ impl Lowerer<'_> {
                 }
             }
             primer_ir::ExprKind::Array(values) => {
-                let primer_ir::Type::Array { element, length } = expr.ty else {
+                let primer_ir::Type::Array { element, length } = &expr.ty else {
                     unreachable!("array expression must have an array type")
                 };
-                let slot = self.allocate_aggregate(type_size(self.program, expr.ty));
-                let expected = array_element_scalar_type(element);
+                let slot = self.allocate_aggregate(type_size(self.program, &expr.ty));
+                let expected = array_element_type(element);
+                let stride = type_size(self.program, element);
                 for (index, value) in values.iter().enumerate() {
-                    let (ty, value) = self.lower_scalar_expr(value);
-                    debug_assert_eq!(ty, expected);
-                    let destination = self.address(Operand::Slot(slot), index * 8);
-                    self.instructions.push(Instruction::Store {
-                        address: destination,
-                        ty,
-                        value,
-                    });
+                    let value = self.lower_expr(value);
+                    let destination = self.address(Operand::Slot(slot), index * stride);
+                    match (expected, value) {
+                        (ArrayElement::Scalar(expected), Value::Scalar { ty, operand }) => {
+                            debug_assert_eq!(expected, ty);
+                            self.instructions.push(Instruction::Store {
+                                address: destination,
+                                ty,
+                                value: operand,
+                            });
+                        }
+                        (
+                            ArrayElement::Named(expected),
+                            Value::Aggregate {
+                                type_id,
+                                address: source,
+                            },
+                        ) => {
+                            debug_assert_eq!(expected, type_id);
+                            self.instructions.push(Instruction::Blit {
+                                source,
+                                destination,
+                                size: stride,
+                            });
+                        }
+                        _ => unreachable!("semantic analysis keeps array element types equal"),
+                    }
                 }
                 Value::Array {
-                    element,
-                    length,
+                    element: expected,
+                    length: *length,
                     address: Operand::Slot(slot),
                 }
             }
@@ -637,7 +684,7 @@ impl Lowerer<'_> {
                     op: BinaryOp::Multiply,
                     ty: Type::I64,
                     left: index,
-                    right: Operand::Integer(8),
+                    right: Operand::Integer(array_element_size(self.program, element) as i64),
                 });
                 let address = self.next_temp();
                 self.instructions.push(Instruction::Binary {
@@ -647,16 +694,23 @@ impl Lowerer<'_> {
                     left: base,
                     right: Operand::Temp(scaled),
                 });
-                let ty = array_element_scalar_type(element);
-                let dest = self.next_temp();
-                self.instructions.push(Instruction::Load {
-                    dest,
-                    address: Operand::Temp(address),
-                    ty,
-                });
-                Value::Scalar {
-                    ty,
-                    operand: Operand::Temp(dest),
+                match element {
+                    ArrayElement::Scalar(ty) => {
+                        let dest = self.next_temp();
+                        self.instructions.push(Instruction::Load {
+                            dest,
+                            address: Operand::Temp(address),
+                            ty,
+                        });
+                        Value::Scalar {
+                            ty,
+                            operand: Operand::Temp(dest),
+                        }
+                    }
+                    ArrayElement::Named(type_id) => Value::Aggregate {
+                        type_id,
+                        address: Operand::Temp(address),
+                    },
                 }
             }
             primer_ir::ExprKind::Call {
@@ -668,7 +722,7 @@ impl Lowerer<'_> {
                     .iter()
                     .map(|argument| self.lower_scalar_expr(argument))
                     .collect();
-                let ty = scalar_type(expr.ty);
+                let ty = scalar_type(&expr.ty);
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::Call {
                     dest: Some(dest),
@@ -803,7 +857,7 @@ fn collect_slots(
                 let slot = slots.len();
                 slots.push(Slot {
                     name: lowered_name,
-                    size: type_size(program, *ty),
+                    size: type_size(program, ty),
                 });
                 slot_map.insert(*id, slot);
             }
@@ -850,7 +904,7 @@ fn collect_slots(
     }
 }
 
-fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
+fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
         | primer_ir::Type::I64
@@ -859,20 +913,20 @@ fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
             .fields
             .iter()
-            .map(|field| type_size(program, field.ty))
+            .map(|field| type_size(program, &field.ty))
             .sum(),
-        primer_ir::Type::Array { length, .. } => length * 8,
+        primer_ir::Type::Array { element, length } => type_size(program, element) * length,
     }
 }
 
 fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -> usize {
     program.type_definitions[type_id].fields[..field_id]
         .iter()
-        .map(|field| type_size(program, field.ty))
+        .map(|field| type_size(program, &field.ty))
         .sum()
 }
 
-fn scalar_type(ty: primer_ir::Type) -> Type {
+fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::I64 => Type::I64,
@@ -884,12 +938,25 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
     }
 }
 
-const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::ArrayElementType::Bool => Type::Bool,
-        primer_ir::ArrayElementType::I64 => Type::I64,
-        primer_ir::ArrayElementType::F32 => Type::Single,
-        primer_ir::ArrayElementType::F64 => Type::Double,
+        primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
+        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),
+        primer_ir::Type::F64 => ArrayElement::Scalar(Type::Double),
+        primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
+        }
+    }
+}
+
+fn array_element_size(program: &primer_ir::Program, element: ArrayElement) -> usize {
+    match element {
+        ArrayElement::Scalar(_) => 8,
+        ArrayElement::Named(id) => {
+            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
+        }
     }
 }
 

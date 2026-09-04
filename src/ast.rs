@@ -14,12 +14,27 @@ pub enum TypeSpec {
     Infer,
 }
 
-/// ソースに書かれた、まだ意味解析で解決していない型名です。
+/// ソースに書かれた、まだ意味解析で解決していない型です。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeRef {
-    pub name: String,
-    pub array_length: Option<usize>,
+    pub kind: TypeRefKind,
     pub span: Span,
+}
+
+impl TypeRef {
+    pub fn is_named(&self, expected: &str) -> bool {
+        matches!(&self.kind, TypeRefKind::Named(name) if name == expected)
+    }
+}
+
+/// ソースに書かれた型の形を、入れ子を失わずに保持します。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeRefKind {
+    Named(String),
+    Array {
+        element: Box<TypeRef>,
+        length: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

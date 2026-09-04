@@ -20,12 +20,12 @@ pub fn lower(program: &primer_ir::Program) -> Module {
                     .iter()
                     .map(|parameter| Parameter {
                         name: parameter.name.clone(),
-                        ty: parameter.ty.into(),
+                        ty: parameter.ty.clone().into(),
                     })
                     .collect(),
-                return_type: match function.return_type {
+                return_type: match &function.return_type {
                     primer_ir::ReturnType::Void => None,
-                    primer_ir::ReturnType::Value(ty) => Some(ty.into()),
+                    primer_ir::ReturnType::Value(ty) => Some(ty.clone().into()),
                 },
                 body: function.body.iter().map(lower_statement).collect(),
             })
@@ -52,7 +52,7 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
         visited[id] = true;
         let definition = &program.type_definitions[id];
         for field in &definition.fields {
-            if let primer_ir::Type::Named(dependency) = field.ty {
+            if let Some(dependency) = named_type_dependency(&field.ty) {
                 visit(dependency.0, program, visited, definitions);
             }
         }
@@ -64,7 +64,7 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
                 .iter()
                 .map(|field| FieldDefinition {
                     name: field.name.clone(),
-                    ty: field.ty.into(),
+                    ty: field.ty.clone().into(),
                 })
                 .collect(),
         });
@@ -78,13 +78,24 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
     definitions
 }
 
+fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
+    match ty {
+        primer_ir::Type::Named(id) => Some(*id),
+        primer_ir::Type::Array { element, .. } => named_type_dependency(element),
+        primer_ir::Type::Bool
+        | primer_ir::Type::I64
+        | primer_ir::Type::F32
+        | primer_ir::Type::F64 => None,
+    }
+}
+
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
     match &statement.kind {
         primer_ir::StatementKind::Binding {
             name, ty, value, ..
         } => Statement::Binding {
             name: name.clone(),
-            ty: (*ty).into(),
+            ty: ty.clone().into(),
             value: lower_expr(value),
         },
 
@@ -94,7 +105,7 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
         },
 
         primer_ir::StatementKind::Print { value } => Statement::Print {
-            format: print_format(value.ty),
+            format: print_format(&value.ty),
             value: lower_expr(value),
         },
 
@@ -206,12 +217,12 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
     };
 
     Expr {
-        ty: expr.ty.into(),
+        ty: expr.ty.clone().into(),
         kind,
     }
 }
 
-fn print_format(ty: primer_ir::Type) -> PrintFormat {
+fn print_format(ty: &primer_ir::Type) -> PrintFormat {
     match ty {
         primer_ir::Type::Bool => PrintFormat::Bool,
         primer_ir::Type::I64 => PrintFormat::I64,
@@ -232,22 +243,30 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: match element {
-                    primer_ir::ArrayElementType::Bool => ArrayElementType::Bool,
-                    primer_ir::ArrayElementType::I64 => ArrayElementType::I64,
-                    primer_ir::ArrayElementType::F32 => ArrayElementType::Float,
-                    primer_ir::ArrayElementType::F64 => ArrayElementType::Double,
-                },
+                element: array_element_type(&element),
                 length,
             },
         }
     }
 }
 
+fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
+    match element {
+        primer_ir::Type::Bool => ArrayElementType::Bool,
+        primer_ir::Type::I64 => ArrayElementType::I64,
+        primer_ir::Type::F32 => ArrayElementType::Float,
+        primer_ir::Type::F64 => ArrayElementType::Double,
+        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
+        }
+    }
+}
+
 fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
-    fn add(ty: primer_ir::Type, types: &mut Vec<Type>) {
+    fn add(ty: &primer_ir::Type, types: &mut Vec<Type>) {
         if matches!(ty, primer_ir::Type::Array { .. }) {
-            let ty = ty.into();
+            let ty = ty.clone().into();
             if !types.contains(&ty) {
                 types.push(ty);
             }
@@ -255,7 +274,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     }
 
     fn visit_expr(expr: &primer_ir::Expr, types: &mut Vec<Type>) {
-        add(expr.ty, types);
+        add(&expr.ty, types);
         match &expr.kind {
             primer_ir::ExprKind::Array(values) => {
                 for value in values {
@@ -293,7 +312,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     fn visit_statement(statement: &primer_ir::Statement, types: &mut Vec<Type>) {
         match &statement.kind {
             primer_ir::StatementKind::Binding { ty, value, .. } => {
-                add(*ty, types);
+                add(ty, types);
                 visit_expr(value, types);
             }
             primer_ir::StatementKind::Assignment { value, .. }
@@ -340,6 +359,11 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     }
 
     let mut types = Vec::new();
+    for definition in &program.type_definitions {
+        for field in &definition.fields {
+            add(&field.ty, &mut types);
+        }
+    }
     for function in &program.function_definitions {
         for statement in &function.body {
             visit_statement(statement, &mut types);
