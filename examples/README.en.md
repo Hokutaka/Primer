@@ -4,6 +4,16 @@
 
 This directory contains programs that can be read and executed with the current Primer language. Each example demonstrates a different piece of syntax or method of computation in a small program.
 
+## Run all examples
+
+From the repository root, run the following command to display each example's name, output, status, and a final summary:
+
+```powershell
+.\scripts\run-examples.ps1
+```
+
+Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an already built Primer executable.
+
 ## Basics
 
 | Example | Demonstrates |

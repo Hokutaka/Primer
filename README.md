@@ -126,6 +126,14 @@ print(inferred);
 
 現在の機能で動く基礎、数値計算、アルゴリズムのプログラムは、[サンプル一覧](examples/README.md)にまとめています。
 
+すべてのサンプルと実行結果をまとめて確認するには、リポジトリのルートで次を実行します。
+
+```powershell
+.\scripts\run-examples.ps1
+```
+
+`-Pattern "matrix*.prim"`で、名前が一致するサンプルだけを実行できます。自動テストとして期待値まで検証する場合は`cargo test --test examples`を使います。
+
 型の指定は常に必要です。型を省略する代わりに、`infer`で型推論を明示的に要求します。
 
 ```primer
