@@ -1,4 +1,6 @@
-use super::ir::{BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type};
+use super::ir::{
+    Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
+};
 
 pub fn emit(module: &Module) -> String {
     let mut output = initial_data(uses_bool_print(module));
@@ -201,12 +203,56 @@ fn emit_instruction(
             emit_store_parameter(*index, *ty, *offset, output);
         }
 
+        Instruction::StoreAggregateParameter {
+            index,
+            slots,
+            destination_offset,
+        } => {
+            let register = integer_argument_register(*index);
+            for slot in 0..*slots {
+                let source = -8 * slot as isize;
+                let destination = destination_offset - 8 * slot as isize;
+                output.push_str(&format!("  movq {source}({register}), %r10\n"));
+                output.push_str(&format!("  movq %r10, {destination}(%rbp)\n"));
+            }
+        }
+
+        Instruction::StoreAggregateReturnPointer { offset } => {
+            output.push_str(&format!("  movq %rax, {offset}(%rbp)\n"));
+        }
+
+        Instruction::CopyToAggregateReturn {
+            source_offset,
+            slots,
+            pointer_offset,
+        } => {
+            output.push_str(&format!("  movq {pointer_offset}(%rbp), %r11\n"));
+            for slot in 0..*slots {
+                let source = source_offset - 8 * slot as isize;
+                let destination = -8 * slot as isize;
+                output.push_str(&format!("  movq {source}(%rbp), %r10\n"));
+                output.push_str(&format!("  movq %r10, {destination}(%r11)\n"));
+            }
+        }
+
         Instruction::Call {
             function_id,
             arguments,
+            aggregate_result_offset,
         } => {
-            for (index, (ty, offset)) in arguments.iter().enumerate() {
-                emit_load_argument(index, *ty, *offset, output);
+            for (index, argument) in arguments.iter().enumerate() {
+                match argument {
+                    Argument::Scalar { ty, offset } => {
+                        emit_load_argument(index, *ty, *offset, output)
+                    }
+                    Argument::Aggregate { offset } => {
+                        let register = integer_argument_register(index);
+                        output.push_str(&format!("  leaq {offset}(%rbp), {register}\n"));
+                    }
+                }
+            }
+            if let Some(offset) = aggregate_result_offset {
+                output.push_str(&format!("  leaq {offset}(%rbp), %rax\n"));
             }
             output.push_str(&format!(
                 "  callq {}\n",
@@ -358,7 +404,7 @@ fn block_label(prefix: &str, id: usize) -> String {
 fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut String) {
     match ty {
         Type::Bool | Type::I64 => {
-            let register = ["%rcx", "%rdx", "%r8", "%r9"][index];
+            let register = integer_argument_register(index);
             output.push_str(&format!("  movq {register}, {offset}(%rbp)\n"));
         }
         Type::F32 => {
@@ -373,7 +419,7 @@ fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut Stri
 fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String) {
     match ty {
         Type::Bool | Type::I64 => {
-            let register = ["%rcx", "%rdx", "%r8", "%r9"][index];
+            let register = integer_argument_register(index);
             output.push_str(&format!("  movq {offset}(%rbp), {register}\n"));
         }
         Type::F32 => {
@@ -383,6 +429,10 @@ fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String
             output.push_str(&format!("  movsd {offset}(%rbp), %xmm{index}\n"));
         }
     }
+}
+
+fn integer_argument_register(index: usize) -> &'static str {
+    ["%rcx", "%rdx", "%r8", "%r9"][index]
 }
 
 fn initial_data(include_bool_text: bool) -> String {

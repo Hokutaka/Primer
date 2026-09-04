@@ -1,3 +1,0 @@
-fn first(values: [i64; 2]) -> i64 {
-    return values[0];
-}

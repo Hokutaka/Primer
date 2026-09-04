@@ -27,6 +27,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         program,
         locations,
         next_address,
+        aggregate_return_address: None,
         control: ControlContext {
             next_loop_id: 0,
             loops: Vec::new(),
@@ -60,19 +61,91 @@ fn lower_function(
     let mut locals = Vec::new();
     let mut locations = HashMap::new();
     let mut name_counts = HashMap::new();
-    let parameters = function
-        .parameters
-        .iter()
-        .map(|parameter| {
-            let ty = scalar_type(&parameter.ty);
-            locations.insert(parameter.id, Location::Scalar(parameter.name.clone()));
-            name_counts.insert(parameter.name.clone(), 1);
-            Local {
-                name: parameter.name.clone(),
-                ty,
+    let mut parameters = Vec::new();
+    let aggregate_return_type = match &function.return_type {
+        primer_ir::ReturnType::Value(
+            ty @ (primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }),
+        ) => Some(ty),
+        primer_ir::ReturnType::Void
+        | primer_ir::ReturnType::Value(
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64,
+        ) => None,
+    };
+    let aggregate_return_pointer = aggregate_return_type.map(|_| {
+        parameters.push(Local {
+            name: "abi.result".into(),
+            ty: Type::Pointer,
+        });
+        let address = *next_address;
+        *next_address += 4;
+        address
+    });
+    let mut aggregate_parameters = Vec::new();
+    for parameter in &function.parameters {
+        name_counts.insert(parameter.name.clone(), 1);
+        match &parameter.ty {
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => {
+                locations.insert(parameter.id, Location::Scalar(parameter.name.clone()));
+                parameters.push(Local {
+                    name: parameter.name.clone(),
+                    ty: scalar_type(&parameter.ty),
+                });
             }
-        })
-        .collect();
+            primer_ir::Type::Named(type_id) => {
+                parameters.push(Local {
+                    name: parameter.name.clone(),
+                    ty: Type::Pointer,
+                });
+                let source_pointer = *next_address;
+                *next_address += 4;
+                let destination = *next_address;
+                *next_address += type_size(program, &parameter.ty);
+                locations.insert(
+                    parameter.id,
+                    Location::Aggregate {
+                        type_id: type_id.0,
+                        address: destination,
+                    },
+                );
+                aggregate_parameters.push((
+                    parameter.name.clone(),
+                    source_pointer,
+                    destination,
+                    parameter.ty.clone(),
+                ));
+            }
+            primer_ir::Type::Array { element, length } => {
+                parameters.push(Local {
+                    name: parameter.name.clone(),
+                    ty: Type::Pointer,
+                });
+                let source_pointer = *next_address;
+                *next_address += 4;
+                let destination = *next_address;
+                *next_address += type_size(program, &parameter.ty);
+                locations.insert(
+                    parameter.id,
+                    Location::Array {
+                        element: array_element_type(element),
+                        length: *length,
+                        address: destination,
+                    },
+                );
+                aggregate_parameters.push((
+                    parameter.name.clone(),
+                    source_pointer,
+                    destination,
+                    parameter.ty.clone(),
+                ));
+            }
+        }
+    }
     collect_locations(
         &function.body,
         program,
@@ -86,12 +159,29 @@ fn lower_function(
         program,
         locations,
         next_address: *next_address,
+        aggregate_return_address: aggregate_return_pointer.map(Address::Indirect),
         control: ControlContext {
             next_loop_id: 0,
             loops: Vec::new(),
         },
     };
     let mut instructions = Vec::new();
+    if let Some(pointer) = aggregate_return_pointer {
+        instructions.push(Instruction::I32Const(pointer as i32));
+        instructions.push(Instruction::LocalGet("abi.result".into()));
+        instructions.push(Instruction::I32Store { offset: 0 });
+    }
+    for (name, source_pointer, destination, ty) in aggregate_parameters {
+        instructions.push(Instruction::I32Const(source_pointer as i32));
+        instructions.push(Instruction::LocalGet(name));
+        instructions.push(Instruction::I32Store { offset: 0 });
+        context.copy_value(
+            &ty,
+            Address::Indirect(source_pointer),
+            Address::Static(destination),
+            &mut instructions,
+        );
+    }
     context.lower_statements(&function.body, &mut instructions);
     if matches!(function.return_type, primer_ir::ReturnType::Void)
         && !matches!(instructions.last(), Some(Instruction::Return))
@@ -106,7 +196,15 @@ fn lower_function(
         parameters,
         return_type: match &function.return_type {
             primer_ir::ReturnType::Void => None,
-            primer_ir::ReturnType::Value(ty) => Some(scalar_type(ty)),
+            primer_ir::ReturnType::Value(
+                ty @ (primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64),
+            ) => Some(scalar_type(ty)),
+            primer_ir::ReturnType::Value(
+                primer_ir::Type::Named(_) | primer_ir::Type::Array { .. },
+            ) => None,
         },
         locals,
         instructions,
@@ -163,6 +261,7 @@ struct LoweringContext<'a> {
     program: &'a primer_ir::Program,
     locations: HashMap<primer_ir::BindingId, Location>,
     next_address: usize,
+    aggregate_return_address: Option<Address>,
     control: ControlContext,
 }
 
@@ -363,20 +462,19 @@ impl LoweringContext<'_> {
                 arguments,
                 ..
             } => {
-                for argument in arguments {
-                    let Value::Scalar(_) = self.lower_expr(argument, instructions) else {
-                        unreachable!("function signatures currently use scalar types")
-                    };
-                }
-                instructions.push(Instruction::Call {
-                    function_id: function_id.0,
-                });
+                self.lower_call(function_id.0, arguments, None, instructions);
             }
             primer_ir::StatementKind::Return { value } => {
                 if let Some(value) = value {
-                    let Value::Scalar(_) = self.lower_expr(value, instructions) else {
-                        unreachable!("function signatures currently use scalar types")
-                    };
+                    match self.lower_expr(value, instructions) {
+                        Value::Scalar(_) => {}
+                        Value::Aggregate { address, .. } | Value::Array { address, .. } => {
+                            let destination = self
+                                .aggregate_return_address
+                                .expect("aggregate functions have a hidden result address");
+                            self.copy_value(&value.ty, address, destination, instructions);
+                        }
+                    }
                 }
                 instructions.push(Instruction::Return);
             }
@@ -398,7 +496,9 @@ impl LoweringContext<'_> {
                 match ty {
                     Type::F32 => instructions.push(Instruction::F32Const(text.clone())),
                     Type::F64 => instructions.push(Instruction::F64Const(text.clone())),
-                    Type::Bool | Type::I64 => unreachable!("a float literal has a float type"),
+                    Type::Bool | Type::I64 | Type::Pointer => {
+                        unreachable!("a float literal has a float type")
+                    }
                 }
                 Value::Scalar(ty)
             }
@@ -695,16 +795,86 @@ impl LoweringContext<'_> {
                 function_id,
                 arguments,
                 ..
-            } => {
-                for argument in arguments {
-                    let Value::Scalar(_) = self.lower_expr(argument, instructions) else {
-                        unreachable!("function signatures currently use scalar types")
-                    };
+            } => self
+                .lower_call(function_id.0, arguments, Some(&expr.ty), instructions)
+                .expect("call expressions produce a value"),
+        }
+    }
+
+    fn lower_call(
+        &mut self,
+        function_id: usize,
+        arguments: &[primer_ir::Expr],
+        result_type: Option<&primer_ir::Type>,
+        instructions: &mut Vec<Instruction>,
+    ) -> Option<Value> {
+        let aggregate_result = result_type.and_then(|ty| match ty {
+            primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                let address = self.allocate(type_size(self.program, ty));
+                instructions.push(Instruction::I32Const(address as i32));
+                Some((ty, address))
+            }
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => None,
+        });
+
+        for argument in arguments {
+            match self.lower_expr(argument, instructions) {
+                Value::Scalar(_) => {}
+                Value::Aggregate { address, .. } | Value::Array { address, .. } => {
+                    self.emit_address(address, instructions);
                 }
-                instructions.push(Instruction::Call {
-                    function_id: function_id.0,
-                });
-                Value::Scalar(scalar_type(&expr.ty))
+            }
+        }
+        instructions.push(Instruction::Call { function_id });
+
+        if let Some((ty, address)) = aggregate_result {
+            return Some(match ty {
+                primer_ir::Type::Named(type_id) => Value::Aggregate {
+                    type_id: type_id.0,
+                    address: Address::Static(address),
+                },
+                primer_ir::Type::Array { element, length } => Value::Array {
+                    element: array_element_type(element),
+                    length: *length,
+                    address: Address::Static(address),
+                },
+                primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
+            });
+        }
+
+        result_type.map(|ty| Value::Scalar(scalar_type(ty)))
+    }
+
+    fn copy_value(
+        &mut self,
+        ty: &primer_ir::Type,
+        source: Address,
+        destination: Address,
+        instructions: &mut Vec<Instruction>,
+    ) {
+        match ty {
+            primer_ir::Type::Named(type_id) => {
+                self.copy_aggregate(type_id.0, source, destination, instructions)
+            }
+            primer_ir::Type::Array { element, length } => self.copy_array(
+                &array_element_type(element),
+                *length,
+                source,
+                destination,
+                instructions,
+            ),
+            scalar => {
+                let ty = scalar_type(scalar);
+                self.emit_address(destination, instructions);
+                self.emit_address(source, instructions);
+                instructions.push(load_instruction(ty, 0));
+                instructions.push(store_instruction(ty, 0));
             }
         }
     }
@@ -1004,6 +1174,7 @@ fn load_instruction(ty: Type, offset: u32) -> Instruction {
         Type::I64 => Instruction::I64Load { offset },
         Type::F32 => Instruction::F32Load { offset },
         Type::F64 => Instruction::F64Load { offset },
+        Type::Pointer => unreachable!("pointers are not loaded as Primer scalar values"),
     }
 }
 
@@ -1013,6 +1184,7 @@ fn store_instruction(ty: Type, offset: u32) -> Instruction {
         Type::I64 => Instruction::I64Store { offset },
         Type::F32 => Instruction::F32Store { offset },
         Type::F64 => Instruction::F64Store { offset },
+        Type::Pointer => unreachable!("pointers are not stored as Primer scalar values"),
     }
 }
 

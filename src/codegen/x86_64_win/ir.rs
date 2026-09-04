@@ -41,6 +41,18 @@ pub struct Function {
     pub instructions: Vec<Instruction>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Argument {
+    Scalar {
+        ty: Type,
+        offset: isize,
+    },
+    /// 呼び出し先が自身のstackへコピーする値のaddressです。
+    Aggregate {
+        offset: isize,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FloatConstant {
     F32 { id: usize, bits: u32 },
@@ -86,9 +98,24 @@ pub enum Instruction {
         ty: Type,
         offset: isize,
     },
+    StoreAggregateParameter {
+        index: usize,
+        slots: usize,
+        destination_offset: isize,
+    },
+    /// 内部呼び出し規約で`RAX`に渡された集約戻り値の保存先を退避します。
+    StoreAggregateReturnPointer {
+        offset: isize,
+    },
+    CopyToAggregateReturn {
+        source_offset: isize,
+        slots: usize,
+        pointer_offset: isize,
+    },
     Call {
         function_id: usize,
-        arguments: Vec<(Type, isize)>,
+        arguments: Vec<Argument>,
+        aggregate_result_offset: Option<isize>,
     },
     Return,
 

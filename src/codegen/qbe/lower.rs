@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Module, Operand, Parameter, PrintFormat, Slot,
-    Temp, Type,
+    BinaryOp, CompareOp, Function, Instruction, Module, Operand, Parameter, ParameterPassing,
+    PrintFormat, Slot, Temp, Type,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -69,7 +69,17 @@ fn lower_function(
             name_counts.insert(parameter.name.clone(), 1);
             Parameter {
                 name: parameter.name.clone(),
-                ty: scalar_type(&parameter.ty),
+                passing: match &parameter.ty {
+                    primer_ir::Type::Bool
+                    | primer_ir::Type::I64
+                    | primer_ir::Type::F32
+                    | primer_ir::Type::F64 => ParameterPassing::Scalar(scalar_type(&parameter.ty)),
+                    primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                        ParameterPassing::Aggregate {
+                            size: type_size(program, &parameter.ty),
+                        }
+                    }
+                },
                 slot,
             }
         })
@@ -105,7 +115,27 @@ fn lower_function(
         parameters,
         return_type: match &function.return_type {
             primer_ir::ReturnType::Void => None,
-            primer_ir::ReturnType::Value(ty) => Some(scalar_type(ty)),
+            primer_ir::ReturnType::Value(
+                ty @ (primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64),
+            ) => Some(scalar_type(ty)),
+            primer_ir::ReturnType::Value(
+                primer_ir::Type::Named(_) | primer_ir::Type::Array { .. },
+            ) => None,
+        },
+        aggregate_return_size: match &function.return_type {
+            primer_ir::ReturnType::Value(
+                ty @ (primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }),
+            ) => Some(type_size(program, ty)),
+            primer_ir::ReturnType::Void
+            | primer_ir::ReturnType::Value(
+                primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64,
+            ) => None,
         },
         slots: lowerer.slots,
         instructions: lowerer.instructions,
@@ -387,21 +417,29 @@ impl Lowerer<'_> {
                 arguments,
                 ..
             } => {
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| self.lower_scalar_expr(argument))
-                    .collect();
-                self.instructions.push(Instruction::Call {
-                    dest: None,
-                    function_id: function_id.0,
-                    return_type: None,
-                    arguments,
-                });
+                self.lower_call(function_id.0, arguments, None);
                 false
             }
             primer_ir::StatementKind::Return { value } => {
-                let value = value.as_ref().map(|value| self.lower_scalar_expr(value));
-                self.instructions.push(Instruction::Return { value });
+                match value.as_ref().map(|value| (value, self.lower_expr(value))) {
+                    Some((_, Value::Scalar { ty, operand })) => {
+                        self.instructions.push(Instruction::Return {
+                            value: Some((ty, operand)),
+                        });
+                    }
+                    Some((
+                        value,
+                        Value::Aggregate { address, .. } | Value::Array { address, .. },
+                    )) => {
+                        self.instructions.push(Instruction::Blit {
+                            source: address,
+                            destination: Operand::ReturnPointer,
+                            size: type_size(self.program, &value.ty),
+                        });
+                        self.instructions.push(Instruction::Return { value: None });
+                    }
+                    None => self.instructions.push(Instruction::Return { value: None }),
+                }
                 true
             }
         }
@@ -745,25 +783,85 @@ impl Lowerer<'_> {
                 function_id,
                 arguments,
                 ..
-            } => {
-                let arguments = arguments
-                    .iter()
-                    .map(|argument| self.lower_scalar_expr(argument))
-                    .collect();
-                let ty = scalar_type(&expr.ty);
-                let dest = self.next_temp();
-                self.instructions.push(Instruction::Call {
-                    dest: Some(dest),
-                    function_id: function_id.0,
-                    return_type: Some(ty),
-                    arguments,
-                });
-                Value::Scalar {
-                    ty,
-                    operand: Operand::Temp(dest),
+            } => self
+                .lower_call(function_id.0, arguments, Some(&expr.ty))
+                .expect("call expressions produce a value"),
+        }
+    }
+
+    fn lower_call(
+        &mut self,
+        function_id: usize,
+        arguments: &[primer_ir::Expr],
+        result_type: Option<&primer_ir::Type>,
+    ) -> Option<Value> {
+        let mut lowered_arguments = Vec::new();
+        let aggregate_result = result_type.and_then(|ty| match ty {
+            primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+                let slot = self.allocate_aggregate(type_size(self.program, ty));
+                lowered_arguments.push((Type::Pointer, Operand::Slot(slot)));
+                Some((ty, slot))
+            }
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => None,
+        });
+
+        for argument in arguments {
+            match self.lower_expr(argument) {
+                Value::Scalar { ty, operand } => lowered_arguments.push((ty, operand)),
+                Value::Aggregate { address, .. } | Value::Array { address, .. } => {
+                    lowered_arguments.push((Type::Pointer, address));
                 }
             }
         }
+
+        let (dest, return_type, scalar_result) = match result_type {
+            Some(
+                ty @ (primer_ir::Type::Bool
+                | primer_ir::Type::I64
+                | primer_ir::Type::F32
+                | primer_ir::Type::F64),
+            ) => {
+                let ty = scalar_type(ty);
+                let dest = self.next_temp();
+                (Some(dest), Some(ty), Some((ty, dest)))
+            }
+            Some(primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }) | None => {
+                (None, None, None)
+            }
+        };
+
+        self.instructions.push(Instruction::Call {
+            dest,
+            function_id,
+            return_type,
+            arguments: lowered_arguments,
+        });
+
+        if let Some((ty, dest)) = scalar_result {
+            return Some(Value::Scalar {
+                ty,
+                operand: Operand::Temp(dest),
+            });
+        }
+
+        aggregate_result.map(|(ty, slot)| match ty {
+            primer_ir::Type::Named(id) => Value::Aggregate {
+                type_id: id.0,
+                address: Operand::Slot(slot),
+            },
+            primer_ir::Type::Array { element, length } => Value::Array {
+                element: array_element_type(element),
+                length: *length,
+                address: Operand::Slot(slot),
+            },
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
+        })
     }
 
     fn lower_scalar_expr(&mut self, expr: &primer_ir::Expr) -> (Type, Operand) {
@@ -823,6 +921,7 @@ impl Lowerer<'_> {
                     value: operand,
                 });
             }
+            Type::Pointer => unreachable!("pointers are not printable Primer values"),
         }
     }
 

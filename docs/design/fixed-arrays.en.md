@@ -23,9 +23,10 @@ The current fixed-array feature supports:
 - reading one element with an `i64` index;
 - copying a complete array into another binding;
 - reassigning a complete array to a compatible `mut` binding;
+- using arrays as function parameters and results;
 - aggregation and linear search with loops.
 
-Direct element assignment, dynamic lengths, and arrays crossing function boundaries are outside the current scope.
+Direct element assignment and dynamic lengths are outside the current scope.
 
 ## Design decisions
 
@@ -109,7 +110,6 @@ Bounds checks stop execution before an invalid memory access. Arrays do not, how
 - Length is a positive integer.
 - Empty array literals are unavailable.
 - Direct element assignment is unavailable.
-- Array parameters and results are unavailable.
 - Whole-array comparison and `print` are unavailable.
 
 Unsupported forms are diagnosed in the frontend instead of acquiring different behavior in different backends.

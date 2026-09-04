@@ -16,6 +16,7 @@ This directory contains programs that can be read and executed with the current 
 | [for_sum.prim](for_sum.prim) | `for` and assignment as its start statement |
 | [product-point.prim](product-point.prim) | named product types, defaults, and field access |
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
+| [function_values.prim](function_values.prim) | passing product types and nested fixed arrays through functions as values |
 | [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
 | [product_arrays.prim](product_arrays.prim) | point arrays, indexed product values, and array value copies |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | nested fixed arrays and two-dimensional indexing |

@@ -1,0 +1,193 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+function $primer_fn_move_x_0(l %result, l %arg0, l %arg1) {
+@start
+  %slot_point =l alloc8 16
+  %slot_amount =l alloc8 8
+  %slot_aggregate_tmp0 =l alloc8 16
+  blit %arg0, %slot_point, 16
+  storel %arg1, %slot_amount
+  %tmp0 =l loadl %slot_point
+  %tmp1 =l loadl %slot_amount
+  %tmp2 =l add %tmp0, %tmp1
+  storel %tmp2, %slot_aggregate_tmp0
+  %tmp3 =l add %slot_point, 8
+  %tmp4 =l loadl %tmp3
+  %tmp5 =l add %slot_aggregate_tmp0, 8
+  storel %tmp4, %tmp5
+  blit %slot_aggregate_tmp0, %result, 16
+  ret
+}
+
+function $primer_fn_move_twice_1(l %result, l %arg0, l %arg1) {
+@start
+  %slot_point =l alloc8 16
+  %slot_amount =l alloc8 8
+  %slot_aggregate_tmp0 =l alloc8 16
+  %slot_aggregate_tmp1 =l alloc8 16
+  blit %arg0, %slot_point, 16
+  storel %arg1, %slot_amount
+  %tmp0 =l loadl %slot_amount
+  call $primer_fn_move_x_0(l %slot_aggregate_tmp1, l %slot_point, l %tmp0)
+  %tmp1 =l loadl %slot_amount
+  call $primer_fn_move_x_0(l %slot_aggregate_tmp0, l %slot_aggregate_tmp1, l %tmp1)
+  blit %slot_aggregate_tmp0, %result, 16
+  ret
+}
+
+function $primer_fn_first_row_2(l %result, l %arg0) {
+@start
+  %slot_matrix =l alloc8 32
+  blit %arg0, %slot_matrix, 32
+  %tmp0 =w csltl 0, 0
+  jnz %tmp0, @block2, @block0
+@block0 # array_index_non_negative
+  %tmp1 =w csgel 0, 2
+  jnz %tmp1, @block2, @block1
+@block2 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block1 # array_index_in_bounds
+  %tmp2 =l mul 0, 16
+  %tmp3 =l add %slot_matrix, %tmp2
+  blit %tmp3, %result, 16
+  ret
+}
+
+function $primer_fn_duplicate_3(l %result, l %arg0) {
+@start
+  %slot_row =l alloc8 16
+  %slot_aggregate_tmp0 =l alloc8 32
+  blit %arg0, %slot_row, 16
+  blit %slot_row, %slot_aggregate_tmp0, 16
+  %tmp0 =l add %slot_aggregate_tmp0, 16
+  blit %slot_row, %tmp0, 16
+  blit %slot_aggregate_tmp0, %result, 32
+  ret
+}
+
+function $primer_fn_duplicate_first_row_4(l %result, l %arg0) {
+@start
+  %slot_matrix =l alloc8 32
+  %slot_aggregate_tmp0 =l alloc8 32
+  %slot_aggregate_tmp1 =l alloc8 16
+  blit %arg0, %slot_matrix, 32
+  call $primer_fn_first_row_2(l %slot_aggregate_tmp1, l %slot_matrix)
+  call $primer_fn_duplicate_3(l %slot_aggregate_tmp0, l %slot_aggregate_tmp1)
+  blit %slot_aggregate_tmp0, %result, 32
+  ret
+}
+
+export function w $main() {
+@start
+  %slot_original =l alloc8 16
+  %slot_moved =l alloc8 16
+  %slot_matrix =l alloc8 32
+  %slot_rows =l alloc8 32
+  %slot_aggregate_tmp0 =l alloc8 16
+  %slot_aggregate_tmp1 =l alloc8 16
+  %slot_aggregate_tmp2 =l alloc8 32
+  %slot_aggregate_tmp3 =l alloc8 16
+  %slot_aggregate_tmp4 =l alloc8 16
+  %slot_aggregate_tmp5 =l alloc8 32
+  storel 2, %slot_aggregate_tmp0
+  %tmp0 =l add %slot_aggregate_tmp0, 8
+  storel 3, %tmp0
+  blit %slot_aggregate_tmp0, %slot_original, 16
+  call $primer_fn_move_twice_1(l %slot_aggregate_tmp1, l %slot_original, l 5)
+  blit %slot_aggregate_tmp1, %slot_moved, 16
+  storel 1, %slot_aggregate_tmp3
+  %tmp1 =l add %slot_aggregate_tmp3, 8
+  storel 2, %tmp1
+  blit %slot_aggregate_tmp3, %slot_aggregate_tmp2, 16
+  storel 3, %slot_aggregate_tmp4
+  %tmp2 =l add %slot_aggregate_tmp4, 8
+  storel 4, %tmp2
+  %tmp3 =l add %slot_aggregate_tmp2, 16
+  blit %slot_aggregate_tmp4, %tmp3, 16
+  blit %slot_aggregate_tmp2, %slot_matrix, 32
+  call $primer_fn_duplicate_first_row_4(l %slot_aggregate_tmp5, l %slot_matrix)
+  blit %slot_aggregate_tmp5, %slot_rows, 32
+  %tmp4 =l loadl %slot_original
+  %tmp5 =w call $printf(l $fmt_i64, ..., l %tmp4)
+  %tmp6 =l loadl %slot_moved
+  %tmp7 =w call $printf(l $fmt_i64, ..., l %tmp6)
+  %tmp8 =l add %slot_moved, 8
+  %tmp9 =l loadl %tmp8
+  %tmp10 =w call $printf(l $fmt_i64, ..., l %tmp9)
+  %tmp11 =w csltl 1, 0
+  jnz %tmp11, @block2, @block0
+@block0 # array_index_non_negative
+  %tmp12 =w csgel 1, 2
+  jnz %tmp12, @block2, @block1
+@block2 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block1 # array_index_in_bounds
+  %tmp13 =l mul 1, 16
+  %tmp14 =l add %slot_matrix, %tmp13
+  %tmp15 =w csltl 0, 0
+  jnz %tmp15, @block5, @block3
+@block3 # array_index_non_negative
+  %tmp16 =w csgel 0, 2
+  jnz %tmp16, @block5, @block4
+@block5 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block4 # array_index_in_bounds
+  %tmp17 =l mul 0, 8
+  %tmp18 =l add %tmp14, %tmp17
+  %tmp19 =l loadl %tmp18
+  %tmp20 =w call $printf(l $fmt_i64, ..., l %tmp19)
+  %tmp21 =w csltl 0, 0
+  jnz %tmp21, @block8, @block6
+@block6 # array_index_non_negative
+  %tmp22 =w csgel 0, 2
+  jnz %tmp22, @block8, @block7
+@block8 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block7 # array_index_in_bounds
+  %tmp23 =l mul 0, 16
+  %tmp24 =l add %slot_rows, %tmp23
+  %tmp25 =w csltl 1, 0
+  jnz %tmp25, @block11, @block9
+@block9 # array_index_non_negative
+  %tmp26 =w csgel 1, 2
+  jnz %tmp26, @block11, @block10
+@block11 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block10 # array_index_in_bounds
+  %tmp27 =l mul 1, 8
+  %tmp28 =l add %tmp24, %tmp27
+  %tmp29 =l loadl %tmp28
+  %tmp30 =w call $printf(l $fmt_i64, ..., l %tmp29)
+  %tmp31 =w csltl 1, 0
+  jnz %tmp31, @block14, @block12
+@block12 # array_index_non_negative
+  %tmp32 =w csgel 1, 2
+  jnz %tmp32, @block14, @block13
+@block14 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block13 # array_index_in_bounds
+  %tmp33 =l mul 1, 16
+  %tmp34 =l add %slot_rows, %tmp33
+  %tmp35 =w csltl 0, 0
+  jnz %tmp35, @block17, @block15
+@block15 # array_index_non_negative
+  %tmp36 =w csgel 0, 2
+  jnz %tmp36, @block17, @block16
+@block17 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block16 # array_index_in_bounds
+  %tmp37 =l mul 0, 8
+  %tmp38 =l add %tmp34, %tmp37
+  %tmp39 =l loadl %tmp38
+  %tmp40 =w call $printf(l $fmt_i64, ..., l %tmp39)
+  ret 0
+}

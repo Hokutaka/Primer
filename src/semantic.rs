@@ -240,9 +240,6 @@ fn resolve_function_definitions(
                 ));
             }
             let ty = resolve_type_ref(&parameter.type_ref, type_names)?;
-            if let Some(message) = unsupported_signature_type_message(&ty) {
-                return Err(Diagnostic::new(message, parameter.type_ref.span));
-            }
             parameters.push(ParameterDefinition {
                 name: parameter.name.clone(),
                 name_span: parameter.name_span,
@@ -254,9 +251,6 @@ fn resolve_function_definitions(
             ast::ReturnTypeRef::Void(_) => ReturnType::Void,
             ast::ReturnTypeRef::Value(type_ref) => {
                 let ty = resolve_type_ref(type_ref, type_names)?;
-                if let Some(message) = unsupported_signature_type_message(&ty) {
-                    return Err(Diagnostic::new(message, type_ref.span));
-                }
                 ReturnType::Value(ty)
             }
         };
@@ -568,14 +562,6 @@ fn resolve_type_ref(
         element: Box::new(element),
         length,
     })
-}
-
-fn unsupported_signature_type_message(ty: &Type) -> Option<&'static str> {
-    match ty {
-        Type::Named(_) => Some("product types in function signatures are not supported yet"),
-        Type::Array { .. } => Some("array types in function signatures are not supported yet"),
-        Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
-    }
 }
 
 fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {

@@ -1,0 +1,106 @@
+; Primer bytecode v0.1
+
+.type 0 Point
+.field 0.0 x i64
+.field 0.1 y i64
+
+.function 0 move_x(0:point:%Point@0, 1:amount:i64) -> %Point@0
+.slot 0 point %Point@0
+.slot 1 amount i64
+0000  load 0        ; point
+0001  field.get %Point@0.%x@0
+0002  load 1        ; amount
+0003  add.i64
+0004  load 0        ; point
+0005  field.get %Point@0.%y@1
+0006  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0007  return.value
+.end
+
+.function 1 move_twice(0:point:%Point@0, 1:amount:i64) -> %Point@0
+.slot 0 point %Point@0
+.slot 1 amount i64
+0000  load 0        ; point
+0001  load 1        ; amount
+0002  call 0 2  ; move_x
+0003  load 1        ; amount
+0004  call 0 2  ; move_x
+0005  return.value
+.end
+
+.function 2 first_row(0:matrix:[[i64; 2]; 2]) -> [i64; 2]
+.slot 0 matrix [[i64; 2]; 2]
+0000  load 0        ; matrix
+0001  push.i64 0
+0002  array.get [i64; 2] 2
+0003  return.value
+.end
+
+.function 3 duplicate(0:row:[i64; 2]) -> [[i64; 2]; 2]
+.slot 0 row [i64; 2]
+0000  load 0        ; row
+0001  load 0        ; row
+0002  array.new [i64; 2] 2
+0003  return.value
+.end
+
+.function 4 duplicate_first_row(0:matrix:[[i64; 2]; 2]) -> [[i64; 2]; 2]
+.slot 0 matrix [[i64; 2]; 2]
+0000  load 0        ; matrix
+0001  call 2 1  ; first_row
+0002  call 3 1  ; duplicate
+0003  return.value
+.end
+
+.slot 0 original %Point@0
+.slot 1 moved %Point@0
+.slot 2 matrix [[i64; 2]; 2]
+.slot 3 rows [[i64; 2]; 2]
+
+0000  push.i64 2
+0001  push.i64 3
+0002  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0003  store 0       ; original
+0004  load 0        ; original
+0005  push.i64 5
+0006  call 1 2  ; move_twice
+0007  store 1       ; moved
+0008  push.i64 1
+0009  push.i64 2
+0010  array.new i64 2
+0011  push.i64 3
+0012  push.i64 4
+0013  array.new i64 2
+0014  array.new [i64; 2] 2
+0015  store 2       ; matrix
+0016  load 2        ; matrix
+0017  call 4 1  ; duplicate_first_row
+0018  store 3       ; rows
+0019  load 0        ; original
+0020  field.get %Point@0.%x@0
+0021  print.i64
+0022  load 1        ; moved
+0023  field.get %Point@0.%x@0
+0024  print.i64
+0025  load 1        ; moved
+0026  field.get %Point@0.%y@1
+0027  print.i64
+0028  load 2        ; matrix
+0029  push.i64 1
+0030  array.get [i64; 2] 2
+0031  push.i64 0
+0032  array.get i64 2
+0033  print.i64
+0034  load 3        ; rows
+0035  push.i64 0
+0036  array.get [i64; 2] 2
+0037  push.i64 1
+0038  array.get i64 2
+0039  print.i64
+0040  load 3        ; rows
+0041  push.i64 1
+0042  array.get [i64; 2] 2
+0043  push.i64 0
+0044  array.get i64 2
+0045  print.i64
+0046  halt

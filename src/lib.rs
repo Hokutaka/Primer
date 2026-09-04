@@ -485,6 +485,64 @@ mod tests {
     }
 
     #[test]
+    fn product_values_cross_function_boundaries_by_value() {
+        let source = "
+            type Point { x: i64, y: i64, }
+
+            fn move_x(point: Point, amount: i64) -> Point {
+                return Point { x: point.x + amount, y: point.y, };
+            }
+
+            fn move_twice(point: Point, amount: i64) -> Point {
+                return move_x(move_x(point, amount), amount);
+            }
+
+            original: Point = Point { x: 2, y: 3, };
+            moved: Point = move_twice(original, 5);
+            print(original.x);
+            print(moved.x);
+            print(moved.y);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "2\n12\n3\n");
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn array_values_cross_function_boundaries_by_value() {
+        let source = "
+            fn first_row(matrix: [[i64; 2]; 2]) -> [i64; 2] {
+                return matrix[0];
+            }
+
+            fn duplicate(row: [i64; 2]) -> [[i64; 2]; 2] {
+                return [row, row];
+            }
+
+            fn duplicate_first_row(matrix: [[i64; 2]; 2]) -> [[i64; 2]; 2] {
+                return duplicate(first_row(matrix));
+            }
+
+            matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+            result: [[i64; 2]; 2] = duplicate_first_row(matrix);
+            print(matrix[1][0]);
+            print(result[0][1]);
+            print(result[1][0]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "3\n2\n1\n");
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
     fn preserves_the_origin_of_vm_errors_inside_functions() {
         let source = "fn fail(value: i64) -> i64 { return value / 0; }
                       answer: i64 = fail(1);";

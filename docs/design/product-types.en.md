@@ -417,6 +417,7 @@ The following scope is implemented:
 - aggregate construction from explicit and default values;
 - field access;
 - whole-aggregate binding and reassignment;
+- value passing through function parameters and results;
 - file-wide type-name resolution;
 - diagnostics for type cycles with infinite size by value;
 - types, fields, construction, field access, and value origins in Primer IR;
@@ -443,4 +444,4 @@ The following are not rejected. They are separated into later design decisions:
 
 ## Verification
 
-The product observation fixture transforms one source program containing defaults, value copying, whole-binding reassignment, and nested field access into every artifact. C, LLVM, and Windows x86-64 output can additionally be checked with `clang`. Environments without WAT or QBE runtimes verify their structured IR and snapshots.
+The product observation fixture transforms one source program containing defaults, value copying, whole-binding reassignment, and nested field access into every artifact. The function-boundary fixture uses product types and nested fixed arrays as parameters and results. C, LLVM, and Windows x86-64 output can additionally be checked with `clang`. Environments without WAT or QBE runtimes verify their structured IR and snapshots.

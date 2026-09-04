@@ -4,6 +4,8 @@ pub enum Type {
     I64,
     F32,
     F64,
+    /// 集約値をコピーする間だけ使うlinear memory上のaddressです。
+    Pointer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

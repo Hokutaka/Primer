@@ -11,6 +11,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "for-loop",
     "product-types",
     "functions",
+    "aggregate-functions",
     "fixed-arrays",
     "product-array-field",
     "product-array-elements",

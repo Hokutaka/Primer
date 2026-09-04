@@ -208,7 +208,7 @@ matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
 print(matrix[1][2]); // 6
 ```
 
-関数のparameterや戻り値に配列を使うこと、`values[0] = 1;`のように要素へ直接代入することは未対応です。これらは黙って別の意味にせず、診断として報告します。
+固定長配列は関数のparameterと戻り値にも使えます。関数をまたぐときも配列は値としてコピーされます。`values[0] = 1;`のように要素へ直接代入することは未対応です。
 
 詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
 
@@ -240,7 +240,7 @@ show(answer);
 
 トップレベルに実行文がある場合、compilerがentry pointを生成します。代わりに`fn main() -> void`を明示できますが、明示的な`main`とトップレベル実行文は同時に書けません。`main`はparameterを受け取れません。
 
-現在の関数シグネチャは`bool`、`i64`、`f32`、`f64`に限り、parameterは最大4個です。名前付きproduct typeや固定長配列の受け渡し、再帰、command-line argumentはまだサポートしません。未対応の書き方は黙って別の意味にせず、診断します。
+関数のparameterと戻り値には`bool`、`i64`、`f32`、`f64`、名前付きproduct type、固定長配列を使えます。product typeと配列は値として渡されるため、関数が受け取った値と呼び出し側の値は同じ変更可能な場所を共有しません。parameterは最大4個です。再帰とcommand-line argumentはまだサポートしません。未対応の書き方は黙って別の意味にせず、診断します。
 
 Primer IRとbytecodeでは、関数ID、parameterの束縛ID、呼び出し、戻り値を観測できます。各backendの成果物では、これらが関数シンボル、引数、ローカル領域、ABI上のレジスタやメモリへ変わった結果を観測できます。詳細は[関数の設計](../design/functions.ja.md)を参照してください。
 

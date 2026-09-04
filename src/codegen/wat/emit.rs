@@ -278,6 +278,7 @@ fn emit_instruction(
                 Type::I64 => "$print_i64",
                 Type::F32 => "$print_f32",
                 Type::F64 => "$print_f64",
+                Type::Pointer => unreachable!("pointers are not printable Primer values"),
             };
 
             writeln!(output, "{prefix}call {function}").unwrap();
@@ -303,6 +304,7 @@ fn wat_type(ty: Type) -> &'static str {
         Type::I64 => "i64",
         Type::F32 => "f32",
         Type::F64 => "f64",
+        Type::Pointer => "i32",
     }
 }
 
