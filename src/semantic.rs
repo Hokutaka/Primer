@@ -564,12 +564,6 @@ fn resolve_type_ref(
         ast::TypeRefKind::Array { element, length } => (element, *length),
     };
     let element = resolve_type_ref(element, type_names)?;
-    if matches!(&element, Type::Array { .. }) {
-        return Err(Diagnostic::new(
-            "nested array types are not supported yet",
-            type_ref.span,
-        ));
-    }
     Ok(Type::Array {
         element: Box::new(element),
         length,
@@ -1011,12 +1005,6 @@ fn type_of_expr_expected(
                 _ => {
                     let first = values.first().expect("parser rejects empty array literals");
                     let first_ty = model.type_of_expr(first, bindings)?;
-                    if matches!(&first_ty, Type::Array { .. }) {
-                        return Err(Diagnostic::new(
-                            "nested array values are not supported yet",
-                            first.span,
-                        ));
-                    }
                     (Box::new(first_ty), values.len())
                 }
             };
@@ -1669,12 +1657,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_nested_arrays_after_preserving_their_type_structure() {
+    fn accepts_nested_arrays_after_preserving_their_type_structure() {
         let source = "values: [[i64; 2]; 2] = [[1, 2], [3, 4]];";
         let program = parse(lex(source).unwrap()).unwrap();
-        let error = check(&program).unwrap_err();
 
-        assert_eq!(error.message(), "nested array types are not supported yet");
+        check(&program).unwrap();
     }
 
     #[test]

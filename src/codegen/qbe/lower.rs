@@ -146,10 +146,14 @@ enum Value {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ArrayElement {
     Scalar(Type),
     Named(usize),
+    Array {
+        element: Box<ArrayElement>,
+        length: usize,
+    },
 }
 
 impl Lowerer<'_> {
@@ -592,7 +596,7 @@ impl Lowerer<'_> {
                 for (index, value) in values.iter().enumerate() {
                     let value = self.lower_expr(value);
                     let destination = self.address(Operand::Slot(slot), index * stride);
-                    match (expected, value) {
+                    match (expected.clone(), value) {
                         (ArrayElement::Scalar(expected), Value::Scalar { ty, operand }) => {
                             debug_assert_eq!(expected, ty);
                             self.instructions.push(Instruction::Store {
@@ -609,6 +613,25 @@ impl Lowerer<'_> {
                             },
                         ) => {
                             debug_assert_eq!(expected, type_id);
+                            self.instructions.push(Instruction::Blit {
+                                source,
+                                destination,
+                                size: stride,
+                            });
+                        }
+                        (
+                            ArrayElement::Array {
+                                element: expected_element,
+                                length: expected_length,
+                            },
+                            Value::Array {
+                                element,
+                                length,
+                                address: source,
+                            },
+                        ) => {
+                            debug_assert_eq!(*expected_element, element);
+                            debug_assert_eq!(expected_length, length);
                             self.instructions.push(Instruction::Blit {
                                 source,
                                 destination,
@@ -684,7 +707,7 @@ impl Lowerer<'_> {
                     op: BinaryOp::Multiply,
                     ty: Type::I64,
                     left: index,
-                    right: Operand::Integer(array_element_size(self.program, element) as i64),
+                    right: Operand::Integer(array_element_size(self.program, &element) as i64),
                 });
                 let address = self.next_temp();
                 self.instructions.push(Instruction::Binary {
@@ -709,6 +732,11 @@ impl Lowerer<'_> {
                     }
                     ArrayElement::Named(type_id) => Value::Aggregate {
                         type_id,
+                        address: Operand::Temp(address),
+                    },
+                    ArrayElement::Array { element, length } => Value::Array {
+                        element: *element,
+                        length,
                         address: Operand::Temp(address),
                     },
                 }
@@ -945,18 +973,20 @@ fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::Double),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
-        primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
-        }
+        primer_ir::Type::Array { element, length } => ArrayElement::Array {
+            element: Box::new(array_element_type(element)),
+            length: *length,
+        },
     }
 }
 
-fn array_element_size(program: &primer_ir::Program, element: ArrayElement) -> usize {
+fn array_element_size(program: &primer_ir::Program, element: &ArrayElement) -> usize {
     match element {
         ArrayElement::Scalar(_) => 8,
         ArrayElement::Named(id) => {
-            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
+            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(*id)))
         }
+        ArrayElement::Array { element, length } => array_element_size(program, element) * length,
     }
 }
 

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    ArrayElementType, BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand,
-    Parameter, PrintFormat, Slot, SlotId, Temp, Type, TypeDefinition,
+    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
+    Slot, SlotId, Temp, Type, TypeDefinition,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -124,7 +124,7 @@ struct LoopContext {
     break_label: Label,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Value {
     ty: Type,
     operand: Operand,
@@ -433,11 +433,15 @@ impl Lowerer {
             },
 
             primer_ir::ExprKind::Variable { id, .. } => {
-                let ty = expr.ty.clone().into();
+                let ty: Type = expr.ty.clone().into();
                 let dest = self.next_temp();
                 let slot = self.slot(*id);
 
-                self.instructions.push(Instruction::Load { dest, ty, slot });
+                self.instructions.push(Instruction::Load {
+                    dest,
+                    ty: ty.clone(),
+                    slot,
+                });
 
                 Value {
                     ty,
@@ -449,7 +453,7 @@ impl Lowerer {
                 let value = self.lower_expr(value);
                 let dest = self.next_temp();
 
-                match (*op, value.ty) {
+                match (*op, &value.ty) {
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         self.instructions.push(Instruction::Binary {
                             dest,
@@ -463,7 +467,7 @@ impl Lowerer {
                     (primer_ir::UnaryOp::Negate, Type::Float | Type::Double) => {
                         self.instructions.push(Instruction::FNeg {
                             dest,
-                            ty: value.ty,
+                            ty: value.ty.clone(),
                             value: value.operand,
                         });
                     }
@@ -500,15 +504,15 @@ impl Lowerer {
                     self.instructions.push(Instruction::Compare {
                         dest,
                         op,
-                        operand_ty: left.ty,
+                        operand_ty: left.ty.clone(),
                         left: left.operand,
                         right: right.operand,
                     });
                 } else {
                     self.instructions.push(Instruction::Binary {
                         dest,
-                        op: binary_op(*op, left.ty),
-                        ty: left.ty,
+                        op: binary_op(*op, &left.ty),
+                        ty: left.ty.clone(),
                         left: left.operand,
                         right: right.operand,
                     });
@@ -529,7 +533,7 @@ impl Lowerer {
                     let dest = self.next_temp();
                     self.instructions.push(Instruction::InsertValue {
                         dest,
-                        ty,
+                        ty: ty.clone(),
                         aggregate,
                         value_ty: value.ty,
                         value: value.operand,
@@ -562,14 +566,14 @@ impl Lowerer {
                 }
             }
             primer_ir::ExprKind::Array(values) => {
-                let ty = expr.ty.clone().into();
+                let ty: Type = expr.ty.clone().into();
                 let mut aggregate = Operand::Poison;
                 for (index, value) in values.iter().enumerate() {
                     let value = self.lower_expr(value);
                     let dest = self.next_temp();
                     self.instructions.push(Instruction::InsertValue {
                         dest,
-                        ty,
+                        ty: ty.clone(),
                         aggregate,
                         value_ty: value.ty,
                         value: value.operand,
@@ -585,14 +589,14 @@ impl Lowerer {
             primer_ir::ExprKind::Index { base, index } => {
                 let array = self.lower_expr(base);
                 let index = self.lower_expr(index);
-                let Type::Array { element, length } = array.ty else {
+                let Type::Array { element, length } = &array.ty else {
                     unreachable!("indexed expression must have an array base")
                 };
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::ArrayGet {
                     dest,
-                    element,
-                    length,
+                    element: (**element).clone(),
+                    length: *length,
                     array: array.operand,
                     index: index.operand,
                 });
@@ -613,12 +617,12 @@ impl Lowerer {
                         (value.ty, value.operand)
                     })
                     .collect();
-                let ty = expr.ty.clone().into();
+                let ty: Type = expr.ty.clone().into();
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::Call {
                     dest: Some(dest),
                     function_id: function_id.0,
-                    return_type: Some(ty),
+                    return_type: Some(ty.clone()),
                     arguments,
                 });
                 Value {
@@ -768,27 +772,14 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: array_element_type(&element),
+                element: Box::new((*element).into()),
                 length,
             },
         }
     }
 }
 
-fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
-    match element {
-        primer_ir::Type::Bool => ArrayElementType::Bool,
-        primer_ir::Type::I64 => ArrayElementType::I64,
-        primer_ir::Type::F32 => ArrayElementType::Float,
-        primer_ir::Type::F64 => ArrayElementType::Double,
-        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
-        primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
-        }
-    }
-}
-
-fn binary_op(op: primer_ir::BinaryOp, ty: Type) -> BinaryOp {
+fn binary_op(op: primer_ir::BinaryOp, ty: &Type) -> BinaryOp {
     match (op, ty) {
         (primer_ir::BinaryOp::Add, Type::I64) => BinaryOp::Add,
         (primer_ir::BinaryOp::Subtract, Type::I64) => BinaryOp::Sub,

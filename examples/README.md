@@ -18,6 +18,7 @@
 | [functions.prim](functions.prim) | 型付き関数、parameter、戻り値、`void`関数 |
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列、添字参照、配列の値コピー |
 | [product_arrays.prim](product_arrays.prim) | 点の配列、product typeの添字参照、配列の値コピー |
+| [matrix_vector_product.prim](matrix_vector_product.prim) | 入れ子の固定長配列と二段の添字参照 |
 
 ## 数値計算
 
@@ -41,6 +42,7 @@
 | [pythagorean_triples.prim](pythagorean_triples.prim) | 入れ子の`for`によるピタゴラス数の探索 |
 | [fixed_arrays.prim](fixed_arrays.prim) | 配列の合計と線形探索 |
 | [product_arrays.prim](product_arrays.prim) | 点の配列から最も近い点を探す線形探索 |
+| [matrix_vector_product.prim](matrix_vector_product.prim) | 3×3行列と3要素vectorの積 |
 | [xor_neural_network.prim](xor_neural_network.prim) | 固定長配列の重みを使う小さなニューラルネットのXOR推論 |
 
 ## 現在の範囲

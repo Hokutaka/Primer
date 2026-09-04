@@ -1,9 +1,9 @@
 pub mod render;
 
-use crate::bytecode::{ArrayElementType, BytecodeProgram, InstructionKind, ReturnType, Type};
+use crate::bytecode::{BytecodeProgram, InstructionKind, ReturnType, Type};
 
 /// Primer VMの実行中に発生した問題の種類を表します。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
     /// 実行位置がbytecodeの範囲外へ到達しました。
     InstructionOutOfBounds,
@@ -61,7 +61,7 @@ pub enum VmErrorKind {
 }
 
 /// Primer VMの実行エラーと発生したbytecode命令位置を表します。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmError {
     kind: VmErrorKind,
     instruction_index: usize,
@@ -85,17 +85,17 @@ impl VmError {
     }
 
     /// エラーの種類を返します。
-    pub const fn kind(self) -> VmErrorKind {
-        self.kind
+    pub fn kind(&self) -> VmErrorKind {
+        self.kind.clone()
     }
 
     /// `emit-bytecode`の表示と対応する0から始まる命令番号を返します。
-    pub const fn instruction_index(self) -> usize {
+    pub const fn instruction_index(&self) -> usize {
         self.instruction_index
     }
 
     /// エラーが関数内で起きた場合、その関数番号を返します。
-    pub const fn function_id(self) -> Option<usize> {
+    pub const fn function_id(&self) -> Option<usize> {
         self.function_id
     }
 }
@@ -106,18 +106,12 @@ enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
-    Aggregate {
-        type_id: usize,
-        fields: Vec<Value>,
-    },
-    Array {
-        element: ArrayElementType,
-        values: Vec<Value>,
-    },
+    Aggregate { type_id: usize, fields: Vec<Value> },
+    Array { element: Type, values: Vec<Value> },
 }
 
 impl Value {
-    const fn ty(&self) -> Type {
+    fn ty(&self) -> Type {
         match self {
             Self::Bool(_) => Type::Bool,
             Self::I64(_) => Type::I64,
@@ -125,7 +119,7 @@ impl Value {
             Self::F64(_) => Type::F64,
             Self::Aggregate { type_id, .. } => Type::Named(*type_id),
             Self::Array { element, values } => Type::Array {
-                element: *element,
+                element: Box::new(element.clone()),
                 length: values.len(),
             },
         }
@@ -185,7 +179,7 @@ fn execute_frame_inner(
                 function.instructions.as_slice(),
                 function.slots.as_slice(),
                 function.parameter_count,
-                function.return_type,
+                function.return_type.clone(),
             )
         }
     };
@@ -205,7 +199,7 @@ fn execute_frame_inner(
     let mut initializers: Vec<Option<usize>> = vec![None; slot_info.len()];
 
     for (index, argument) in arguments.into_iter().enumerate() {
-        let expected = slot_info[index].ty;
+        let expected = slot_info[index].ty.clone();
         if argument.ty() != expected {
             return Err(VmError::new(
                 VmErrorKind::TypeMismatch {
@@ -261,7 +255,8 @@ fn execute_frame_inner(
                 let expected = slot_info
                     .get(*slot)
                     .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?
-                    .ty;
+                    .ty
+                    .clone();
 
                 if value.ty() != expected {
                     return Err(VmError::new(
@@ -306,7 +301,7 @@ fn execute_frame_inner(
                     ));
                 }
 
-                let expected = slot_definition.ty;
+                let expected = slot_definition.ty.clone();
 
                 if value.ty() != expected {
                     return Err(VmError::new(
@@ -352,7 +347,8 @@ fn execute_frame_inner(
                                 pc,
                             )
                         })?
-                        .ty;
+                        .ty
+                        .clone();
                     if value.ty() != expected {
                         return Err(VmError::new(
                             VmErrorKind::TypeMismatch {
@@ -424,14 +420,13 @@ fn execute_frame_inner(
             }
 
             InstructionKind::ConstructArray { element, length } => {
-                let expected = array_element_type(*element);
                 let mut values = Vec::with_capacity(*length);
                 for _ in 0..*length {
                     let value = at_instruction(pop_value(&mut stack), pc)?;
-                    if value.ty() != expected {
+                    if value.ty() != *element {
                         return Err(VmError::new(
                             VmErrorKind::TypeMismatch {
-                                expected,
+                                expected: element.clone(),
                                 actual: value.ty(),
                             },
                             pc,
@@ -441,7 +436,7 @@ fn execute_frame_inner(
                 }
                 values.reverse();
                 stack.push(Value::Array {
-                    element: *element,
+                    element: element.clone(),
                     values,
                 });
             }
@@ -450,7 +445,7 @@ fn execute_frame_inner(
                 let index = at_instruction(pop_i64(&mut stack), pc)?;
                 let value = at_instruction(pop_value(&mut stack), pc)?;
                 let expected = Type::Array {
-                    element: *element,
+                    element: Box::new(element.clone()),
                     length: *length,
                 };
                 let actual = value.ty();
@@ -525,14 +520,14 @@ fn execute_frame_inner(
                     return Err(VmError::new(VmErrorKind::InvalidReturn, pc));
                 }
 
-                let value = match (return_type, *has_value) {
+                let value = match (&return_type, *has_value) {
                     (ReturnType::Void, false) => None,
                     (ReturnType::Value(expected), true) => {
                         let value = at_instruction(pop_value(&mut stack), pc)?;
-                        if value.ty() != expected {
+                        if value.ty() != *expected {
                             return Err(VmError::new(
                                 VmErrorKind::TypeMismatch {
-                                    expected,
+                                    expected: expected.clone(),
                                     actual: value.ty(),
                                 },
                                 pc,
@@ -553,47 +548,56 @@ fn execute_frame_inner(
             }
 
             InstructionKind::Add(ty) => {
-                at_instruction(binary(*ty, &mut stack, BinaryOperation::Add), pc)?;
+                at_instruction(binary(ty.clone(), &mut stack, BinaryOperation::Add), pc)?;
             }
 
             InstructionKind::Subtract(ty) => {
-                at_instruction(binary(*ty, &mut stack, BinaryOperation::Subtract), pc)?;
+                at_instruction(
+                    binary(ty.clone(), &mut stack, BinaryOperation::Subtract),
+                    pc,
+                )?;
             }
 
             InstructionKind::Multiply(ty) => {
-                at_instruction(binary(*ty, &mut stack, BinaryOperation::Multiply), pc)?;
+                at_instruction(
+                    binary(ty.clone(), &mut stack, BinaryOperation::Multiply),
+                    pc,
+                )?;
             }
 
             InstructionKind::Divide(ty) => {
-                at_instruction(binary(*ty, &mut stack, BinaryOperation::Divide), pc)?;
+                at_instruction(binary(ty.clone(), &mut stack, BinaryOperation::Divide), pc)?;
             }
 
             InstructionKind::Equal(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::Equal), pc)?;
+                at_instruction(compare(ty.clone(), &mut stack, Comparison::Equal), pc)?;
             }
 
             InstructionKind::NotEqual(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::NotEqual), pc)?;
+                at_instruction(compare(ty.clone(), &mut stack, Comparison::NotEqual), pc)?;
             }
 
             InstructionKind::Less(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::Less), pc)?;
+                at_instruction(compare(ty.clone(), &mut stack, Comparison::Less), pc)?;
             }
 
             InstructionKind::LessEqual(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::LessEqual), pc)?;
+                at_instruction(compare(ty.clone(), &mut stack, Comparison::LessEqual), pc)?;
             }
 
             InstructionKind::Greater(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::Greater), pc)?;
+                at_instruction(compare(ty.clone(), &mut stack, Comparison::Greater), pc)?;
             }
 
             InstructionKind::GreaterEqual(ty) => {
-                at_instruction(compare(*ty, &mut stack, Comparison::GreaterEqual), pc)?;
+                at_instruction(
+                    compare(ty.clone(), &mut stack, Comparison::GreaterEqual),
+                    pc,
+                )?;
             }
 
             InstructionKind::Negate(ty) => {
-                at_instruction(negate(*ty, &mut stack), pc)?;
+                at_instruction(negate(ty.clone(), &mut stack), pc)?;
             }
 
             InstructionKind::Not => {
@@ -604,7 +608,7 @@ fn execute_frame_inner(
             InstructionKind::Print(ty) => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
 
-                let line = at_instruction(format_value(value, *ty), pc)?;
+                let line = at_instruction(format_value(value, ty.clone()), pc)?;
 
                 output.push_str(&line);
 
@@ -833,16 +837,6 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
     }
 
     Ok(())
-}
-
-const fn array_element_type(element: ArrayElementType) -> Type {
-    match element {
-        ArrayElementType::Bool => Type::Bool,
-        ArrayElementType::I64 => Type::I64,
-        ArrayElementType::F32 => Type::F32,
-        ArrayElementType::F64 => Type::F64,
-        ArrayElementType::Named(id) => Type::Named(id),
-    }
 }
 
 fn pop_value(stack: &mut Vec<Value>) -> VmResult<Value> {

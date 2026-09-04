@@ -6,26 +6,14 @@ use crate::{
     source::Span,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
     I64,
     F32,
     F64,
     Named(usize),
-    Array {
-        element: ArrayElementType,
-        length: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArrayElementType {
-    Bool,
-    I64,
-    F32,
-    F64,
-    Named(usize),
+    Array { element: Box<Type>, length: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +33,7 @@ pub struct BytecodeFunction {
     pub instructions: Vec<Instruction>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReturnType {
     Void,
     Value(Type),
@@ -123,11 +111,11 @@ pub enum InstructionKind {
         field_id: usize,
     },
     ConstructArray {
-        element: ArrayElementType,
+        element: Type,
         length: usize,
     },
     Index {
-        element: ArrayElementType,
+        element: Type,
         length: usize,
     },
     Call {
@@ -268,7 +256,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
                 output,
                 ".field {type_id}.{field_id} {} {}",
                 field.name,
-                type_name(field.ty, program)
+                type_name(&field.ty, program)
             )
             .unwrap();
         }
@@ -286,11 +274,11 @@ pub fn format_program(program: &BytecodeProgram) -> String {
                 output,
                 "{parameter_index}:{}:{}",
                 parameter.name,
-                type_name(parameter.ty, program)
+                type_name(&parameter.ty, program)
             )
             .unwrap();
         }
-        match function.return_type {
+        match &function.return_type {
             ReturnType::Void => writeln!(output, ") -> void").unwrap(),
             ReturnType::Value(ty) => {
                 writeln!(output, ") -> {}", type_name(ty, program)).unwrap();
@@ -302,7 +290,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
             if slot.mutable {
                 output.push_str("mut ");
             }
-            writeln!(output, "{} {}", slot.name, type_name(slot.ty, program)).unwrap();
+            writeln!(output, "{} {}", slot.name, type_name(&slot.ty, program)).unwrap();
         }
 
         for (pc, instruction) in function.instructions.iter().enumerate() {
@@ -322,7 +310,7 @@ pub fn format_program(program: &BytecodeProgram) -> String {
                 output.push_str("mut ");
             }
 
-            writeln!(output, "{} {}", slot.name, type_name(slot.ty, program)).unwrap();
+            writeln!(output, "{} {}", slot.name, type_name(&slot.ty, program)).unwrap();
         }
     }
 
@@ -651,7 +639,7 @@ impl Compiler {
                 };
                 self.emit_source(
                     InstructionKind::ConstructArray {
-                        element: array_element_type(element),
+                        element: (**element).clone().into(),
                         length: *length,
                     },
                     expr.span,
@@ -666,7 +654,7 @@ impl Compiler {
                 };
                 self.emit_source(
                     InstructionKind::Index {
-                        element: array_element_type(element),
+                        element: (**element).clone().into(),
                         length: *length,
                     },
                     expr.span,
@@ -800,22 +788,9 @@ impl From<ir::Type> for Type {
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),
             ir::Type::Array { element, length } => Self::Array {
-                element: array_element_type(&element),
+                element: Box::new((*element).into()),
                 length,
             },
-        }
-    }
-}
-
-fn array_element_type(value: &ir::Type) -> ArrayElementType {
-    match value {
-        ir::Type::Bool => ArrayElementType::Bool,
-        ir::Type::I64 => ArrayElementType::I64,
-        ir::Type::F32 => ArrayElementType::F32,
-        ir::Type::F64 => ArrayElementType::F64,
-        ir::Type::Named(id) => ArrayElementType::Named(id.0),
-        ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
         }
     }
 }
@@ -859,7 +834,7 @@ fn format_instruction(
             write!(
                 output,
                 "construct {} [",
-                type_name(Type::Named(*type_id), program)
+                type_name(&Type::Named(*type_id), program)
             )
             .unwrap();
             for (index, field) in fields.iter().enumerate() {
@@ -892,21 +867,11 @@ fn format_instruction(
         }
 
         InstructionKind::ConstructArray { element, length } => {
-            writeln!(
-                output,
-                "array.new {} {length}",
-                array_element_name(*element, program)
-            )
-            .unwrap();
+            writeln!(output, "array.new {} {length}", type_name(element, program)).unwrap();
         }
 
         InstructionKind::Index { element, length } => {
-            writeln!(
-                output,
-                "array.get {} {length}",
-                array_element_name(*element, program)
-            )
-            .unwrap();
+            writeln!(output, "array.get {} {length}", type_name(element, program)).unwrap();
         }
 
         InstructionKind::Call {
@@ -930,47 +895,47 @@ fn format_instruction(
         }
 
         InstructionKind::Add(ty) => {
-            writeln!(output, "add.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "add.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Subtract(ty) => {
-            writeln!(output, "sub.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "sub.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Multiply(ty) => {
-            writeln!(output, "mul.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "mul.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Divide(ty) => {
-            writeln!(output, "div.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "div.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Equal(ty) => {
-            writeln!(output, "eq.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "eq.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::NotEqual(ty) => {
-            writeln!(output, "ne.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "ne.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Less(ty) => {
-            writeln!(output, "lt.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "lt.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::LessEqual(ty) => {
-            writeln!(output, "le.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "le.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Greater(ty) => {
-            writeln!(output, "gt.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "gt.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::GreaterEqual(ty) => {
-            writeln!(output, "ge.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "ge.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Negate(ty) => {
-            writeln!(output, "neg.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "neg.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::Not => {
@@ -978,7 +943,7 @@ fn format_instruction(
         }
 
         InstructionKind::Print(ty) => {
-            writeln!(output, "print.{}", type_name(*ty, program),).unwrap();
+            writeln!(output, "print.{}", type_name(ty, program),).unwrap();
         }
 
         InstructionKind::JumpIfFalse(target) => {
@@ -995,26 +960,16 @@ fn format_instruction(
     }
 }
 
-fn type_name(ty: Type, program: &BytecodeProgram) -> String {
+fn type_name(ty: &Type, program: &BytecodeProgram) -> String {
     match ty {
         Type::Bool => "bool".into(),
         Type::I64 => "i64".into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
-        Type::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
+        Type::Named(id) => format!("%{}@{id}", program.type_definitions[*id].name),
         Type::Array { element, length } => {
-            format!("[{}; {length}]", array_element_name(element, program))
+            format!("[{}; {length}]", type_name(element, program))
         }
-    }
-}
-
-fn array_element_name(element: ArrayElementType, program: &BytecodeProgram) -> String {
-    match element {
-        ArrayElementType::Bool => "bool".into(),
-        ArrayElementType::I64 => "i64".into(),
-        ArrayElementType::F32 => "f32".into(),
-        ArrayElementType::F64 => "f64".into(),
-        ArrayElementType::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
     }
 }
 

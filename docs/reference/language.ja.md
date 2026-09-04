@@ -177,7 +177,7 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-要素型には`bool`、`i64`、`f32`、`f64`または名前付きproduct typeを使用できます。固定長配列はproduct typeのfieldにも使用できます。
+要素型には`bool`、`i64`、`f32`、`f64`、名前付きproduct typeまたは固定長配列を使用できます。固定長配列はproduct typeのfieldにも使用できます。
 
 ```primer
 type Point {
@@ -201,7 +201,14 @@ path: Path = Path {
 print(path.points[2].y);
 ```
 
-`[[i64; 2]; 2]`のように固定長配列を直接入れ子にすること、関数のparameterや戻り値に配列を使うこと、`values[0] = 1;`のように要素へ直接代入することは未対応です。これらは黙って別の意味にせず、診断として報告します。
+固定長配列は直接入れ子にできます。`matrix[row][column]`では、二つの添字を順番に検査します。
+
+```primer
+matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
+print(matrix[1][2]); // 6
+```
+
+関数のparameterや戻り値に配列を使うこと、`values[0] = 1;`のように要素へ直接代入することは未対応です。これらは黙って別の意味にせず、診断として報告します。
 
 詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
 

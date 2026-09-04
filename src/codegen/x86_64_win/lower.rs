@@ -117,7 +117,7 @@ struct LoopContext {
     break_label: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Value {
     Scalar(Type),
     Aggregate {
@@ -131,10 +131,14 @@ enum Value {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ArrayElement {
     Scalar(Type),
     Named(usize),
+    Array {
+        element: Box<ArrayElement>,
+        length: usize,
+    },
 }
 
 impl Lowerer<'_> {
@@ -175,7 +179,7 @@ impl Lowerer<'_> {
                     ) => {
                         debug_assert_eq!(array_element_type(element), actual_element);
                         debug_assert_eq!(*length, actual_length);
-                        self.copy_array(actual_element, *length, source, destination);
+                        self.copy_array(&actual_element, *length, source, destination);
                     }
                     (scalar, Value::Scalar(actual)) => {
                         debug_assert_eq!(scalar_type(scalar), actual);
@@ -500,7 +504,7 @@ impl Lowerer<'_> {
                             let element = array_element_type(element);
                             debug_assert_eq!(element, actual_element);
                             debug_assert_eq!(*length, actual_length);
-                            self.copy_array(element, *length, source, field_slot);
+                            self.copy_array(&element, *length, source, field_slot);
                         }
                         (scalar, Value::Scalar(actual)) => {
                             debug_assert_eq!(scalar_type(scalar), actual);
@@ -547,10 +551,10 @@ impl Lowerer<'_> {
                 };
                 let destination = self.allocate_aggregate(&expr.ty);
                 let element = array_element_type(element);
-                let stride = array_element_slot_count(self.program, element);
+                let stride = array_element_slot_count(self.program, &element);
                 for (index, value) in values.iter().enumerate() {
                     let destination = destination + index * stride;
-                    match (element, self.lower_expr(value, depth)) {
+                    match (element.clone(), self.lower_expr(value, depth)) {
                         (ArrayElement::Scalar(expected), Value::Scalar(actual)) => {
                             debug_assert_eq!(expected, actual);
                             self.store_scalar(actual, slot_offset(destination));
@@ -564,6 +568,26 @@ impl Lowerer<'_> {
                         ) => {
                             debug_assert_eq!(expected, type_id);
                             self.copy_aggregate(type_id, source, destination);
+                        }
+                        (
+                            ArrayElement::Array {
+                                element: expected_element,
+                                length: expected_length,
+                            },
+                            Value::Array {
+                                element,
+                                length,
+                                base_slot: source,
+                            },
+                        ) => {
+                            debug_assert_eq!(*expected_element, element);
+                            debug_assert_eq!(expected_length, length);
+                            self.copy_array(
+                                &expected_element,
+                                expected_length,
+                                source,
+                                destination,
+                            );
                         }
                         _ => unreachable!("semantic analysis keeps array element types equal"),
                     }
@@ -598,7 +622,8 @@ impl Lowerer<'_> {
                         Value::Scalar(ty)
                     }
                     ArrayElement::Named(type_id) => {
-                        let element_slots = array_element_slot_count(self.program, element);
+                        let element_slots =
+                            array_element_slot_count(self.program, &ArrayElement::Named(type_id));
                         let destination = self.allocate_aggregate(&primer_ir::Type::Named(
                             primer_ir::TypeId(type_id),
                         ));
@@ -611,6 +636,30 @@ impl Lowerer<'_> {
                         });
                         Value::Aggregate {
                             type_id,
+                            base_slot: destination,
+                        }
+                    }
+                    ArrayElement::Array {
+                        element: nested_element,
+                        length: nested_length,
+                    } => {
+                        let element = ArrayElement::Array {
+                            element: nested_element.clone(),
+                            length: nested_length,
+                        };
+                        let element_slots = array_element_slot_count(self.program, &element);
+                        let destination = self.next_aggregate_slot;
+                        self.next_aggregate_slot += element_slots;
+                        self.instructions.push(Instruction::CheckedArrayCopy {
+                            base_offset: slot_offset(base_slot),
+                            length,
+                            element_slots,
+                            destination_offset: slot_offset(destination),
+                            label,
+                        });
+                        Value::Array {
+                            element: *nested_element,
+                            length: nested_length,
                             base_slot: destination,
                         }
                     }
@@ -655,7 +704,7 @@ impl Lowerer<'_> {
                     self.copy_aggregate(nested.0, source + offset, destination + offset)
                 }
                 primer_ir::Type::Array { element, length } => self.copy_array(
-                    array_element_type(element),
+                    &array_element_type(element),
                     *length,
                     source + offset,
                     destination + offset,
@@ -671,7 +720,7 @@ impl Lowerer<'_> {
 
     fn copy_array(
         &mut self,
-        element: ArrayElement,
+        element: &ArrayElement,
         length: usize,
         source: usize,
         destination: usize,
@@ -682,10 +731,13 @@ impl Lowerer<'_> {
             let destination = destination + index * stride;
             match element {
                 ArrayElement::Scalar(ty) => {
-                    self.load_scalar(ty, slot_offset(source));
-                    self.store_scalar(ty, slot_offset(destination));
+                    self.load_scalar(*ty, slot_offset(source));
+                    self.store_scalar(*ty, slot_offset(destination));
                 }
-                ArrayElement::Named(type_id) => self.copy_aggregate(type_id, source, destination),
+                ArrayElement::Named(type_id) => self.copy_aggregate(*type_id, source, destination),
+                ArrayElement::Array { element, length } => {
+                    self.copy_array(element, *length, source, destination)
+                }
             }
         }
     }
@@ -1030,17 +1082,21 @@ fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
-        primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
-        }
+        primer_ir::Type::Array { element, length } => ArrayElement::Array {
+            element: Box::new(array_element_type(element)),
+            length: *length,
+        },
     }
 }
 
-fn array_element_slot_count(program: &primer_ir::Program, element: ArrayElement) -> usize {
+fn array_element_slot_count(program: &primer_ir::Program, element: &ArrayElement) -> usize {
     match element {
         ArrayElement::Scalar(_) => 1,
         ArrayElement::Named(id) => {
-            type_slot_count(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
+            type_slot_count(program, &primer_ir::Type::Named(primer_ir::TypeId(*id)))
+        }
+        ArrayElement::Array { element, length } => {
+            array_element_slot_count(program, element) * length
         }
     }
 }

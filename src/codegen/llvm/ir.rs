@@ -1,23 +1,11 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
     I64,
     Float,
     Double,
     Named(usize),
-    Array {
-        element: ArrayElementType,
-        length: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArrayElementType {
-    Bool,
-    I64,
-    Float,
-    Double,
-    Named(usize),
+    Array { element: Box<Type>, length: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,7 +136,7 @@ pub enum Instruction {
     },
     ArrayGet {
         dest: Temp,
-        element: ArrayElementType,
+        element: Type,
         length: usize,
         array: Operand,
         index: Operand,
