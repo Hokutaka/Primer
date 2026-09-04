@@ -20,6 +20,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | --- | --- |
 | [hello.prim](hello.prim) | bindings, arithmetic, and `print` |
 | [floating_point.prim](floating_point.prim) | `i64`, `f32`, and `f64` |
+| [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |
 | [loop_control.prim](loop_control.prim) | `while`, `break`, and `continue` |
@@ -40,6 +41,8 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [square_root.prim](square_root.prim) | unrolled square-root approximation steps |
 | [while_square_root.prim](while_square_root.prim) | repeated square-root approximation with `while` |
 | [logistic_map.prim](logistic_map.prim) | result differences between `f32` and `f64` computation |
+| [heat_diffusion.prim](heat_diffusion.prim) | four steps of heat diffusion along a rod, computing new temperatures from the previous array |
+| [linear_regression.prim](linear_regression.prim) | learning a line from five points while observing slope, intercept, and loss |
 
 ## Algorithms
 
@@ -59,6 +62,28 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [matrix_vector_product.prim](matrix_vector_product.prim) | multiplication of a 3-by-3 matrix and a three-element vector |
 | [matrix_composition.prim](matrix_composition.prim) | composition of 2-by-2 matrices followed by a vector transformation |
 | [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
+| [coin_change.prim](coin_change.prim) | dynamic programming for minimum coin counts, followed by reconstruction of the chosen coins |
+| [shortest_paths.prim](shortest_paths.prim) | all-pairs shortest paths by gradually allowing more intermediate towns |
+
+## Reading intermediate results
+
+The new examples print intermediate values as well as final answers. Japanese comments in each file describe the output order.
+
+- `coin_change.prim`: minimum counts for amounts 1 through 6, then the selected coins, 3 and 3.
+- `shortest_paths.prim`: changes in the distance from town 0 to town 3, then the 4-by-4 distance table in row order. `-1` means unreachable.
+- `heat_diffusion.prim`: five temperatures per step for four steps, then the saved initial center temperature.
+- `linear_regression.prim`: initial loss; epoch, slope, intercept, and loss every ten epochs; then a prediction for a new input of 3.
+
+Try changing `rate` (the size of each learning step) or the iteration count in the regression example and compare the loss. To inspect the representations at different stages, run:
+
+```powershell
+cargo run --quiet -- run examples/linear_regression.prim
+cargo run --quiet -- emit-ir examples/linear_regression.prim
+cargo run --quiet -- emit-bytecode examples/linear_regression.prim
+cargo run --quiet -- emit-c examples/linear_regression.prim
+```
+
+`integer_limits.prim` succeeds by default. Uncomment an expression at the end to observe an overflow stop and its diagnostic location.
 
 ## Current scope
 
@@ -66,4 +91,4 @@ These examples are programs expressible with numbers, booleans, bindings, functi
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Strings, recursion, and dynamically sized collections are not available yet.
 
-`xor_neural_network.prim` demonstrates inference with predetermined weights. It does not yet train those weights from examples.
+`xor_neural_network.prim` demonstrates inference with predetermined weights. `linear_regression.prim` learns a line's slope and intercept from data using gradient descent. Training the XOR neural network itself is not included.

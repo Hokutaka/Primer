@@ -1,0 +1,26 @@
+// 棒を5区間に分け、真ん中だけを温めた状態から始めます。
+// 両端は0度に固定し、内側の熱が隣へ移る様子を計算します。
+fn advance(current: [f64; 5]) -> [f64; 5] {
+    mut next: [f64; 5] = current;
+    for (mut index: i64 = 1; index < 4; index = index + 1) {
+        // 時間と区間の大きさをまとめた係数を0.25にしています。
+        // 次の温度は、すべて同じ時点のcurrentから求めます。
+        next[index] = current[index]
+            + 0.25 * (current[index - 1] - 2.0 * current[index] + current[index + 1]);
+    }
+    return next;
+}
+
+mut temperature: [f64; 5] = [0.0, 0.0, 16.0, 0.0, 0.0];
+initial: [f64; 5] = temperature;
+
+for (mut step: i64 = 0; step < 4; step = step + 1) {
+    temperature = advance(temperature);
+    // 1回につき5区間の温度。中央の熱が左右へ広がります。
+    for (mut index: i64 = 0; index < 5; index = index + 1) {
+        print(temperature[index]);
+    }
+}
+
+// 配列は値としてコピーされるため、保存した初期温度は16のままです。
+print(initial[2]);

@@ -1,6 +1,81 @@
 use primer_lang::run_vm;
 
 #[test]
+fn coin_change_finds_a_better_answer_than_greedy_selection() {
+    let output = run_vm(include_str!("../examples/coin_change.prim")).unwrap();
+
+    assert_eq!(output, "1\n2\n1\n1\n2\n2\n3\n3\n");
+}
+
+#[test]
+fn shortest_paths_preserves_unreachable_pairs_and_finds_indirect_routes() {
+    let output = run_vm(include_str!("../examples/shortest_paths.prim")).unwrap();
+
+    assert_eq!(
+        output,
+        concat!(
+            "-1\n11\n6\n6\n",
+            "0\n3\n5\n6\n",
+            "-1\n0\n2\n3\n",
+            "-1\n-1\n0\n1\n",
+            "-1\n-1\n-1\n0\n",
+        )
+    );
+}
+
+#[test]
+fn heat_diffusion_updates_from_one_time_step_and_preserves_initial_values() {
+    let output = run_vm(include_str!("../examples/heat_diffusion.prim")).unwrap();
+    let values: Vec<f64> = output.lines().map(|line| line.parse().unwrap()).collect();
+
+    assert_eq!(
+        values,
+        [
+            0.0, 4.0, 8.0, 4.0, 0.0, 0.0, 4.0, 6.0, 4.0, 0.0, 0.0, 3.5, 5.0, 3.5, 0.0, 0.0, 3.0,
+            4.25, 3.0, 0.0, 16.0,
+        ]
+    );
+}
+
+#[test]
+fn linear_regression_learns_the_line_and_reduces_loss() {
+    let output = run_vm(include_str!("../examples/linear_regression.prim")).unwrap();
+    let values: Vec<f64> = output.lines().map(|line| line.parse().unwrap()).collect();
+
+    assert_eq!(values.len(), 26);
+    assert!(values.iter().all(|value| value.is_finite()));
+    assert_eq!(values[0], 9.0);
+    let mut previous_loss = values[0];
+    for (index, checkpoint) in values[1..25].as_chunks::<4>().0.iter().enumerate() {
+        assert_eq!(checkpoint[0], ((index + 1) * 10) as f64);
+        assert!(checkpoint[3] >= 0.0);
+        assert!(checkpoint[3] < previous_loss);
+        previous_loss = checkpoint[3];
+    }
+    // 正解の直線は y = 2x + 1。文字列の丸め方ではなく収束を検証します。
+    assert!((values[22] - 2.0).abs() < 0.00001);
+    assert!((values[23] - 1.0).abs() < 0.00001);
+    assert!(values[24] < 0.0000000001);
+    assert!((values[25] - 7.0).abs() < 0.00001);
+}
+
+#[test]
+fn integer_limits_example_runs_without_overflow() {
+    let output = run_vm(include_str!("../examples/integer_limits.prim")).unwrap();
+
+    assert_eq!(
+        output,
+        concat!(
+            "-9223372036854775808\n",
+            "9223372036854775807\n",
+            "-9223372036854775807\n",
+            "9223372036854775806\n",
+            "false\n",
+        )
+    );
+}
+
+#[test]
 fn square_root_example_runs() {
     let output = run_vm(include_str!("../examples/square_root.prim")).unwrap();
 
