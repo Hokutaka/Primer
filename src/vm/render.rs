@@ -89,6 +89,9 @@ fn render_message(error: &VmError) -> String {
         VmErrorKind::DivisionOverflow => {
             "integer division produced a value outside the supported range".to_owned()
         }
+        VmErrorKind::ArrayIndexOutOfBounds { index, length } => {
+            format!("array index {index} is outside an array of length {length}")
+        }
         VmErrorKind::UnusedStackValues { count: 1 } => {
             "Primer VM stopped with 1 unused value on the stack".to_owned()
         }
@@ -105,6 +108,18 @@ fn type_name(ty: Type) -> String {
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("product type {id}"),
+        Type::Array { element, length } => {
+            format!("[{}; {length}]", array_element_name(element))
+        }
+    }
+}
+
+const fn array_element_name(element: crate::bytecode::ArrayElementType) -> &'static str {
+    match element {
+        crate::bytecode::ArrayElementType::Bool => "bool",
+        crate::bytecode::ArrayElementType::I64 => "i64",
+        crate::bytecode::ArrayElementType::F32 => "f32",
+        crate::bytecode::ArrayElementType::F64 => "f64",
     }
 }
 

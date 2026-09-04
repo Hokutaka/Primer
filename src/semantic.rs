@@ -25,6 +25,18 @@ pub enum Type {
     F32,
     F64,
     Named(TypeId),
+    Array {
+        element: ArrayElementType,
+        length: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayElementType {
+    Bool,
+    I64,
+    F32,
+    F64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +100,7 @@ pub struct SemanticModel {
 
 impl SemanticModel {
     pub fn resolve_type_ref(&self, type_ref: &ast::TypeRef) -> SemanticResult<Type> {
-        resolve_type_name(&type_ref.name, type_ref.span, &self.type_names)
+        resolve_type_ref(type_ref, &self.type_names)
     }
 
     pub fn type_definition(&self, id: TypeId) -> &TypeDefinition {
@@ -133,6 +145,9 @@ impl SemanticModel {
             Type::F32 => "f32".into(),
             Type::F64 => "f64".into(),
             Type::Named(id) => self.type_definition(id).name.clone(),
+            Type::Array { element, length } => {
+                format!("[{}; {length}]", array_element_name(element))
+            }
         }
     }
 }
@@ -235,16 +250,9 @@ fn resolve_function_definitions(
                     parameter.name_span,
                 ));
             }
-            let ty = resolve_type_name(
-                &parameter.type_ref.name,
-                parameter.type_ref.span,
-                type_names,
-            )?;
-            if matches!(ty, Type::Named(_)) {
-                return Err(Diagnostic::new(
-                    "product types in function signatures are not supported yet",
-                    parameter.type_ref.span,
-                ));
+            let ty = resolve_type_ref(&parameter.type_ref, type_names)?;
+            if let Some(message) = unsupported_signature_type_message(ty) {
+                return Err(Diagnostic::new(message, parameter.type_ref.span));
             }
             parameters.push(ParameterDefinition {
                 name: parameter.name.clone(),
@@ -256,12 +264,9 @@ fn resolve_function_definitions(
         let return_type = match &definition.return_type {
             ast::ReturnTypeRef::Void(_) => ReturnType::Void,
             ast::ReturnTypeRef::Value(type_ref) => {
-                let ty = resolve_type_name(&type_ref.name, type_ref.span, type_names)?;
-                if matches!(ty, Type::Named(_)) {
-                    return Err(Diagnostic::new(
-                        "product types in function signatures are not supported yet",
-                        type_ref.span,
-                    ));
+                let ty = resolve_type_ref(type_ref, type_names)?;
+                if let Some(message) = unsupported_signature_type_message(ty) {
+                    return Err(Diagnostic::new(message, type_ref.span));
                 }
                 ReturnType::Value(ty)
             }
@@ -430,6 +435,15 @@ fn collect_calls_in_expr(expr: &Expr, model: &SemanticModel, calls: &mut Vec<(Fu
                 collect_calls_in_expr(&field.value, model, calls);
             }
         }
+        ExprKind::Array(values) => {
+            for value in values {
+                collect_calls_in_expr(value, model, calls);
+            }
+        }
+        ExprKind::Index { base, index } => {
+            collect_calls_in_expr(base, model, calls);
+            collect_calls_in_expr(index, model, calls);
+        }
         ExprKind::FieldAccess { base, .. } | ExprKind::Unary { value: base, .. } => {
             collect_calls_in_expr(base, model, calls);
         }
@@ -512,7 +526,15 @@ fn resolve_type_definitions(
                 id: field_id,
                 name: field.name.clone(),
                 name_span: field.name_span,
-                ty: resolve_type_name(&field.type_ref.name, field.type_ref.span, type_names)?,
+                ty: {
+                    if field.type_ref.array_length.is_some() {
+                        return Err(Diagnostic::new(
+                            "array fields are not supported yet",
+                            field.type_ref.span,
+                        ));
+                    }
+                    resolve_type_ref(&field.type_ref, type_names)?
+                },
                 type_span: field.type_ref.span,
                 default: field.default.clone(),
                 span: field.span,
@@ -547,6 +569,55 @@ fn resolve_type_name(
             .copied()
             .map(Type::Named)
             .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span)),
+    }
+}
+
+fn resolve_type_ref(
+    type_ref: &ast::TypeRef,
+    type_names: &HashMap<String, TypeId>,
+) -> SemanticResult<Type> {
+    let element = resolve_type_name(&type_ref.name, type_ref.span, type_names)?;
+    let Some(length) = type_ref.array_length else {
+        return Ok(element);
+    };
+    let element = match element {
+        Type::Bool => ArrayElementType::Bool,
+        Type::I64 => ArrayElementType::I64,
+        Type::F32 => ArrayElementType::F32,
+        Type::F64 => ArrayElementType::F64,
+        Type::Named(_) | Type::Array { .. } => {
+            return Err(Diagnostic::new(
+                "array elements currently require a scalar type",
+                type_ref.span,
+            ));
+        }
+    };
+    Ok(Type::Array { element, length })
+}
+
+const fn array_element_type(element: ArrayElementType) -> Type {
+    match element {
+        ArrayElementType::Bool => Type::Bool,
+        ArrayElementType::I64 => Type::I64,
+        ArrayElementType::F32 => Type::F32,
+        ArrayElementType::F64 => Type::F64,
+    }
+}
+
+const fn unsupported_signature_type_message(ty: Type) -> Option<&'static str> {
+    match ty {
+        Type::Named(_) => Some("product types in function signatures are not supported yet"),
+        Type::Array { .. } => Some("array types in function signatures are not supported yet"),
+        Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
+    }
+}
+
+const fn array_element_name(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "bool",
+        ArrayElementType::I64 => "i64",
+        ArrayElementType::F32 => "f32",
+        ArrayElementType::F64 => "f64",
     }
 }
 
@@ -716,7 +787,7 @@ fn check_statements(
 
             StmtKind::Print { value } => {
                 let ty = model.type_of_expr(value, &bindings)?;
-                if matches!(ty, Type::Named(_)) {
+                if matches!(ty, Type::Named(_) | Type::Array { .. }) {
                     return Err(Diagnostic::new(
                         format!("cannot print value of type {}", model.type_name(ty)),
                         value.span,
@@ -938,6 +1009,77 @@ fn type_of_expr_expected(
             .map(|binding| binding.ty)
             .ok_or_else(|| Diagnostic::new(format!("unknown binding `{name}`"), expr.span)),
 
+        ExprKind::Array(values) => {
+            let (element, length) = match expected {
+                Some(Type::Array { element, length }) => {
+                    if values.len() != length {
+                        return Err(Diagnostic::new(
+                            format!(
+                                "array length mismatch: expected {length} values, found {}",
+                                values.len()
+                            ),
+                            expr.span,
+                        ));
+                    }
+                    (element, length)
+                }
+                _ => {
+                    let first = values.first().expect("parser rejects empty array literals");
+                    let first_ty = model.type_of_expr(first, bindings)?;
+                    let element = match first_ty {
+                        Type::Bool => ArrayElementType::Bool,
+                        Type::I64 => ArrayElementType::I64,
+                        Type::F32 => ArrayElementType::F32,
+                        Type::F64 => ArrayElementType::F64,
+                        Type::Named(_) | Type::Array { .. } => {
+                            return Err(Diagnostic::new(
+                                "array elements currently require a scalar type",
+                                first.span,
+                            ));
+                        }
+                    };
+                    (element, values.len())
+                }
+            };
+            let expected_element = array_element_type(element);
+            for value in values {
+                let actual =
+                    model.type_of_expr_expected(value, bindings, Some(expected_element))?;
+                if actual != expected_element {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "array element expects {}, found {}",
+                            model.type_name(expected_element),
+                            model.type_name(actual)
+                        ),
+                        value.span,
+                    ));
+                }
+            }
+            Ok(Type::Array { element, length })
+        }
+
+        ExprKind::Index { base, index } => {
+            let base_ty = model.type_of_expr(base, bindings)?;
+            let Type::Array { element, .. } = base_ty else {
+                return Err(Diagnostic::new(
+                    format!("cannot index value of type {}", model.type_name(base_ty)),
+                    base.span,
+                ));
+            };
+            let index_ty = model.type_of_expr_expected(index, bindings, Some(Type::I64))?;
+            if index_ty != Type::I64 {
+                return Err(Diagnostic::new(
+                    format!(
+                        "array index must be i64, found {}",
+                        model.type_name(index_ty)
+                    ),
+                    index.span,
+                ));
+            }
+            Ok(array_element_type(element))
+        }
+
         ExprKind::Construct {
             type_name,
             type_name_span,
@@ -1086,7 +1228,7 @@ fn type_of_expr_expected(
                 ));
             }
 
-            if matches!(left_type, Type::Named(_)) {
+            if matches!(left_type, Type::Named(_) | Type::Array { .. }) {
                 return Err(Diagnostic::new(
                     format!(
                         "cannot apply `{}` to {}",

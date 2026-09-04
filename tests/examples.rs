@@ -158,3 +158,10 @@ fn functions_example_runs() {
 
     assert_eq!(output, "42\n");
 }
+
+#[test]
+fn fixed_arrays_example_runs() {
+    let output = run_vm(include_str!("../examples/fixed_arrays.prim")).unwrap();
+
+    assert_eq!(output, "108\n4\n");
+}

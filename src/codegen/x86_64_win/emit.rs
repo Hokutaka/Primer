@@ -141,6 +141,36 @@ fn emit_instruction(
             output.push_str(&format!("  movsd %xmm0, {offset}(%rbp)\n"));
         }
 
+        Instruction::CheckedArrayLoad {
+            ty,
+            base_offset,
+            length,
+            label,
+        } => {
+            let trap = format!(".Lprimer_{label_prefix}_array_oob_{label}");
+            let done = format!(".Lprimer_{label_prefix}_array_done_{label}");
+            output.push_str("  testq %rax, %rax\n");
+            output.push_str(&format!("  js {trap}\n"));
+            output.push_str(&format!("  cmpq ${length}, %rax\n"));
+            output.push_str(&format!("  jge {trap}\n"));
+            output.push_str("  negq %rax\n");
+            match ty {
+                Type::Bool | Type::I64 => {
+                    output.push_str(&format!("  movq {base_offset}(%rbp,%rax,8), %rax\n"));
+                }
+                Type::F32 => {
+                    output.push_str(&format!("  movss {base_offset}(%rbp,%rax,8), %xmm0\n"));
+                }
+                Type::F64 => {
+                    output.push_str(&format!("  movsd {base_offset}(%rbp,%rax,8), %xmm0\n"));
+                }
+            }
+            output.push_str(&format!("  jmp {done}\n"));
+            output.push_str(&format!("{trap}:\n"));
+            output.push_str("  ud2\n");
+            output.push_str(&format!("{done}:\n"));
+        }
+
         Instruction::StoreParameter { index, ty, offset } => {
             emit_store_parameter(*index, *ty, *offset, output);
         }

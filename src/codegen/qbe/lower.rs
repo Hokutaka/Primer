@@ -131,8 +131,19 @@ struct LoopContext {
 
 #[derive(Debug, Clone)]
 enum Value {
-    Scalar { ty: Type, operand: Operand },
-    Aggregate { type_id: usize, address: Operand },
+    Scalar {
+        ty: Type,
+        operand: Operand,
+    },
+    Aggregate {
+        type_id: usize,
+        address: Operand,
+    },
+    Array {
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        address: Operand,
+    },
 }
 
 impl Lowerer<'_> {
@@ -161,6 +172,22 @@ impl Lowerer<'_> {
                         },
                     ) => {
                         debug_assert_eq!(type_id.0, actual);
+                        self.instructions.push(Instruction::Blit {
+                            source: address,
+                            destination,
+                            size: type_size(self.program, *ty),
+                        });
+                    }
+                    (
+                        primer_ir::Type::Array { element, length },
+                        Value::Array {
+                            element: actual_element,
+                            length: actual_length,
+                            address,
+                        },
+                    ) => {
+                        debug_assert_eq!(element, actual_element);
+                        debug_assert_eq!(length, actual_length);
                         self.instructions.push(Instruction::Blit {
                             source: address,
                             destination,
@@ -393,6 +420,11 @@ impl Lowerer<'_> {
                     type_id: type_id.0,
                     address: Operand::Slot(self.slot(*id)),
                 },
+                primer_ir::Type::Array { element, length } => Value::Array {
+                    element,
+                    length,
+                    address: Operand::Slot(self.slot(*id)),
+                },
                 scalar => {
                     let ty = scalar_type(scalar);
                     let dest = self.next_temp();
@@ -521,6 +553,110 @@ impl Lowerer<'_> {
                             operand: Operand::Temp(dest),
                         }
                     }
+                }
+            }
+            primer_ir::ExprKind::Array(values) => {
+                let primer_ir::Type::Array { element, length } = expr.ty else {
+                    unreachable!("array expression must have an array type")
+                };
+                let slot = self.allocate_aggregate(type_size(self.program, expr.ty));
+                let expected = array_element_scalar_type(element);
+                for (index, value) in values.iter().enumerate() {
+                    let (ty, value) = self.lower_scalar_expr(value);
+                    debug_assert_eq!(ty, expected);
+                    let destination = self.address(Operand::Slot(slot), index * 8);
+                    self.instructions.push(Instruction::Store {
+                        address: destination,
+                        ty,
+                        value,
+                    });
+                }
+                Value::Array {
+                    element,
+                    length,
+                    address: Operand::Slot(slot),
+                }
+            }
+            primer_ir::ExprKind::Index { base, index } => {
+                let Value::Array {
+                    element,
+                    length,
+                    address: base,
+                } = self.lower_expr(base)
+                else {
+                    unreachable!("indexed expression must have an array base")
+                };
+                let (index_ty, index) = self.lower_scalar_expr(index);
+                debug_assert_eq!(index_ty, Type::I64);
+
+                let non_negative = self.next_label();
+                let in_bounds = self.next_label();
+                let out_of_bounds = self.next_label();
+                let is_negative = self.next_temp();
+                self.instructions.push(Instruction::Compare {
+                    dest: is_negative,
+                    op: CompareOp::Less,
+                    operand_ty: Type::I64,
+                    left: index.clone(),
+                    right: Operand::Integer(0),
+                });
+                self.instructions.push(Instruction::Branch {
+                    condition: Operand::Temp(is_negative),
+                    then_label: out_of_bounds,
+                    else_label: non_negative,
+                });
+                self.instructions.push(Instruction::Label {
+                    id: non_negative,
+                    name: "array_index_non_negative",
+                });
+                let is_too_large = self.next_temp();
+                self.instructions.push(Instruction::Compare {
+                    dest: is_too_large,
+                    op: CompareOp::GreaterEqual,
+                    operand_ty: Type::I64,
+                    left: index.clone(),
+                    right: Operand::Integer(length as i64),
+                });
+                self.instructions.push(Instruction::Branch {
+                    condition: Operand::Temp(is_too_large),
+                    then_label: out_of_bounds,
+                    else_label: in_bounds,
+                });
+                self.instructions.push(Instruction::Label {
+                    id: out_of_bounds,
+                    name: "array_index_out_of_bounds",
+                });
+                self.instructions.push(Instruction::Abort);
+                self.instructions.push(Instruction::Label {
+                    id: in_bounds,
+                    name: "array_index_in_bounds",
+                });
+                let scaled = self.next_temp();
+                self.instructions.push(Instruction::Binary {
+                    dest: scaled,
+                    op: BinaryOp::Multiply,
+                    ty: Type::I64,
+                    left: index,
+                    right: Operand::Integer(8),
+                });
+                let address = self.next_temp();
+                self.instructions.push(Instruction::Binary {
+                    dest: address,
+                    op: BinaryOp::Add,
+                    ty: Type::I64,
+                    left: base,
+                    right: Operand::Temp(scaled),
+                });
+                let ty = array_element_scalar_type(element);
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::Load {
+                    dest,
+                    address: Operand::Temp(address),
+                    ty,
+                });
+                Value::Scalar {
+                    ty,
+                    operand: Operand::Temp(dest),
                 }
             }
             primer_ir::ExprKind::Call {
@@ -725,6 +861,7 @@ fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
             .iter()
             .map(|field| type_size(program, field.ty))
             .sum(),
+        primer_ir::Type::Array { length, .. } => length * 8,
     }
 }
 
@@ -741,7 +878,18 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
         primer_ir::Type::I64 => Type::I64,
         primer_ir::Type::F32 => Type::Single,
         primer_ir::Type::F64 => Type::Double,
-        primer_ir::Type::Named(_) => unreachable!("expected a scalar type"),
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("expected a scalar type")
+        }
+    }
+}
+
+const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+    match element {
+        primer_ir::ArrayElementType::Bool => Type::Bool,
+        primer_ir::ArrayElementType::I64 => Type::I64,
+        primer_ir::ArrayElementType::F32 => Type::Single,
+        primer_ir::ArrayElementType::F64 => Type::Double,
     }
 }
 

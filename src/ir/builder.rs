@@ -390,6 +390,22 @@ impl Builder<'_> {
                     base: Box::new(self.build_expr(base, None, bindings)?),
                 }
             }
+            ast::ExprKind::Array(values) => {
+                let semantic::Type::Array { element, .. } = ty else {
+                    unreachable!("semantic analysis must assign an array type")
+                };
+                let expected_element = semantic_array_element_type(element);
+                ExprKind::Array(
+                    values
+                        .iter()
+                        .map(|value| self.build_expr(value, Some(expected_element), bindings))
+                        .collect::<Result<_, _>>()?,
+                )
+            }
+            ast::ExprKind::Index { base, index } => ExprKind::Index {
+                base: Box::new(self.build_expr(base, None, bindings)?),
+                index: Box::new(self.build_expr(index, Some(semantic::Type::I64), bindings)?),
+            },
             ast::ExprKind::Call {
                 name,
                 name_span,
@@ -483,6 +499,24 @@ fn ir_type(value: semantic::Type) -> Type {
         semantic::Type::F32 => Type::F32,
         semantic::Type::F64 => Type::F64,
         semantic::Type::Named(id) => Type::Named(TypeId(id.0)),
+        semantic::Type::Array { element, length } => Type::Array {
+            element: match element {
+                semantic::ArrayElementType::Bool => super::ArrayElementType::Bool,
+                semantic::ArrayElementType::I64 => super::ArrayElementType::I64,
+                semantic::ArrayElementType::F32 => super::ArrayElementType::F32,
+                semantic::ArrayElementType::F64 => super::ArrayElementType::F64,
+            },
+            length,
+        },
+    }
+}
+
+const fn semantic_array_element_type(element: semantic::ArrayElementType) -> semantic::Type {
+    match element {
+        semantic::ArrayElementType::Bool => semantic::Type::Bool,
+        semantic::ArrayElementType::I64 => semantic::Type::I64,
+        semantic::ArrayElementType::F32 => semantic::Type::F32,
+        semantic::ArrayElementType::F64 => semantic::Type::F64,
     }
 }
 
@@ -555,6 +589,7 @@ mod tests {
     fn explicit_type(name: &str) -> TypeSpec {
         TypeSpec::Explicit(TypeRef {
             name: name.into(),
+            array_length: None,
             span: Span::empty(0),
         })
     }

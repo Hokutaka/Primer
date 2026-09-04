@@ -166,6 +166,11 @@ fn emit_instruction(
             .unwrap();
         }
 
+        Instruction::Abort => {
+            output.push_str("  call $abort()\n");
+            output.push_str("  hlt\n");
+        }
+
         Instruction::Call {
             dest,
             function_id,

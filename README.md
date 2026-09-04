@@ -81,6 +81,7 @@ Primerは現在、次の機能を備えています。
 - 静的型付け
 - `bool`、`i64`、`f32`、`f64`
 - 名前付きproduct type、既定field値、field access
+- scalar要素の固定長配列、添字参照、値コピー、実行時の境界検査
 - 型付き関数、`void`、明示的な`return`
 - トップレベル実行文または明示的な`fn main() -> void`
 - 明示的な型宣言
@@ -287,6 +288,7 @@ Primerの文書は、目的ごとに整理されています。
 - [Secret値の設計（Draft）](docs/design/secrets.ja.md)
 - [名前付きproduct typeの設計](docs/design/product-types.ja.md)
 - [関数の設計](docs/design/functions.ja.md)
+- [固定長配列の設計](docs/design/fixed-arrays.ja.md)
 - [言語リファレンス](docs/reference/language.ja.md)
 - [CLIリファレンス](docs/reference/cli.ja.md)
 

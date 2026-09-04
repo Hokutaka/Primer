@@ -175,6 +175,10 @@ impl Parser {
                     "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding",
                     self.peek_next().span,
                 )),
+                TokenKind::LeftBracket => Err(Diagnostic::new(
+                    "array elements cannot be assigned directly; construct a new array and reassign the whole mutable binding",
+                    self.peek_next().span,
+                )),
                 other => Err(Diagnostic::new(
                     format!("expected `:` or `=` after identifier, found {other:?}"),
                     self.peek_next().span,
@@ -274,8 +278,47 @@ impl Parser {
     }
 
     fn parse_type_ref(&mut self) -> ParseResult<TypeRef> {
-        let (name, span) = self.expect_identifier()?;
-        Ok(TypeRef { name, span })
+        if matches!(&self.peek().kind, TokenKind::LeftBracket) {
+            let start = self.advance().span.start();
+            let (name, element_span) = self.expect_identifier()?;
+            if name == "infer" {
+                return Err(Diagnostic::new(
+                    "array element type must be written explicitly",
+                    element_span,
+                ));
+            }
+            self.expect_simple(TokenKind::Semicolon)?;
+            let length_token = self.advance().clone();
+            let length = match length_token.kind {
+                TokenKind::Integer(value) if value > 0 => usize::try_from(value)
+                    .map_err(|_| Diagnostic::new("array length is too large", length_token.span))?,
+                TokenKind::Integer(_) => {
+                    return Err(Diagnostic::new(
+                        "array length must be greater than zero",
+                        length_token.span,
+                    ));
+                }
+                other => {
+                    return Err(Diagnostic::new(
+                        format!("expected positive integer array length, found {other:?}"),
+                        length_token.span,
+                    ));
+                }
+            };
+            let end = self.expect_simple(TokenKind::RightBracket)?.end();
+            Ok(TypeRef {
+                name,
+                array_length: Some(length),
+                span: Span::new(start, end),
+            })
+        } else {
+            let (name, span) = self.expect_identifier()?;
+            Ok(TypeRef {
+                name,
+                array_length: None,
+                span,
+            })
+        }
     }
 
     fn parse_print(&mut self) -> ParseResult<Stmt> {
@@ -588,18 +631,34 @@ impl Parser {
     fn parse_postfix(&mut self) -> ParseResult<Expr> {
         let mut expr = self.parse_primary()?;
 
-        while matches!(&self.peek().kind, TokenKind::Dot) {
-            self.advance();
-            let (field_name, field_name_span) = self.expect_identifier()?;
-            let span = Span::new(expr.span.start(), field_name_span.end());
-            expr = Expr {
-                kind: ExprKind::FieldAccess {
-                    base: Box::new(expr),
-                    field_name,
-                    field_name_span,
-                },
-                span,
-            };
+        loop {
+            if matches!(&self.peek().kind, TokenKind::Dot) {
+                self.advance();
+                let (field_name, field_name_span) = self.expect_identifier()?;
+                let span = Span::new(expr.span.start(), field_name_span.end());
+                expr = Expr {
+                    kind: ExprKind::FieldAccess {
+                        base: Box::new(expr),
+                        field_name,
+                        field_name_span,
+                    },
+                    span,
+                };
+            } else if matches!(&self.peek().kind, TokenKind::LeftBracket) {
+                self.advance();
+                let index = self.parse_expression()?;
+                let end = self.expect_simple(TokenKind::RightBracket)?.end();
+                let span = Span::new(expr.span.start(), end);
+                expr = Expr {
+                    kind: ExprKind::Index {
+                        base: Box::new(expr),
+                        index: Box::new(index),
+                    },
+                    span,
+                };
+            } else {
+                break;
+            }
         }
 
         Ok(expr)
@@ -652,6 +711,8 @@ impl Parser {
                 Ok(Expr { span, ..expr })
             }
 
+            TokenKind::LeftBracket => self.parse_array(span),
+
             other => Err(Diagnostic::new(
                 format!("expected expression, found {other:?}"),
                 token.span,
@@ -681,6 +742,34 @@ impl Parser {
                 arguments,
             },
             span: Span::new(name_span.start(), closing.end()),
+        })
+    }
+
+    fn parse_array(&mut self, opening_span: Span) -> ParseResult<Expr> {
+        if matches!(&self.peek().kind, TokenKind::RightBracket) {
+            let closing = self.advance().span;
+            return Err(Diagnostic::new(
+                "array literal must contain at least one value",
+                Span::new(opening_span.start(), closing.end()),
+            ));
+        }
+
+        let mut values = Vec::new();
+        loop {
+            values.push(self.parse_expression()?);
+            if matches!(&self.peek().kind, TokenKind::Comma) {
+                self.advance();
+                if matches!(&self.peek().kind, TokenKind::RightBracket) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        let closing = self.expect_simple(TokenKind::RightBracket)?;
+        Ok(Expr {
+            kind: ExprKind::Array(values),
+            span: Span::new(opening_span.start(), closing.end()),
         })
     }
 
@@ -843,6 +932,7 @@ mod tests {
             *type_spec,
             TypeSpec::Explicit(TypeRef {
                 name: "i64".into(),
+                array_length: None,
                 span: Span::new(3, 6),
             })
         );
@@ -877,6 +967,60 @@ mod tests {
             panic!("expected print");
         };
         assert!(matches!(value.kind, ExprKind::FieldAccess { .. }));
+    }
+
+    #[test]
+    fn parses_fixed_array_type_literal_and_index() {
+        let program =
+            parse(lex("values: [i64; 2] = [10, 20]; print(values[1]);").unwrap()).unwrap();
+
+        let StmtKind::Binding {
+            type_spec, value, ..
+        } = &program.statement(0).kind
+        else {
+            panic!("expected binding");
+        };
+        assert!(matches!(
+            type_spec,
+            TypeSpec::Explicit(TypeRef {
+                name,
+                array_length: Some(2),
+                ..
+            }) if name == "i64"
+        ));
+        assert!(matches!(&value.kind, ExprKind::Array(values) if values.len() == 2));
+
+        let StmtKind::Print { value } = &program.statement(1).kind else {
+            panic!("expected print");
+        };
+        assert!(matches!(value.kind, ExprKind::Index { .. }));
+    }
+
+    #[test]
+    fn rejects_empty_array_literal() {
+        let error = parse(lex("values: [i64; 1] = [];").unwrap()).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "array literal must contain at least one value"
+        );
+    }
+
+    #[test]
+    fn rejects_zero_length_array_type() {
+        let error = parse(lex("values: [i64; 0] = [1];").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "array length must be greater than zero");
+    }
+
+    #[test]
+    fn rejects_inferred_array_element_type() {
+        let error = parse(lex("values: [infer; 1] = [1];").unwrap()).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "array element type must be written explicitly"
+        );
     }
 
     #[test]

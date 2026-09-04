@@ -116,13 +116,29 @@ fn lower_function(
 #[derive(Debug, Clone)]
 enum Location {
     Scalar(String),
-    Aggregate { type_id: usize, address: usize },
+    Aggregate {
+        type_id: usize,
+        address: usize,
+    },
+    Array {
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        address: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
 enum Value {
     Scalar(Type),
-    Aggregate { type_id: usize, address: usize },
+    Aggregate {
+        type_id: usize,
+        address: usize,
+    },
+    Array {
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        address: usize,
+    },
 }
 
 struct LoweringContext<'a> {
@@ -180,6 +196,23 @@ impl LoweringContext<'_> {
                         };
                         debug_assert_eq!(type_id, source_type);
                         self.copy_aggregate(type_id, source, address, instructions);
+                    }
+                    Location::Array {
+                        element,
+                        length,
+                        address,
+                    } => {
+                        let Value::Array {
+                            element: source_element,
+                            length: source_length,
+                            address: source,
+                        } = self.lower_expr(value, instructions)
+                        else {
+                            unreachable!("semantic analysis keeps assignment types equal")
+                        };
+                        debug_assert_eq!(element, source_element);
+                        debug_assert_eq!(length, source_length);
+                        self.copy_array(element, length, source, address, instructions);
                     }
                 }
             }
@@ -349,6 +382,15 @@ impl LoweringContext<'_> {
                     type_id: *type_id,
                     address: *address,
                 },
+                Location::Array {
+                    element,
+                    length,
+                    address,
+                } => Value::Array {
+                    element: *element,
+                    length: *length,
+                    address: *address,
+                },
             },
             primer_ir::ExprKind::Construct {
                 type_id, fields, ..
@@ -408,6 +450,73 @@ impl LoweringContext<'_> {
                         Value::Scalar(ty)
                     }
                 }
+            }
+            primer_ir::ExprKind::Array(values) => {
+                let primer_ir::Type::Array { element, length } = expr.ty else {
+                    unreachable!("array expression must have an array type")
+                };
+                let address = self.allocate(type_size(self.program, expr.ty));
+                let ty = array_element_scalar_type(element);
+                for (index, value) in values.iter().enumerate() {
+                    instructions.push(Instruction::I32Const((address + index * 8) as i32));
+                    let Value::Scalar(actual) = self.lower_expr(value, instructions) else {
+                        unreachable!("array elements are scalar values")
+                    };
+                    debug_assert_eq!(actual, ty);
+                    instructions.push(store_instruction(ty, 0));
+                }
+                Value::Array {
+                    element,
+                    length,
+                    address,
+                }
+            }
+            primer_ir::ExprKind::Index { base, index } => {
+                let Value::Array {
+                    element,
+                    length,
+                    address,
+                } = self.lower_expr(base, instructions)
+                else {
+                    unreachable!("indexed expression must have an array base")
+                };
+
+                // 添字を一度だけ評価し、検査とアドレス計算で同じ値を使います。
+                let index_address = self.allocate(8);
+                instructions.push(Instruction::I32Const(index_address as i32));
+                let Value::Scalar(Type::I64) = self.lower_expr(index, instructions) else {
+                    unreachable!("array index must be i64")
+                };
+                instructions.push(Instruction::I64Store { offset: 0 });
+
+                instructions.push(Instruction::I32Const(index_address as i32));
+                instructions.push(Instruction::I64Load { offset: 0 });
+                instructions.push(Instruction::I64Const(0));
+                instructions.push(Instruction::I64LtS);
+                instructions.push(Instruction::If {
+                    then_instructions: vec![Instruction::Unreachable],
+                    else_instructions: Vec::new(),
+                });
+
+                instructions.push(Instruction::I32Const(index_address as i32));
+                instructions.push(Instruction::I64Load { offset: 0 });
+                instructions.push(Instruction::I64Const(length as i64));
+                instructions.push(Instruction::I64GeS);
+                instructions.push(Instruction::If {
+                    then_instructions: vec![Instruction::Unreachable],
+                    else_instructions: Vec::new(),
+                });
+
+                instructions.push(Instruction::I32Const(address as i32));
+                instructions.push(Instruction::I32Const(index_address as i32));
+                instructions.push(Instruction::I64Load { offset: 0 });
+                instructions.push(Instruction::I32WrapI64);
+                instructions.push(Instruction::I32Const(8));
+                instructions.push(Instruction::I32Mul);
+                instructions.push(Instruction::I32Add);
+                let ty = array_element_scalar_type(element);
+                instructions.push(load_instruction(ty, 0));
+                Value::Scalar(ty)
             }
             primer_ir::ExprKind::Unary { op, value } => {
                 let ty = scalar_type(expr.ty);
@@ -493,6 +602,24 @@ impl LoweringContext<'_> {
         }
     }
 
+    fn copy_array(
+        &self,
+        element: primer_ir::ArrayElementType,
+        length: usize,
+        source: usize,
+        destination: usize,
+        instructions: &mut Vec<Instruction>,
+    ) {
+        let ty = array_element_scalar_type(element);
+        for index in 0..length {
+            let offset = index * 8;
+            instructions.push(Instruction::I32Const((destination + offset) as i32));
+            instructions.push(Instruction::I32Const((source + offset) as i32));
+            instructions.push(load_instruction(ty, 0));
+            instructions.push(store_instruction(ty, 0));
+        }
+    }
+
     fn allocate(&mut self, size: usize) -> usize {
         let address = self.next_address;
         self.next_address += size;
@@ -518,6 +645,18 @@ fn collect_locations(
                         *id,
                         Location::Aggregate {
                             type_id: type_id.0,
+                            address,
+                        },
+                    );
+                }
+                primer_ir::Type::Array { element, length } => {
+                    let address = *next_address;
+                    *next_address += type_size(program, *ty);
+                    locations.insert(
+                        *id,
+                        Location::Array {
+                            element: *element,
+                            length: *length,
                             address,
                         },
                     );
@@ -607,6 +746,7 @@ fn type_size(program: &primer_ir::Program, ty: primer_ir::Type) -> usize {
             .iter()
             .map(|field| type_size(program, field.ty))
             .sum(),
+        primer_ir::Type::Array { length, .. } => length * 8,
     }
 }
 
@@ -623,7 +763,18 @@ fn scalar_type(ty: primer_ir::Type) -> Type {
         primer_ir::Type::I64 => Type::I64,
         primer_ir::Type::F32 => Type::F32,
         primer_ir::Type::F64 => Type::F64,
-        primer_ir::Type::Named(_) => unreachable!("expected a scalar type"),
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("expected a scalar type")
+        }
+    }
+}
+
+const fn array_element_scalar_type(element: primer_ir::ArrayElementType) -> Type {
+    match element {
+        primer_ir::ArrayElementType::Bool => Type::Bool,
+        primer_ir::ArrayElementType::I64 => Type::I64,
+        primer_ir::ArrayElementType::F32 => Type::F32,
+        primer_ir::ArrayElementType::F64 => Type::F64,
     }
 }
 

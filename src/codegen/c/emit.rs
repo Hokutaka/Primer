@@ -1,4 +1,6 @@
-use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp};
+use super::ir::{
+    ArrayElementType, BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp,
+};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -8,7 +10,41 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push_str("#include <stdint.h>\n");
-    output.push_str("#include <stdio.h>\n\n");
+    output.push_str("#include <stdio.h>\n");
+    if !module.array_types.is_empty() {
+        output.push_str("#include <stdlib.h>\n");
+    }
+    output.push('\n');
+
+    for ty in &module.array_types {
+        let Type::Array { element, length } = *ty else {
+            unreachable!("array type collection only contains arrays")
+        };
+        let name = array_type_name(element, length);
+        output.push_str("typedef struct ");
+        output.push_str(&name);
+        output.push_str(" {\n    ");
+        output.push_str(array_element_c_type(element));
+        output.push_str(" items[");
+        output.push_str(&length.to_string());
+        output.push_str("];\n} ");
+        output.push_str(&name);
+        output.push_str(";\n\n");
+
+        output.push_str("static ");
+        output.push_str(array_element_c_type(element));
+        output.push(' ');
+        output.push_str(&array_get_name(element, length));
+        output.push('(');
+        output.push_str(&name);
+        output.push_str(" value, int64_t index) {\n");
+        output.push_str("    if (index < 0 || index >= ");
+        output.push_str(&length.to_string());
+        output.push_str(") {\n");
+        output.push_str("        fputs(\"primer: array index out of bounds\\n\", stderr);\n");
+        output.push_str("        abort();\n    }\n");
+        output.push_str("    return value.items[index];\n}\n\n");
+    }
 
     for definition in &module.type_definitions {
         output.push_str("typedef struct primer_type_");
@@ -256,6 +292,7 @@ fn c_type(ty: Type, module: &Module) -> String {
                 .expect("named C type must have a definition");
             format!("primer_type_{}_{}", definition.name, id)
         }
+        Type::Array { element, length } => array_type_name(element, length),
     }
 }
 
@@ -351,6 +388,31 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             output.push_str(field_name);
         }
 
+        ExprKind::Array(values) => {
+            output.push('(');
+            output.push_str(&c_type(expr.ty, module));
+            output.push_str("){ .items = { ");
+            for (index, value) in values.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                emit_expr(value, module, output);
+            }
+            output.push_str(" } }");
+        }
+
+        ExprKind::Index { base, index } => {
+            let Type::Array { element, length } = base.ty else {
+                unreachable!("indexed expression must have an array base")
+            };
+            output.push_str(&array_get_name(element, length));
+            output.push('(');
+            emit_expr(base, module, output);
+            output.push_str(", ");
+            emit_expr(index, module, output);
+            output.push(')');
+        }
+
         ExprKind::Call {
             function_id,
             function_name,
@@ -436,16 +498,58 @@ fn module_uses_bool(module: &Module) -> bool {
         .type_definitions
         .iter()
         .flat_map(|definition| &definition.fields)
-        .any(|field| field.ty == Type::Bool)
+        .any(|field| type_uses_bool(field.ty))
+        || module.array_types.iter().copied().any(type_uses_bool)
         || module.statements.iter().any(statement_uses_bool)
         || module.functions.iter().any(|function| {
-            function.return_type == Some(Type::Bool)
+            function.return_type.is_some_and(type_uses_bool)
                 || function
                     .parameters
                     .iter()
-                    .any(|parameter| parameter.ty == Type::Bool)
+                    .any(|parameter| type_uses_bool(parameter.ty))
                 || function.body.iter().any(statement_uses_bool)
         })
+}
+
+fn type_uses_bool(ty: Type) -> bool {
+    ty == Type::Bool
+        || matches!(
+            ty,
+            Type::Array {
+                element: ArrayElementType::Bool,
+                ..
+            }
+        )
+}
+
+const fn array_element_c_type(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "bool",
+        ArrayElementType::I64 => "int64_t",
+        ArrayElementType::Float => "float",
+        ArrayElementType::Double => "double",
+    }
+}
+
+fn array_type_name(element: ArrayElementType, length: usize) -> String {
+    format!("primer_array_{}_{}", array_element_name(element), length)
+}
+
+fn array_get_name(element: ArrayElementType, length: usize) -> String {
+    format!(
+        "primer_array_get_{}_{}",
+        array_element_name(element),
+        length
+    )
+}
+
+const fn array_element_name(element: ArrayElementType) -> &'static str {
+    match element {
+        ArrayElementType::Bool => "bool",
+        ArrayElementType::I64 => "i64",
+        ArrayElementType::Float => "f32",
+        ArrayElementType::Double => "f64",
+    }
 }
 
 fn statement_uses_bool(statement: &Statement) -> bool {

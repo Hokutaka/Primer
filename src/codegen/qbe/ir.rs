@@ -107,6 +107,7 @@ pub enum Instruction {
         destination: Operand,
         size: usize,
     },
+    Abort,
     Call {
         dest: Option<Temp>,
         function_id: usize,

@@ -5,6 +5,18 @@ pub enum Type {
     Float,
     Double,
     Named(usize),
+    Array {
+        element: ArrayElementType,
+        length: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrayElementType {
+    Bool,
+    I64,
+    Float,
+    Double,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +144,13 @@ pub enum Instruction {
         ty: Type,
         aggregate: Operand,
         field: usize,
+    },
+    ArrayGet {
+        dest: Temp,
+        element: ArrayElementType,
+        length: usize,
+        array: Operand,
+        index: Operand,
     },
     Call {
         dest: Option<Temp>,

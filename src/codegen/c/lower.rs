@@ -1,12 +1,13 @@
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module, Parameter,
-    PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
+    ArrayElementType, BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module,
+    Parameter, PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     Module {
+        array_types: collect_array_types(program),
         type_definitions: lower_type_definitions(program),
         functions: program
             .function_definitions
@@ -186,6 +187,13 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
             field_name: field_name.clone(),
             base: Box::new(lower_expr(base)),
         },
+        primer_ir::ExprKind::Array(values) => {
+            ExprKind::Array(values.iter().map(lower_expr).collect())
+        }
+        primer_ir::ExprKind::Index { base, index } => ExprKind::Index {
+            base: Box::new(lower_expr(base)),
+            index: Box::new(lower_expr(index)),
+        },
         primer_ir::ExprKind::Call {
             function_id,
             function_name,
@@ -209,7 +217,9 @@ fn print_format(ty: primer_ir::Type) -> PrintFormat {
         primer_ir::Type::I64 => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
-        primer_ir::Type::Named(_) => unreachable!("semantic analysis rejects aggregate printing"),
+        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis rejects aggregate printing")
+        }
     }
 }
 
@@ -221,8 +231,124 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
+            primer_ir::Type::Array { element, length } => Self::Array {
+                element: match element {
+                    primer_ir::ArrayElementType::Bool => ArrayElementType::Bool,
+                    primer_ir::ArrayElementType::I64 => ArrayElementType::I64,
+                    primer_ir::ArrayElementType::F32 => ArrayElementType::Float,
+                    primer_ir::ArrayElementType::F64 => ArrayElementType::Double,
+                },
+                length,
+            },
         }
     }
+}
+
+fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
+    fn add(ty: primer_ir::Type, types: &mut Vec<Type>) {
+        if matches!(ty, primer_ir::Type::Array { .. }) {
+            let ty = ty.into();
+            if !types.contains(&ty) {
+                types.push(ty);
+            }
+        }
+    }
+
+    fn visit_expr(expr: &primer_ir::Expr, types: &mut Vec<Type>) {
+        add(expr.ty, types);
+        match &expr.kind {
+            primer_ir::ExprKind::Array(values) => {
+                for value in values {
+                    visit_expr(value, types);
+                }
+            }
+            primer_ir::ExprKind::Index { base, index }
+            | primer_ir::ExprKind::Binary {
+                left: base,
+                right: index,
+                ..
+            } => {
+                visit_expr(base, types);
+                visit_expr(index, types);
+            }
+            primer_ir::ExprKind::Construct { fields, .. } => {
+                for field in fields {
+                    visit_expr(&field.value, types);
+                }
+            }
+            primer_ir::ExprKind::FieldAccess { base, .. }
+            | primer_ir::ExprKind::Unary { value: base, .. } => visit_expr(base, types),
+            primer_ir::ExprKind::Call { arguments, .. } => {
+                for argument in arguments {
+                    visit_expr(argument, types);
+                }
+            }
+            primer_ir::ExprKind::Boolean(_)
+            | primer_ir::ExprKind::Integer(_)
+            | primer_ir::ExprKind::Float { .. }
+            | primer_ir::ExprKind::Variable { .. } => {}
+        }
+    }
+
+    fn visit_statement(statement: &primer_ir::Statement, types: &mut Vec<Type>) {
+        match &statement.kind {
+            primer_ir::StatementKind::Binding { ty, value, .. } => {
+                add(*ty, types);
+                visit_expr(value, types);
+            }
+            primer_ir::StatementKind::Assignment { value, .. }
+            | primer_ir::StatementKind::Print { value }
+            | primer_ir::StatementKind::Return { value: Some(value) } => visit_expr(value, types),
+            primer_ir::StatementKind::Call { arguments, .. } => {
+                for argument in arguments {
+                    visit_expr(argument, types);
+                }
+            }
+            primer_ir::StatementKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                visit_expr(condition, types);
+                for statement in then_body.iter().chain(else_body) {
+                    visit_statement(statement, types);
+                }
+            }
+            primer_ir::StatementKind::While { condition, body } => {
+                visit_expr(condition, types);
+                for statement in body {
+                    visit_statement(statement, types);
+                }
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => {
+                visit_statement(initializer, types);
+                visit_expr(condition, types);
+                visit_statement(update, types);
+                for statement in body {
+                    visit_statement(statement, types);
+                }
+            }
+            primer_ir::StatementKind::Return { value: None }
+            | primer_ir::StatementKind::Break
+            | primer_ir::StatementKind::Continue => {}
+        }
+    }
+
+    let mut types = Vec::new();
+    for function in &program.function_definitions {
+        for statement in &function.body {
+            visit_statement(statement, &mut types);
+        }
+    }
+    for statement in &program.statements {
+        visit_statement(statement, &mut types);
+    }
+    types
 }
 
 impl From<primer_ir::UnaryOp> for UnaryOp {

@@ -702,15 +702,15 @@ The recommendation is to preserve Structured Primer IR and introduce Control-flo
 
 ### 4. User-defined types and aggregates
 
-User-defined types are a requirement for making Primer a general-purpose language. Aggregates are considered as their first concrete implementation.
+User-defined types are a requirement for making Primer a general-purpose language. Named product types and fixed arrays now provide the first concrete aggregate implementations.
 
-Agreed decisions and remaining questions for named product types are maintained separately in the [named product type design](product-types.en.md).
+Named product types are maintained in the [named product type design](product-types.en.md), and fixed arrays in the [fixed array design](fixed-arrays.en.md).
 
 The design decides:
 
 - whether named types are nominal or identified only by structure;
 - how type aliases differ from new types;
-- whether the first form is a named product type, tuple, array, or sum type;
+- in which order tuples and sum types should be introduced;
 - how construction and field access are represented;
 - to what extent aggregates are values;
 - how far immutability, updates, copy, move, and borrow semantics are introduced;
@@ -718,7 +718,7 @@ The design decides:
 - at which stage memory layout is decided;
 - where the ABI boundary lies.
 
-The primary candidate uses nominal identity so that named types with different meanings remain distinct, with a named immutable product type as the first implementation. Tuples, arrays, sum types, generic types, recursive types, references, and custom layouts can be added on the same type-system foundation after their requirements and dependencies are understood.
+Named product types use nominal identity, while fixed arrays are identified by element type and length. Both copy as values and do not allow direct mutation of one inner part. Tuples, sum types, generic types, recursive types, references, and custom layouts remain to be organized on the same type-system foundation according to their requirements and dependencies.
 
 Primer IR retains meaning such as type names, fields, and type arguments, while size, layout, alignment, and calling conventions are decided during or after backend lowering. Provenance and transformation records trace how a type is decomposed into fields, memory, registers, and instructions, including the point where its abstraction is lost.
 

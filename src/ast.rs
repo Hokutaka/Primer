@@ -18,6 +18,7 @@ pub enum TypeSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeRef {
     pub name: String,
+    pub array_length: Option<usize>,
     pub span: Span,
 }
 
@@ -158,6 +159,11 @@ pub enum ExprKind {
         base: Box<Expr>,
         field_name: String,
         field_name_span: Span,
+    },
+    Array(Vec<Expr>),
+    Index {
+        base: Box<Expr>,
+        index: Box<Expr>,
     },
     Call {
         name: String,

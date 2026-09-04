@@ -1,0 +1,51 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %slot_values =l alloc8 24
+  %slot_copy =l alloc8 24
+  %slot_aggregate_tmp0 =l alloc8 24
+  %slot_aggregate_tmp1 =l alloc8 24
+  storel 2, %slot_aggregate_tmp0
+  %tmp0 =l add %slot_aggregate_tmp0, 8
+  storel 4, %tmp0
+  %tmp1 =l add %slot_aggregate_tmp0, 16
+  storel 6, %tmp1
+  blit %slot_aggregate_tmp0, %slot_values, 24
+  blit %slot_values, %slot_copy, 24
+  storel 1, %slot_aggregate_tmp1
+  %tmp2 =l add %slot_aggregate_tmp1, 8
+  storel 3, %tmp2
+  %tmp3 =l add %slot_aggregate_tmp1, 16
+  storel 5, %tmp3
+  blit %slot_aggregate_tmp1, %slot_values, 24
+  %tmp4 =w csltl 2, 0
+  jnz %tmp4, @block2, @block0
+@block0 # array_index_non_negative
+  %tmp5 =w csgel 2, 3
+  jnz %tmp5, @block2, @block1
+@block2 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block1 # array_index_in_bounds
+  %tmp6 =l mul 2, 8
+  %tmp7 =l add %slot_copy, %tmp6
+  %tmp8 =l loadl %tmp7
+  %tmp9 =w call $printf(l $fmt_i64, ..., l %tmp8)
+  %tmp10 =w csltl 1, 0
+  jnz %tmp10, @block5, @block3
+@block3 # array_index_non_negative
+  %tmp11 =w csgel 1, 3
+  jnz %tmp11, @block5, @block4
+@block5 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block4 # array_index_in_bounds
+  %tmp12 =l mul 1, 8
+  %tmp13 =l add %slot_values, %tmp12
+  %tmp14 =l loadl %tmp13
+  %tmp15 =w call $printf(l $fmt_i64, ..., l %tmp14)
+  ret 0
+}
