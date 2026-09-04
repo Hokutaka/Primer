@@ -125,10 +125,16 @@ enum Value {
         base_slot: usize,
     },
     Array {
-        element: Type,
+        element: ArrayElement,
         length: usize,
         base_slot: usize,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArrayElement {
+    Scalar(Type),
+    Named(usize),
 }
 
 impl Lowerer<'_> {
@@ -167,7 +173,7 @@ impl Lowerer<'_> {
                             base_slot: source,
                         },
                     ) => {
-                        debug_assert_eq!(array_element_scalar_type(element), actual_element);
+                        debug_assert_eq!(array_element_type(element), actual_element);
                         debug_assert_eq!(*length, actual_length);
                         self.copy_array(actual_element, *length, source, destination);
                     }
@@ -376,7 +382,7 @@ impl Lowerer<'_> {
                     base_slot: self.binding_slot(*id),
                 },
                 primer_ir::Type::Array { element, length } => Value::Array {
-                    element: array_element_scalar_type(element),
+                    element: array_element_type(element),
                     length: *length,
                     base_slot: self.binding_slot(*id),
                 },
@@ -491,7 +497,7 @@ impl Lowerer<'_> {
                                 base_slot: source,
                             },
                         ) => {
-                            let element = array_element_scalar_type(element);
+                            let element = array_element_type(element);
                             debug_assert_eq!(element, actual_element);
                             debug_assert_eq!(*length, actual_length);
                             self.copy_array(element, *length, source, field_slot);
@@ -524,7 +530,7 @@ impl Lowerer<'_> {
                         base_slot: field_slot,
                     },
                     primer_ir::Type::Array { element, length } => Value::Array {
-                        element: array_element_scalar_type(element),
+                        element: array_element_type(element),
                         length: *length,
                         base_slot: field_slot,
                     },
@@ -540,16 +546,30 @@ impl Lowerer<'_> {
                     unreachable!("array expression must have an array type")
                 };
                 let destination = self.allocate_aggregate(&expr.ty);
-                let ty = array_element_scalar_type(element);
+                let element = array_element_type(element);
+                let stride = array_element_slot_count(self.program, element);
                 for (index, value) in values.iter().enumerate() {
-                    let Value::Scalar(actual) = self.lower_expr(value, depth) else {
-                        unreachable!("array elements are scalar values")
-                    };
-                    debug_assert_eq!(actual, ty);
-                    self.store_scalar(ty, slot_offset(destination + index));
+                    let destination = destination + index * stride;
+                    match (element, self.lower_expr(value, depth)) {
+                        (ArrayElement::Scalar(expected), Value::Scalar(actual)) => {
+                            debug_assert_eq!(expected, actual);
+                            self.store_scalar(actual, slot_offset(destination));
+                        }
+                        (
+                            ArrayElement::Named(expected),
+                            Value::Aggregate {
+                                type_id,
+                                base_slot: source,
+                            },
+                        ) => {
+                            debug_assert_eq!(expected, type_id);
+                            self.copy_aggregate(type_id, source, destination);
+                        }
+                        _ => unreachable!("semantic analysis keeps array element types equal"),
+                    }
                 }
                 Value::Array {
-                    element: ty,
+                    element,
                     length: *length,
                     base_slot: destination,
                 }
@@ -566,15 +586,35 @@ impl Lowerer<'_> {
                 let Value::Scalar(Type::I64) = self.lower_expr(index, depth) else {
                     unreachable!("array index must be i64")
                 };
-                let ty = element;
                 let label = self.next_label();
-                self.instructions.push(Instruction::CheckedArrayLoad {
-                    ty,
-                    base_offset: slot_offset(base_slot),
-                    length,
-                    label,
-                });
-                Value::Scalar(ty)
+                match element {
+                    ArrayElement::Scalar(ty) => {
+                        self.instructions.push(Instruction::CheckedArrayLoad {
+                            ty,
+                            base_offset: slot_offset(base_slot),
+                            length,
+                            label,
+                        });
+                        Value::Scalar(ty)
+                    }
+                    ArrayElement::Named(type_id) => {
+                        let element_slots = array_element_slot_count(self.program, element);
+                        let destination = self.allocate_aggregate(&primer_ir::Type::Named(
+                            primer_ir::TypeId(type_id),
+                        ));
+                        self.instructions.push(Instruction::CheckedArrayCopy {
+                            base_offset: slot_offset(base_slot),
+                            length,
+                            element_slots,
+                            destination_offset: slot_offset(destination),
+                            label,
+                        });
+                        Value::Aggregate {
+                            type_id,
+                            base_slot: destination,
+                        }
+                    }
+                }
             }
             primer_ir::ExprKind::Call {
                 function_id,
@@ -615,7 +655,7 @@ impl Lowerer<'_> {
                     self.copy_aggregate(nested.0, source + offset, destination + offset)
                 }
                 primer_ir::Type::Array { element, length } => self.copy_array(
-                    array_element_scalar_type(element),
+                    array_element_type(element),
                     *length,
                     source + offset,
                     destination + offset,
@@ -629,10 +669,24 @@ impl Lowerer<'_> {
         }
     }
 
-    fn copy_array(&mut self, element: Type, length: usize, source: usize, destination: usize) {
+    fn copy_array(
+        &mut self,
+        element: ArrayElement,
+        length: usize,
+        source: usize,
+        destination: usize,
+    ) {
+        let stride = array_element_slot_count(self.program, element);
         for index in 0..length {
-            self.load_scalar(element, slot_offset(source + index));
-            self.store_scalar(element, slot_offset(destination + index));
+            let source = source + index * stride;
+            let destination = destination + index * stride;
+            match element {
+                ArrayElement::Scalar(ty) => {
+                    self.load_scalar(ty, slot_offset(source));
+                    self.store_scalar(ty, slot_offset(destination));
+                }
+                ArrayElement::Named(type_id) => self.copy_aggregate(type_id, source, destination),
+            }
         }
     }
 
@@ -800,7 +854,7 @@ fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize 
             .iter()
             .map(|field| type_slot_count(program, &field.ty))
             .sum(),
-        primer_ir::Type::Array { length, .. } => *length,
+        primer_ir::Type::Array { element, length } => type_slot_count(program, element) * length,
     }
 }
 
@@ -969,14 +1023,24 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
     }
 }
 
-fn array_element_scalar_type(element: &primer_ir::Type) -> Type {
+fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::I64 => Type::I64,
-        primer_ir::Type::F32 => Type::F32,
-        primer_ir::Type::F64 => Type::F64,
-        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently requires scalar array elements")
+        primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
+        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
+        primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
+        primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
+        }
+    }
+}
+
+fn array_element_slot_count(program: &primer_ir::Program, element: ArrayElement) -> usize {
+    match element {
+        ArrayElement::Scalar(_) => 1,
+        ArrayElement::Named(id) => {
+            type_slot_count(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
         }
     }
 }

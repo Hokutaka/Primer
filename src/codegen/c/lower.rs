@@ -52,7 +52,7 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
         visited[id] = true;
         let definition = &program.type_definitions[id];
         for field in &definition.fields {
-            if let primer_ir::Type::Named(dependency) = &field.ty {
+            if let Some(dependency) = named_type_dependency(&field.ty) {
                 visit(dependency.0, program, visited, definitions);
             }
         }
@@ -76,6 +76,17 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
         visit(id, program, &mut visited, &mut definitions);
     }
     definitions
+}
+
+fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
+    match ty {
+        primer_ir::Type::Named(id) => Some(*id),
+        primer_ir::Type::Array { element, .. } => named_type_dependency(element),
+        primer_ir::Type::Bool
+        | primer_ir::Type::I64
+        | primer_ir::Type::F32
+        | primer_ir::Type::F64 => None,
+    }
 }
 
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
@@ -232,21 +243,22 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: scalar_array_element_type(&element),
+                element: array_element_type(&element),
                 length,
             },
         }
     }
 }
 
-fn scalar_array_element_type(element: &primer_ir::Type) -> ArrayElementType {
+fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
     match element {
         primer_ir::Type::Bool => ArrayElementType::Bool,
         primer_ir::Type::I64 => ArrayElementType::I64,
         primer_ir::Type::F32 => ArrayElementType::Float,
         primer_ir::Type::F64 => ArrayElementType::Double,
-        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently requires scalar array elements")
+        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
         }
     }
 }

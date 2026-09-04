@@ -768,21 +768,22 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: scalar_array_element_type(&element),
+                element: array_element_type(&element),
                 length,
             },
         }
     }
 }
 
-fn scalar_array_element_type(element: &primer_ir::Type) -> ArrayElementType {
+fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
     match element {
         primer_ir::Type::Bool => ArrayElementType::Bool,
         primer_ir::Type::I64 => ArrayElementType::I64,
         primer_ir::Type::F32 => ArrayElementType::Float,
         primer_ir::Type::F64 => ArrayElementType::Double,
-        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently requires scalar array elements")
+        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
         }
     }
 }

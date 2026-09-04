@@ -291,6 +291,36 @@ mod tests {
     }
 
     #[test]
+    fn fixed_arrays_can_hold_product_values() {
+        let source = "
+            type Point { x: i64, y: i64, }
+            type Path { points: [Point; 2], }
+            mut paths: [Path; 2] = [
+                Path { points: [Point { x: 1, y: 2, }, Point { x: 3, y: 4, }], },
+                Path { points: [Point { x: 5, y: 6, }, Point { x: 7, y: 8, }], },
+            ];
+            copy: [Path; 2] = paths;
+            paths = [
+                Path { points: [Point { x: 9, y: 10, }, Point { x: 11, y: 12, }], },
+                Path { points: [Point { x: 13, y: 14, }, Point { x: 15, y: 16, }], },
+            ];
+            print(copy[1].points[0].x);
+            print(paths[0].points[1].y);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "5\n12\n");
+        let bytecode = compile_to_bytecode_text(source).unwrap();
+        assert!(bytecode.contains("array.new %Point@0 2"));
+        assert!(bytecode.contains("array.new %Path@1 2"));
+        assert!(bytecode.contains("array.get %Path@1 2"));
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
     fn fixed_array_fields_support_defaults() {
         let source = "
             type Row { id: i64, values: [i64; 2] = [7, 8], }

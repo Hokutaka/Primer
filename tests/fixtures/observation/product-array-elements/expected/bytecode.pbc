@@ -1,0 +1,38 @@
+; Primer bytecode v0.1
+
+.type 0 Point
+.field 0.0 x i64
+.field 0.1 y i64
+
+.slot 0 mut points [%Point@0; 2]
+.slot 1 copy [%Point@0; 2]
+
+0000  push.i64 1
+0001  push.i64 2
+0002  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0003  push.i64 3
+0004  push.i64 4
+0005  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0006  array.new %Point@0 2
+0007  store 0       ; points
+0008  load 0        ; points
+0009  store 1       ; copy
+0010  push.i64 5
+0011  push.i64 6
+0012  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0013  push.i64 7
+0014  push.i64 8
+0015  construct %Point@0 [%x@0:explicit, %y@1:explicit]
+0016  array.new %Point@0 2
+0017  assign 0      ; points
+0018  load 1        ; copy
+0019  push.i64 1
+0020  array.get %Point@0 2
+0021  field.get %Point@0.%x@0
+0022  print.i64
+0023  load 0        ; points
+0024  push.i64 0
+0025  array.get %Point@0 2
+0026  field.get %Point@0.%y@1
+0027  print.i64
+0028  halt

@@ -171,6 +171,32 @@ fn emit_instruction(
             output.push_str(&format!("{done}:\n"));
         }
 
+        Instruction::CheckedArrayCopy {
+            base_offset,
+            length,
+            element_slots,
+            destination_offset,
+            label,
+        } => {
+            let trap = format!(".Lprimer_{label_prefix}_array_oob_{label}");
+            let done = format!(".Lprimer_{label_prefix}_array_done_{label}");
+            output.push_str("  testq %rax, %rax\n");
+            output.push_str(&format!("  js {trap}\n"));
+            output.push_str(&format!("  cmpq ${length}, %rax\n"));
+            output.push_str(&format!("  jge {trap}\n"));
+            output.push_str(&format!("  imulq $-{}, %rax\n", element_slots));
+            for slot in 0..*element_slots {
+                let source = base_offset - 8 * slot as isize;
+                let destination = destination_offset - 8 * slot as isize;
+                output.push_str(&format!("  movq {source}(%rbp,%rax,8), %rcx\n"));
+                output.push_str(&format!("  movq %rcx, {destination}(%rbp)\n"));
+            }
+            output.push_str(&format!("  jmp {done}\n"));
+            output.push_str(&format!("{trap}:\n"));
+            output.push_str("  ud2\n");
+            output.push_str(&format!("{done}:\n"));
+        }
+
         Instruction::StoreParameter { index, ty, offset } => {
             emit_store_parameter(*index, *ty, *offset, output);
         }

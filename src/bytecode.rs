@@ -25,6 +25,7 @@ pub enum ArrayElementType {
     I64,
     F32,
     F64,
+    Named(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -650,7 +651,7 @@ impl Compiler {
                 };
                 self.emit_source(
                     InstructionKind::ConstructArray {
-                        element: scalar_array_element_type(element),
+                        element: array_element_type(element),
                         length: *length,
                     },
                     expr.span,
@@ -665,7 +666,7 @@ impl Compiler {
                 };
                 self.emit_source(
                     InstructionKind::Index {
-                        element: scalar_array_element_type(element),
+                        element: array_element_type(element),
                         length: *length,
                     },
                     expr.span,
@@ -799,21 +800,22 @@ impl From<ir::Type> for Type {
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),
             ir::Type::Array { element, length } => Self::Array {
-                element: scalar_array_element_type(&element),
+                element: array_element_type(&element),
                 length,
             },
         }
     }
 }
 
-fn scalar_array_element_type(value: &ir::Type) -> ArrayElementType {
+fn array_element_type(value: &ir::Type) -> ArrayElementType {
     match value {
         ir::Type::Bool => ArrayElementType::Bool,
         ir::Type::I64 => ArrayElementType::I64,
         ir::Type::F32 => ArrayElementType::F32,
         ir::Type::F64 => ArrayElementType::F64,
-        ir::Type::Named(_) | ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently requires scalar array elements")
+        ir::Type::Named(id) => ArrayElementType::Named(id.0),
+        ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
         }
     }
 }
@@ -893,7 +895,7 @@ fn format_instruction(
             writeln!(
                 output,
                 "array.new {} {length}",
-                array_element_name(*element)
+                array_element_name(*element, program)
             )
             .unwrap();
         }
@@ -902,7 +904,7 @@ fn format_instruction(
             writeln!(
                 output,
                 "array.get {} {length}",
-                array_element_name(*element)
+                array_element_name(*element, program)
             )
             .unwrap();
         }
@@ -1001,17 +1003,18 @@ fn type_name(ty: Type, program: &BytecodeProgram) -> String {
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
         Type::Array { element, length } => {
-            format!("[{}; {length}]", array_element_name(element))
+            format!("[{}; {length}]", array_element_name(element, program))
         }
     }
 }
 
-const fn array_element_name(element: ArrayElementType) -> &'static str {
+fn array_element_name(element: ArrayElementType, program: &BytecodeProgram) -> String {
     match element {
-        ArrayElementType::Bool => "bool",
-        ArrayElementType::I64 => "i64",
-        ArrayElementType::F32 => "f32",
-        ArrayElementType::F64 => "f64",
+        ArrayElementType::Bool => "bool".into(),
+        ArrayElementType::I64 => "i64".into(),
+        ArrayElementType::F32 => "f32".into(),
+        ArrayElementType::F64 => "f64".into(),
+        ArrayElementType::Named(id) => format!("%{}@{id}", program.type_definitions[id].name),
     }
 }
 

@@ -564,14 +564,11 @@ fn resolve_type_ref(
         ast::TypeRefKind::Array { element, length } => (element, *length),
     };
     let element = resolve_type_ref(element, type_names)?;
-    match &element {
-        Type::Bool | Type::I64 | Type::F32 | Type::F64 => {}
-        Type::Named(_) | Type::Array { .. } => {
-            return Err(Diagnostic::new(
-                "array elements currently require a scalar type",
-                type_ref.span,
-            ));
-        }
+    if matches!(&element, Type::Array { .. }) {
+        return Err(Diagnostic::new(
+            "nested array types are not supported yet",
+            type_ref.span,
+        ));
     }
     Ok(Type::Array {
         element: Box::new(element),
@@ -599,7 +596,7 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
         states[id.0] = Visit::Visiting;
 
         for field in &model.type_definition(id).fields {
-            let Type::Named(next) = field.ty else {
+            let Some(next) = named_type_dependency(&field.ty) else {
                 continue;
             };
 
@@ -621,6 +618,14 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
 
         states[id.0] = Visit::Done;
         Ok(())
+    }
+
+    fn named_type_dependency(ty: &Type) -> Option<TypeId> {
+        match ty {
+            Type::Named(id) => Some(*id),
+            Type::Array { element, .. } => named_type_dependency(element),
+            Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
+        }
     }
 
     let mut states = vec![Visit::Unvisited; model.type_definitions.len()];
@@ -1006,14 +1011,11 @@ fn type_of_expr_expected(
                 _ => {
                     let first = values.first().expect("parser rejects empty array literals");
                     let first_ty = model.type_of_expr(first, bindings)?;
-                    match &first_ty {
-                        Type::Bool | Type::I64 | Type::F32 | Type::F64 => {}
-                        Type::Named(_) | Type::Array { .. } => {
-                            return Err(Diagnostic::new(
-                                "array elements currently require a scalar type",
-                                first.span,
-                            ));
-                        }
+                    if matches!(&first_ty, Type::Array { .. }) {
+                        return Err(Diagnostic::new(
+                            "nested array values are not supported yet",
+                            first.span,
+                        ));
                     }
                     (Box::new(first_ty), values.len())
                 }
@@ -1672,10 +1674,7 @@ mod tests {
         let program = parse(lex(source).unwrap()).unwrap();
         let error = check(&program).unwrap_err();
 
-        assert_eq!(
-            error.message(),
-            "array elements currently require a scalar type"
-        );
+        assert_eq!(error.message(), "nested array types are not supported yet");
     }
 
     #[test]
@@ -1684,6 +1683,29 @@ mod tests {
         let program = parse(lex(source).unwrap()).unwrap();
 
         check(&program).unwrap();
+    }
+
+    #[test]
+    fn accepts_product_type_array_elements() {
+        let source = "
+            type Point { x: i64, }
+            points: [Point; 2] = [Point { x: 1, }, Point { x: 2, }];
+        ";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        check(&program).unwrap();
+    }
+
+    #[test]
+    fn rejects_infinite_size_through_an_array_field() {
+        let source = "type Node { children: [Node; 1], }";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "type `Node` has infinite size through field `children`"
+        );
     }
 
     #[test]

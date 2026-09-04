@@ -140,10 +140,16 @@ enum Value {
         address: Operand,
     },
     Array {
-        element: Type,
+        element: ArrayElement,
         length: usize,
         address: Operand,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArrayElement {
+    Scalar(Type),
+    Named(usize),
 }
 
 impl Lowerer<'_> {
@@ -186,7 +192,7 @@ impl Lowerer<'_> {
                             address,
                         },
                     ) => {
-                        debug_assert_eq!(array_element_scalar_type(element), actual_element);
+                        debug_assert_eq!(array_element_type(element), actual_element);
                         debug_assert_eq!(*length, actual_length);
                         self.instructions.push(Instruction::Blit {
                             source: address,
@@ -421,7 +427,7 @@ impl Lowerer<'_> {
                     address: Operand::Slot(self.slot(*id)),
                 },
                 primer_ir::Type::Array { element, length } => Value::Array {
-                    element: array_element_scalar_type(element),
+                    element: array_element_type(element),
                     length: *length,
                     address: Operand::Slot(self.slot(*id)),
                 },
@@ -519,7 +525,7 @@ impl Lowerer<'_> {
                                 address,
                             },
                         ) => {
-                            debug_assert_eq!(array_element_scalar_type(element), actual_element);
+                            debug_assert_eq!(array_element_type(element), actual_element);
                             debug_assert_eq!(*length, actual_length);
                             self.instructions.push(Instruction::Blit {
                                 source: address,
@@ -560,7 +566,7 @@ impl Lowerer<'_> {
                         address,
                     },
                     primer_ir::Type::Array { element, length } => Value::Array {
-                        element: array_element_scalar_type(element),
+                        element: array_element_type(element),
                         length: *length,
                         address,
                     },
@@ -581,16 +587,36 @@ impl Lowerer<'_> {
                     unreachable!("array expression must have an array type")
                 };
                 let slot = self.allocate_aggregate(type_size(self.program, &expr.ty));
-                let expected = array_element_scalar_type(element);
+                let expected = array_element_type(element);
+                let stride = type_size(self.program, element);
                 for (index, value) in values.iter().enumerate() {
-                    let (ty, value) = self.lower_scalar_expr(value);
-                    debug_assert_eq!(ty, expected);
-                    let destination = self.address(Operand::Slot(slot), index * 8);
-                    self.instructions.push(Instruction::Store {
-                        address: destination,
-                        ty,
-                        value,
-                    });
+                    let value = self.lower_expr(value);
+                    let destination = self.address(Operand::Slot(slot), index * stride);
+                    match (expected, value) {
+                        (ArrayElement::Scalar(expected), Value::Scalar { ty, operand }) => {
+                            debug_assert_eq!(expected, ty);
+                            self.instructions.push(Instruction::Store {
+                                address: destination,
+                                ty,
+                                value: operand,
+                            });
+                        }
+                        (
+                            ArrayElement::Named(expected),
+                            Value::Aggregate {
+                                type_id,
+                                address: source,
+                            },
+                        ) => {
+                            debug_assert_eq!(expected, type_id);
+                            self.instructions.push(Instruction::Blit {
+                                source,
+                                destination,
+                                size: stride,
+                            });
+                        }
+                        _ => unreachable!("semantic analysis keeps array element types equal"),
+                    }
                 }
                 Value::Array {
                     element: expected,
@@ -658,7 +684,7 @@ impl Lowerer<'_> {
                     op: BinaryOp::Multiply,
                     ty: Type::I64,
                     left: index,
-                    right: Operand::Integer(8),
+                    right: Operand::Integer(array_element_size(self.program, element) as i64),
                 });
                 let address = self.next_temp();
                 self.instructions.push(Instruction::Binary {
@@ -668,16 +694,23 @@ impl Lowerer<'_> {
                     left: base,
                     right: Operand::Temp(scaled),
                 });
-                let ty = element;
-                let dest = self.next_temp();
-                self.instructions.push(Instruction::Load {
-                    dest,
-                    address: Operand::Temp(address),
-                    ty,
-                });
-                Value::Scalar {
-                    ty,
-                    operand: Operand::Temp(dest),
+                match element {
+                    ArrayElement::Scalar(ty) => {
+                        let dest = self.next_temp();
+                        self.instructions.push(Instruction::Load {
+                            dest,
+                            address: Operand::Temp(address),
+                            ty,
+                        });
+                        Value::Scalar {
+                            ty,
+                            operand: Operand::Temp(dest),
+                        }
+                    }
+                    ArrayElement::Named(type_id) => Value::Aggregate {
+                        type_id,
+                        address: Operand::Temp(address),
+                    },
                 }
             }
             primer_ir::ExprKind::Call {
@@ -882,7 +915,7 @@ fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
             .iter()
             .map(|field| type_size(program, &field.ty))
             .sum(),
-        primer_ir::Type::Array { length, .. } => length * 8,
+        primer_ir::Type::Array { element, length } => type_size(program, element) * length,
     }
 }
 
@@ -905,14 +938,24 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
     }
 }
 
-fn array_element_scalar_type(element: &primer_ir::Type) -> Type {
+fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::I64 => Type::I64,
-        primer_ir::Type::F32 => Type::Single,
-        primer_ir::Type::F64 => Type::Double,
-        primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently requires scalar array elements")
+        primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
+        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),
+        primer_ir::Type::F64 => ArrayElement::Scalar(Type::Double),
+        primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
+        primer_ir::Type::Array { .. } => {
+            unreachable!("semantic analysis currently rejects nested arrays")
+        }
+    }
+}
+
+fn array_element_size(program: &primer_ir::Program, element: ArrayElement) -> usize {
+    match element {
+        ArrayElement::Scalar(_) => 8,
+        ArrayElement::Named(id) => {
+            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
         }
     }
 }

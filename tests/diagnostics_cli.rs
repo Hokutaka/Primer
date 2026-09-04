@@ -120,6 +120,11 @@ fn semantic_recursive_product_type_matches_expected_diagnostic() {
 }
 
 #[test]
+fn semantic_recursive_product_array_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-recursive-product-array", "check", "check.stderr");
+}
+
+#[test]
 fn semantic_array_length_matches_expected_diagnostic() {
     assert_diagnostic("semantic-array-length", "check", "check.stderr");
 }

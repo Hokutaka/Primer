@@ -17,6 +17,7 @@ pub enum ArrayElementType {
     I64,
     Float,
     Double,
+    Named(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

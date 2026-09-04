@@ -73,6 +73,13 @@ pub enum Instruction {
         length: usize,
         label: usize,
     },
+    CheckedArrayCopy {
+        base_offset: isize,
+        length: usize,
+        element_slots: usize,
+        destination_offset: isize,
+        label: usize,
+    },
 
     StoreParameter {
         index: usize,

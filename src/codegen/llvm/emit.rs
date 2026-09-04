@@ -49,7 +49,7 @@ pub fn emit(module: &Module) -> String {
     output.push('\n');
 
     for (element, length) in array_types {
-        emit_array_get(element, length, &mut output);
+        emit_array_get(element, length, module, &mut output);
         output.push('\n');
     }
 
@@ -232,8 +232,8 @@ fn emit_instruction(
                 output,
                 "  {} = call {} @{}({} {}, i64 {})",
                 temp(*dest),
-                array_element_type_name(*element),
-                array_get_name(*element, *length),
+                array_element_type_name(*element, module),
+                array_get_name(*element, *length, module),
                 type_name(array_ty, module),
                 operand(*array),
                 operand(*index),
@@ -398,7 +398,7 @@ fn type_name(ty: Type, module: &Module) -> String {
             format!("%primer.type.{}.{}", definition.name, id)
         }
         Type::Array { element, length } => {
-            format!("[{length} x {}]", array_element_type_name(element))
+            format!("[{length} x {}]", array_element_type_name(element, module))
         }
     }
 }
@@ -525,13 +525,13 @@ fn array_types(module: &Module) -> Vec<(ArrayElementType, usize)> {
     result
 }
 
-fn emit_array_get(element: ArrayElementType, length: usize, output: &mut String) {
-    let element_ty = array_element_type_name(element);
+fn emit_array_get(element: ArrayElementType, length: usize, module: &Module, output: &mut String) {
+    let element_ty = array_element_type_name(element, module);
     let array_ty = format!("[{length} x {element_ty}]");
     writeln!(
         output,
         "define internal {element_ty} @{}({array_ty} %value, i64 %index) {{",
-        array_get_name(element, length)
+        array_get_name(element, length, module)
     )
     .unwrap();
     output.push_str("entry:\n");
@@ -555,24 +555,32 @@ fn emit_array_get(element: ArrayElementType, length: usize, output: &mut String)
     output.push_str("}\n");
 }
 
-const fn array_element_type_name(element: ArrayElementType) -> &'static str {
+fn array_element_type_name(element: ArrayElementType, module: &Module) -> String {
     match element {
-        ArrayElementType::Bool => "i1",
-        ArrayElementType::I64 => "i64",
-        ArrayElementType::Float => "float",
-        ArrayElementType::Double => "double",
+        ArrayElementType::Bool => "i1".into(),
+        ArrayElementType::I64 => "i64".into(),
+        ArrayElementType::Float => "float".into(),
+        ArrayElementType::Double => "double".into(),
+        ArrayElementType::Named(id) => type_name(Type::Named(id), module),
     }
 }
 
-fn array_get_name(element: ArrayElementType, length: usize) -> String {
-    format!("primer.array.get.{}.{length}", array_element_name(element))
+fn array_get_name(element: ArrayElementType, length: usize, module: &Module) -> String {
+    format!(
+        "primer.array.get.{}.{length}",
+        array_element_name(element, module)
+    )
 }
 
-const fn array_element_name(element: ArrayElementType) -> &'static str {
+fn array_element_name(element: ArrayElementType, module: &Module) -> String {
     match element {
-        ArrayElementType::Bool => "bool",
-        ArrayElementType::I64 => "i64",
-        ArrayElementType::Float => "f32",
-        ArrayElementType::Double => "f64",
+        ArrayElementType::Bool => "bool".into(),
+        ArrayElementType::I64 => "i64".into(),
+        ArrayElementType::Float => "f32".into(),
+        ArrayElementType::Double => "f64".into(),
+        ArrayElementType::Named(id) => {
+            let definition = &module.type_definitions[id];
+            format!("type.{}.{}", definition.name, id)
+        }
     }
 }
