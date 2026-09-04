@@ -1,0 +1,7 @@
+type Point {
+    x: f64,
+}
+
+point: Point = Point {
+    z: 1.0,
+};

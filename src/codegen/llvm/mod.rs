@@ -3,14 +3,14 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_llvm(program: &primer_ir::Program) -> String {
+pub fn emit_llvm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -38,7 +38,7 @@ mod tests {
     #[test]
     fn emits_i64_add() {
         let program = compile_to_ir("x: i64 = 1 + 2; print(x);").unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         assert!(llvm.contains("add i64 1, 2"));
     }
@@ -46,7 +46,7 @@ mod tests {
     #[test]
     fn emits_f32_add() {
         let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         assert!(llvm.contains("fadd float"));
         assert!(llvm.contains("fpext float"));
@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn emits_f64_add() {
         let program = compile_to_ir("x: f64 = 0.1 + 0.2; print(x);").unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         assert!(llvm.contains("fadd double"));
     }
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn emits_llvm_22_compatible_float_literals() {
         let program = compile_to_ir("x: f32 = 0.1 + 0.2; print(x);").unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         assert!(llvm.contains("fadd float 0x3FB99999A0000000, 0x3FC99999A0000000"));
     }
@@ -75,7 +75,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         for instruction in [
             "icmp eq i64",
@@ -90,6 +90,21 @@ mod tests {
     }
 
     #[test]
+    fn emits_product_construction_and_field_access() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let llvm = emit_llvm(&program).unwrap();
+
+        assert!(llvm.contains("%primer.type.Point.0 = type { double, double }"));
+        assert!(llvm.contains("insertvalue %primer.type.Point.0 poison, double"));
+        assert!(llvm.contains("extractvalue %primer.type.Point.0"));
+    }
+
+    #[test]
     fn allocates_loop_bindings_once_in_entry() {
         let program = compile_to_ir(
             "mut count: i64 = 0;
@@ -100,7 +115,7 @@ mod tests {
              }",
         )
         .unwrap();
-        let llvm = emit_llvm(&program);
+        let llvm = emit_llvm(&program).unwrap();
 
         assert_eq!(llvm.matches("%primer_marker = alloca i1").count(), 1);
         assert!(

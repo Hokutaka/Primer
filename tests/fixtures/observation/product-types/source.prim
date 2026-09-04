@@ -1,0 +1,30 @@
+type Point {
+    x: f64 = 0.0,
+    y: f64,
+}
+
+type Segment {
+    start: Point,
+    end: Point,
+}
+
+mut current: Point = Point {
+    y: 2.0,
+};
+
+saved: Point = current;
+
+current = Point {
+    x: 4.0,
+    y: 5.0,
+};
+
+segment: Segment = Segment {
+    start: saved,
+    end: current,
+};
+
+print(saved.x);
+print(saved.y);
+print(segment.start.y);
+print(segment.end.x);

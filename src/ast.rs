@@ -8,15 +8,58 @@ pub enum Type {
     F64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeSpec {
-    Explicit(Type),
+    Explicit(TypeRef),
     Infer,
+}
+
+/// ソースに書かれた、まだ意味解析で解決していない型名です。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeRef {
+    pub name: String,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
-    pub statements: Vec<Stmt>,
+    pub items: Vec<Item>,
+}
+
+impl Program {
+    pub fn statement(&self, index: usize) -> &Stmt {
+        self.items
+            .iter()
+            .filter_map(|item| match item {
+                Item::TypeDefinition(_) => None,
+                Item::Statement(statement) => Some(statement),
+            })
+            .nth(index)
+            .expect("statement index must exist")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Item {
+    TypeDefinition(TypeDefinition),
+    Statement(Stmt),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinition {
+    pub name: String,
+    pub name_span: Span,
+    pub fields: Vec<FieldDefinition>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldDefinition {
+    pub name: String,
+    pub name_span: Span,
+    pub type_ref: TypeRef,
+    pub default: Option<Expr>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +118,16 @@ pub enum ExprKind {
         explicit_type: Option<Type>,
     },
     Variable(String),
+    Construct {
+        type_name: String,
+        type_name_span: Span,
+        fields: Vec<FieldValue>,
+    },
+    FieldAccess {
+        base: Box<Expr>,
+        field_name: String,
+        field_name_span: Span,
+    },
     Unary {
         op: UnaryOp,
         value: Box<Expr>,
@@ -84,6 +137,14 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldValue {
+    pub name: String,
+    pub name_span: Span,
+    pub value: Expr,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

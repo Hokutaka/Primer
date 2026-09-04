@@ -3,23 +3,41 @@ use std::collections::HashMap;
 use crate::{
     ast,
     diagnostic::Diagnostic,
-    semantic::{self, BindingInfo, Bindings},
+    semantic::{self, BindingInfo, Bindings, SemanticModel},
 };
 
 use super::{
-    BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, Type, UnaryOp,
+    BinaryOp, BindingId, Expr, ExprKind, FieldDefinition, FieldId, FieldValue, FieldValueOrigin,
+    Program, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
-    semantic::check(program)?;
+    let model = semantic::analyze(program)?;
 
     let mut builder = Builder {
         scopes: vec![HashMap::new()],
         next_binding_id: 0,
+        model: &model,
     };
 
+    let type_definitions = model
+        .type_definitions
+        .iter()
+        .map(|definition| builder.build_type_definition(definition))
+        .collect::<Result<_, _>>()?;
+
+    let statements = program
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            ast::Item::TypeDefinition(_) => None,
+            ast::Item::Statement(statement) => Some(builder.build_statement(statement)),
+        })
+        .collect::<Result<_, _>>()?;
+
     Ok(Program {
-        statements: builder.build_statements(&program.statements)?,
+        type_definitions,
+        statements,
     })
 }
 
@@ -29,12 +47,44 @@ struct ResolvedBinding {
     info: BindingInfo,
 }
 
-struct Builder {
+struct Builder<'a> {
     scopes: Vec<HashMap<String, ResolvedBinding>>,
     next_binding_id: usize,
+    model: &'a SemanticModel,
 }
 
-impl Builder {
+impl Builder<'_> {
+    fn build_type_definition(
+        &self,
+        definition: &semantic::TypeDefinition,
+    ) -> Result<TypeDefinition, Diagnostic> {
+        let bindings = HashMap::new();
+        let fields = definition
+            .fields
+            .iter()
+            .map(|field| {
+                Ok(FieldDefinition {
+                    id: FieldId(field.id.0),
+                    name: field.name.clone(),
+                    ty: ir_type(field.ty),
+                    default: field
+                        .default
+                        .as_ref()
+                        .map(|value| self.build_expr(value, Some(field.ty), &bindings))
+                        .transpose()?,
+                    span: field.span,
+                })
+            })
+            .collect::<Result<_, Diagnostic>>()?;
+
+        Ok(TypeDefinition {
+            id: TypeId(definition.id.0),
+            name: definition.name.clone(),
+            fields,
+            span: definition.span,
+        })
+    }
+
     fn build_statements(&mut self, statements: &[ast::Stmt]) -> Result<Vec<Statement>, Diagnostic> {
         statements
             .iter()
@@ -53,8 +103,8 @@ impl Builder {
                 value,
             } => {
                 let ty = match type_spec {
-                    ast::TypeSpec::Explicit(ty) => *ty,
-                    ast::TypeSpec::Infer => semantic::type_of_expr(value, &bindings)?,
+                    ast::TypeSpec::Explicit(ty) => self.model.resolve_type_ref(ty)?,
+                    ast::TypeSpec::Infer => self.model.type_of_expr(value, &bindings)?,
                 };
                 let value = self.build_expr(value, Some(ty), &bindings)?;
                 let id = BindingId(self.next_binding_id);
@@ -78,7 +128,7 @@ impl Builder {
                     id,
                     mutable: *mutable,
                     name: name.clone(),
-                    ty: ty.into(),
+                    ty: ir_type(ty),
                     value,
                 }
             }
@@ -90,12 +140,12 @@ impl Builder {
                 StatementKind::Assignment {
                     id: binding.id,
                     name: name.clone(),
-                    ty: binding.info.ty.into(),
+                    ty: ir_type(binding.info.ty),
                     value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
                 }
             }
             ast::StmtKind::Print { value } => {
-                let ty = semantic::type_of_expr(value, &bindings)?;
+                let ty = self.model.type_of_expr(value, &bindings)?;
                 StatementKind::Print {
                     value: self.build_expr(value, Some(ty), &bindings)?,
                 }
@@ -105,7 +155,8 @@ impl Builder {
                 then_body,
                 else_body,
             } => {
-                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    self.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let then_body = self.with_scope(|builder| builder.build_statements(then_body))?;
                 let else_body = self.with_scope(|builder| builder.build_statements(else_body))?;
 
@@ -116,7 +167,8 @@ impl Builder {
                 }
             }
             ast::StmtKind::While { condition, body } => {
-                let condition = self.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    self.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let body = self.with_scope(|builder| builder.build_statements(body))?;
 
                 StatementKind::While { condition, body }
@@ -129,7 +181,8 @@ impl Builder {
             } => self.with_scope(|builder| {
                 let initializer = Box::new(builder.build_statement(initializer)?);
                 let bindings = builder.visible_bindings();
-                let condition = builder.build_expr(condition, Some(ast::Type::Bool), &bindings)?;
+                let condition =
+                    builder.build_expr(condition, Some(semantic::Type::Bool), &bindings)?;
                 let update = Box::new(builder.build_statement(update)?);
                 let body = builder.with_scope(|builder| builder.build_statements(body))?;
 
@@ -153,10 +206,10 @@ impl Builder {
     fn build_expr(
         &self,
         expr: &ast::Expr,
-        expected: Option<ast::Type>,
+        expected: Option<semantic::Type>,
         bindings: &Bindings,
     ) -> Result<Expr, Diagnostic> {
-        let ty = semantic::type_of_expr_expected(expr, bindings, expected)?;
+        let ty = self.model.type_of_expr_expected(expr, bindings, expected)?;
 
         let kind = match &expr.kind {
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
@@ -171,13 +224,88 @@ impl Builder {
                     name: name.clone(),
                 }
             }
+            ast::ExprKind::Construct {
+                type_name,
+                type_name_span,
+                fields,
+            } => {
+                let type_id = self.model.resolve_type_name(type_name, *type_name_span)?;
+                let definition = self.model.type_definition(type_id);
+                let mut supplied = vec![false; definition.fields.len()];
+                let mut values = Vec::with_capacity(definition.fields.len());
+
+                // 明示値は、ソースに書かれた順番のまま評価順として保存します。
+                for field_value in fields {
+                    let field = definition
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_value.name)
+                        .expect("semantic analysis must resolve aggregate fields");
+                    supplied[field.id.0] = true;
+                    values.push(FieldValue {
+                        id: FieldId(field.id.0),
+                        name: field.name.clone(),
+                        value: self.build_expr(&field_value.value, Some(field.ty), bindings)?,
+                        origin: FieldValueOrigin::Explicit {
+                            span: field_value.span,
+                        },
+                    });
+                }
+
+                // 省略された既定値は、その後に型定義順で評価します。
+                let default_bindings = HashMap::new();
+                for field in &definition.fields {
+                    if supplied[field.id.0] {
+                        continue;
+                    }
+                    let default = field
+                        .default
+                        .as_ref()
+                        .expect("semantic analysis requires every omitted field to have a default");
+                    values.push(FieldValue {
+                        id: FieldId(field.id.0),
+                        name: field.name.clone(),
+                        value: self.build_expr(default, Some(field.ty), &default_bindings)?,
+                        origin: FieldValueOrigin::Default {
+                            definition_span: field.span,
+                        },
+                    });
+                }
+
+                ExprKind::Construct {
+                    type_id: TypeId(type_id.0),
+                    type_name: type_name.clone(),
+                    fields: values,
+                }
+            }
+            ast::ExprKind::FieldAccess {
+                base, field_name, ..
+            } => {
+                let semantic::Type::Named(type_id) = self.model.type_of_expr(base, bindings)?
+                else {
+                    unreachable!("semantic analysis must reject field access on scalar values")
+                };
+                let field = self
+                    .model
+                    .type_definition(type_id)
+                    .fields
+                    .iter()
+                    .find(|field| field.name == *field_name)
+                    .expect("semantic analysis must resolve field access");
+                ExprKind::FieldAccess {
+                    type_id: TypeId(type_id.0),
+                    field_id: FieldId(field.id.0),
+                    field_name: field.name.clone(),
+                    base: Box::new(self.build_expr(base, None, bindings)?),
+                }
+            }
             ast::ExprKind::Unary { op, value } => ExprKind::Unary {
                 op: (*op).into(),
                 value: Box::new(self.build_expr(value, Some(ty), bindings)?),
             },
             ast::ExprKind::Binary { op, left, right } => {
                 let (left_expected, right_expected) = if is_comparison(*op) {
-                    semantic::comparison_operand_types(left, right, bindings)?
+                    semantic::comparison_operand_types(left, right, bindings, self.model)?
                 } else {
                     (ty, ty)
                 };
@@ -191,7 +319,7 @@ impl Builder {
         };
 
         Ok(Expr {
-            ty: ty.into(),
+            ty: ir_type(ty),
             kind,
             span: expr.span,
         })
@@ -227,14 +355,13 @@ impl Builder {
     }
 }
 
-impl From<ast::Type> for Type {
-    fn from(value: ast::Type) -> Self {
-        match value {
-            ast::Type::Bool => Self::Bool,
-            ast::Type::I64 => Self::I64,
-            ast::Type::F32 => Self::F32,
-            ast::Type::F64 => Self::F64,
-        }
+fn ir_type(value: semantic::Type) -> Type {
+    match value {
+        semantic::Type::Bool => Type::Bool,
+        semantic::Type::I64 => Type::I64,
+        semantic::Type::F32 => Type::F32,
+        semantic::Type::F64 => Type::F64,
+        semantic::Type::Named(id) => Type::Named(TypeId(id.0)),
     }
 }
 
@@ -279,8 +406,8 @@ const fn is_comparison(op: ast::BinaryOp) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Program as AstProgram,
-        Stmt, StmtKind as AstStmtKind, Type as AstType, TypeSpec,
+        BinaryOp as AstBinaryOp, Expr as AstExpr, ExprKind as AstExprKind, Item as AstItem,
+        Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeSpec,
     };
     use crate::source::Span;
 
@@ -300,13 +427,24 @@ mod tests {
         }
     }
 
+    fn ast_item(kind: AstStmtKind) -> AstItem {
+        AstItem::Statement(ast_stmt(kind))
+    }
+
+    fn explicit_type(name: &str) -> TypeSpec {
+        TypeSpec::Explicit(TypeRef {
+            name: name.into(),
+            span: Span::empty(0),
+        })
+    }
+
     #[test]
     fn resolves_contextual_f32_literals() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Binding {
+            items: vec![ast_item(AstStmtKind::Binding {
                 name: "x".into(),
                 mutable: false,
-                type_spec: TypeSpec::Explicit(AstType::F32),
+                type_spec: explicit_type("f32"),
                 value: ast_expr(AstExprKind::Binary {
                     op: AstBinaryOp::Add,
                     left: Box::new(ast_expr(AstExprKind::Float {
@@ -338,7 +476,7 @@ mod tests {
     #[test]
     fn infer_defaults_unsuffixed_float_to_f64() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Binding {
+            items: vec![ast_item(AstStmtKind::Binding {
                 name: "x".into(),
                 mutable: false,
                 type_spec: TypeSpec::Infer,
@@ -360,7 +498,7 @@ mod tests {
     #[test]
     fn preserves_expression_spans() {
         let ast = AstProgram {
-            statements: vec![ast_stmt(AstStmtKind::Print {
+            items: vec![ast_item(AstStmtKind::Print {
                 value: AstExpr {
                     kind: AstExprKind::Binary {
                         op: AstBinaryOp::Add,
@@ -397,12 +535,12 @@ mod tests {
     fn preserves_statement_spans() {
         let statement_span = Span::new(0, 9);
         let ast = AstProgram {
-            statements: vec![Stmt {
+            items: vec![AstItem::Statement(Stmt {
                 kind: AstStmtKind::Print {
                     value: ast_expr(AstExprKind::Integer(1)),
                 },
                 span: statement_span,
-            }],
+            })],
         };
 
         let ir = build(&ast).unwrap();

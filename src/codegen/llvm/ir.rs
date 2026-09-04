@@ -4,12 +4,21 @@ pub enum Type {
     I64,
     Float,
     Double,
+    Named(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub type_definitions: Vec<TypeDefinition>,
     pub slots: Vec<Slot>,
     pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinition {
+    pub id: usize,
+    pub name: String,
+    pub fields: Vec<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +43,7 @@ pub enum Operand {
     Float32(u32),
     Float64(u64),
     Temp(Temp),
+    Poison,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,6 +99,20 @@ pub enum Instruction {
         dest: Temp,
         ty: Type,
         slot: SlotId,
+    },
+    InsertValue {
+        dest: Temp,
+        ty: Type,
+        aggregate: Operand,
+        value_ty: Type,
+        value: Operand,
+        field: usize,
+    },
+    ExtractValue {
+        dest: Temp,
+        ty: Type,
+        aggregate: Operand,
+        field: usize,
     },
     Binary {
         dest: Temp,

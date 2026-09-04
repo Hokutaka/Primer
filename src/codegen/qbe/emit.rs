@@ -25,7 +25,7 @@ pub fn emit(module: &Module) -> String {
     output.push_str("@start\n");
 
     for slot in &module.slots {
-        writeln!(output, "  %slot_{} =l alloc8 8", slot.name).unwrap();
+        writeln!(output, "  %slot_{} =l alloc8 {}", slot.name, slot.size).unwrap();
     }
 
     for instruction in &module.instructions {
@@ -52,7 +52,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             writeln!(
                 output,
                 "  jnz {}, @block{then_label}, @block{else_label}",
-                operand(condition)
+                operand(condition, module)
             )
             .unwrap();
         }
@@ -61,25 +61,50 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             writeln!(output, "  jmp @block{label}").unwrap();
         }
 
-        Instruction::Store { slot, ty, value } => {
+        Instruction::Store { address, ty, value } => {
             writeln!(
                 output,
-                "  {} {}, %slot_{}",
+                "  {} {}, {}",
                 store_name(*ty),
-                operand(value),
-                module.slots[*slot].name,
+                operand(value, module),
+                operand(address, module),
             )
             .unwrap();
         }
 
-        Instruction::Load { dest, slot, ty } => {
+        Instruction::Load { dest, address, ty } => {
             writeln!(
                 output,
-                "  {} ={} {} %slot_{}",
+                "  {} ={} {} {}",
                 temp(*dest),
                 type_name(*ty),
                 load_name(*ty),
-                module.slots[*slot].name,
+                operand(address, module),
+            )
+            .unwrap();
+        }
+
+        Instruction::Address { dest, base, offset } => {
+            writeln!(
+                output,
+                "  {} =l add {}, {}",
+                temp(*dest),
+                operand(base, module),
+                offset
+            )
+            .unwrap();
+        }
+
+        Instruction::Blit {
+            source,
+            destination,
+            size,
+        } => {
+            writeln!(
+                output,
+                "  blit {}, {}, {size}",
+                operand(source, module),
+                operand(destination, module)
             )
             .unwrap();
         }
@@ -90,13 +115,19 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} ={} neg {}",
                 temp(*dest),
                 type_name(*ty),
-                operand(value),
+                operand(value, module),
             )
             .unwrap();
         }
 
         Instruction::Not { dest, value } => {
-            writeln!(output, "  {} =w ceqw {}, 0", temp(*dest), operand(value)).unwrap();
+            writeln!(
+                output,
+                "  {} =w ceqw {}, 0",
+                temp(*dest),
+                operand(value, module)
+            )
+            .unwrap();
         }
 
         Instruction::Binary {
@@ -112,8 +143,8 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 temp(*dest),
                 type_name(*ty),
                 binary_name(*op),
-                operand(left),
-                operand(right),
+                operand(left, module),
+                operand(right, module),
             )
             .unwrap();
         }
@@ -130,14 +161,20 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} =w {} {}, {}",
                 temp(*dest),
                 compare_name(*op, *operand_ty),
-                operand(left),
-                operand(right),
+                operand(left, module),
+                operand(right, module),
             )
             .unwrap();
         }
 
         Instruction::ExtendSingleToDouble { dest, value } => {
-            writeln!(output, "  {} =d exts {}", temp(*dest), operand(value)).unwrap();
+            writeln!(
+                output,
+                "  {} =d exts {}",
+                temp(*dest),
+                operand(value, module)
+            )
+            .unwrap();
         }
 
         Instruction::CallPrintf {
@@ -152,7 +189,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 temp(*dest),
                 format_name(*format),
                 type_name(*arg_ty),
-                operand(value),
+                operand(value, module),
             )
             .unwrap();
         }
@@ -165,7 +202,13 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             result,
             value,
         } => {
-            writeln!(output, "  {} =l extsw {}", temp(*offset), operand(value)).unwrap();
+            writeln!(
+                output,
+                "  {} =l extsw {}",
+                temp(*offset),
+                operand(value, module)
+            )
+            .unwrap();
             writeln!(
                 output,
                 "  {} =l mul {}, 8",
@@ -271,13 +314,14 @@ fn format_name(format: PrintFormat) -> &'static str {
     }
 }
 
-fn operand(value: &Operand) -> String {
+fn operand(value: &Operand, module: &Module) -> String {
     match value {
         Operand::Boolean(value) => i32::from(*value).to_string(),
         Operand::Integer(value) => value.to_string(),
         Operand::Float32(text) => format!("s_{text}"),
         Operand::Float64(text) => format!("d_{text}"),
         Operand::Temp(temp) => self::temp(*temp),
+        Operand::Slot(slot) => format!("%slot_{}", module.slots[*slot].name),
     }
 }
 

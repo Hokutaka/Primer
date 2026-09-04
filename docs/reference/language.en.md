@@ -7,7 +7,15 @@ This document defines the syntax and semantics of Primer v0.1.
 ## Grammar
 
 ```text
-program     := statement* EOF
+program     := item* EOF
+
+item        := type_definition
+             | statement
+
+type_definition :=
+    "type" IDENT "{" field_definition ("," field_definition)* ","? "}"
+
+field_definition := IDENT ":" type_ref ("=" expression)?
 
 statement   := binding
              | assignment
@@ -36,7 +44,10 @@ type_spec   := "i64"
              | "f32"
              | "f64"
              | "bool"
+             | IDENT
              | "infer"
+
+type_ref    := "i64" | "f32" | "f64" | "bool" | IDENT
 
 expression  := equality
 
@@ -49,14 +60,19 @@ additive    := multiply (("+" | "-") multiply)*
 multiply    := unary (("*" | "/") unary)*
 
 unary       := ("-" | "!") unary
-             | primary
+             | postfix
+
+postfix     := primary ("." IDENT)*
 
 primary     := "true"
              | "false"
              | INTEGER
              | FLOAT
              | IDENT
+             | IDENT "{" field_value ("," field_value)* ","? "}"
              | "(" expression ")"
+
+field_value := IDENT ":" expression
 ```
 
 Bindings are immutable by default. Only a binding declared with `mut` can be reassigned. Expressions may only refer to bindings declared earlier in the file.
@@ -71,6 +87,50 @@ value: infer = count * 2;
 ```
 
 `infer` explicitly requests type inference. It is not itself a runtime type.
+
+## Named product types
+
+`type` defines a named product type that groups several fields into one value. Types have nominal identity, so two types with the same fields are still distinct.
+
+```primer
+type Point {
+    x: f64 = 0.0,
+    y: f64,
+}
+
+point: Point = Point {
+    y: 2.0,
+};
+
+print(point.x);
+```
+
+Every field type is explicit and cannot use `infer`. A field without a default is required when constructing a value. Fields are named, so construction order may differ from definition order. Trailing commas are accepted.
+
+Explicit field expressions are evaluated in source order. Defaults for omitted fields are then evaluated in definition order. Primer IR exposes this order and whether each value was explicit or came from a default.
+
+`.` accesses a field and may be chained as in `segment.start.x`. Fields cannot be assigned directly. To make a change, construct a new value and reassign the whole `mut` binding.
+
+```primer
+mut point: Point = Point { x: 1.0, y: 2.0, };
+point = Point { x: 3.0, y: point.y, };
+```
+
+Reassigning the original binding after copying a product value into another binding does not change the earlier value. This is the language-level value rule. Each backend's physical placement and copying remain observable in emitted artifacts.
+
+The `{` immediately after an `if` or `while` condition starts its block. Parenthesize a construction expression when accessing one of its fields in a condition.
+
+```primer
+type Flags { enabled: bool, }
+
+if (Flags { enabled: true, }).enabled {
+    print(true);
+}
+```
+
+Empty product types, empty construction expressions, infinitely sized recursion by value, product comparisons, and printing a whole product value are not currently supported.
+
+See [Named product type design](../design/product-types.en.md) for the detailed design and backend representations.
 
 ## Mutable bindings and reassignment
 
@@ -180,13 +240,14 @@ Primer IR assigns deterministic IDs to bindings so references remain unambiguous
 
 ## Types
 
-Primer v0.1 has one boolean type and three numeric types:
+Primer v0.1 has one boolean type, three numeric types, and user-defined named product types:
 
 ```text
 bool
 i64
 f32
 f64
+named product types
 ```
 
 Backends map these types to their own representations during lowering.
@@ -297,7 +358,7 @@ Comparison operands must also have the same type. Primer IR exposes the operand 
 
 ## Output
 
-`print(expression);` accepts every current concrete type.
+`print(expression);` accepts the current boolean and numeric types. Select a field to print a named product value.
 
 Primer keeps floating-point output precise enough to expose the behavior being observed.
 

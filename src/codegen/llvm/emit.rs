@@ -11,6 +11,22 @@ pub fn emit(module: &Module) -> String {
     output.push_str("@.fmt_f32 = private unnamed_addr constant [6 x i8] c\"%.9g\\0A\\00\"\n");
     output.push_str("@.fmt_f64 = private unnamed_addr constant [7 x i8] c\"%.17g\\0A\\00\"\n");
 
+    for definition in &module.type_definitions {
+        write!(
+            output,
+            "%primer.type.{}.{} = type {{ ",
+            definition.name, definition.id
+        )
+        .unwrap();
+        for (index, field) in definition.fields.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&type_name(*field, module));
+        }
+        output.push_str(" }\n");
+    }
+
     if uses_bool_print(module) {
         output.push_str("@.bool_true = private unnamed_addr constant [5 x i8] c\"true\\00\"\n");
         output.push_str("@.bool_false = private unnamed_addr constant [6 x i8] c\"false\\00\"\n");
@@ -34,7 +50,7 @@ pub fn emit(module: &Module) -> String {
             output,
             "  %primer_{} = alloca {}",
             slot.name,
-            type_name(slot.ty),
+            type_name(slot.ty, module),
         )
         .unwrap();
     }
@@ -78,7 +94,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             writeln!(
                 output,
                 "  store {} {}, ptr %primer_{}",
-                type_name(*ty),
+                type_name(*ty, module),
                 operand(*value),
                 slot_by_id(module, *slot).name,
             )
@@ -90,8 +106,46 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} = load {}, ptr %primer_{}",
                 temp(*dest),
-                type_name(*ty),
+                type_name(*ty, module),
                 slot_by_id(module, *slot).name,
+            )
+            .unwrap();
+        }
+
+        Instruction::InsertValue {
+            dest,
+            ty,
+            aggregate,
+            value_ty,
+            value,
+            field,
+        } => {
+            writeln!(
+                output,
+                "  {} = insertvalue {} {}, {} {}, {}",
+                temp(*dest),
+                type_name(*ty, module),
+                operand(*aggregate),
+                type_name(*value_ty, module),
+                operand(*value),
+                field,
+            )
+            .unwrap();
+        }
+
+        Instruction::ExtractValue {
+            dest,
+            ty,
+            aggregate,
+            field,
+        } => {
+            writeln!(
+                output,
+                "  {} = extractvalue {} {}, {}",
+                temp(*dest),
+                type_name(*ty, module),
+                operand(*aggregate),
+                field,
             )
             .unwrap();
         }
@@ -108,7 +162,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} = {} {} {}, {}",
                 temp(*dest),
                 binary_name(*op),
-                type_name(*ty),
+                type_name(*ty, module),
                 operand(*left),
                 operand(*right),
             )
@@ -127,7 +181,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} = {} {} {}, {}",
                 temp(*dest),
                 compare_name(*op, *operand_ty),
-                type_name(*operand_ty),
+                type_name(*operand_ty, module),
                 operand(*left),
                 operand(*right),
             )
@@ -139,7 +193,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} = fneg {} {}",
                 temp(*dest),
-                type_name(*ty),
+                type_name(*ty, module),
                 operand(*value),
             )
             .unwrap();
@@ -164,7 +218,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  call i32 (ptr, ...) @printf(ptr {}, {} {})",
                 format_name(*format),
-                type_name(*arg_ty),
+                type_name(*arg_ty, module),
                 operand(*value),
             )
             .unwrap();
@@ -198,12 +252,16 @@ fn label(label: Label) -> String {
     format!("block{}", label.0)
 }
 
-fn type_name(ty: Type) -> &'static str {
+fn type_name(ty: Type, module: &Module) -> String {
     match ty {
-        Type::Bool => "i1",
-        Type::I64 => "i64",
-        Type::Float => "float",
-        Type::Double => "double",
+        Type::Bool => "i1".into(),
+        Type::I64 => "i64".into(),
+        Type::Float => "float".into(),
+        Type::Double => "double".into(),
+        Type::Named(id) => {
+            let definition = &module.type_definitions[id];
+            format!("%primer.type.{}.{}", definition.name, id)
+        }
     }
 }
 
@@ -243,6 +301,7 @@ fn compare_name(op: CompareOp, ty: Type) -> &'static str {
         ) => {
             unreachable!("semantic analysis rejects boolean ordering")
         }
+        (_, Type::Named(_)) => unreachable!("semantic analysis rejects aggregate comparison"),
     }
 }
 
@@ -272,6 +331,7 @@ fn operand(operand: Operand) -> String {
         Operand::Float64(bits) => format!("0x{bits:016X}"),
 
         Operand::Temp(id) => temp(id),
+        Operand::Poison => "poison".into(),
     }
 }
 

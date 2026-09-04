@@ -2,11 +2,11 @@
 
 [日本語](product-types.ja.md)
 
-**Status: Draft**
+**Status: Implemented**
 
-This document organizes the semantics, syntax, observability, and implementation boundaries of named product types, the first user-defined type planned for Primer.
+This document organizes the semantics, syntax, observability, and implementation boundaries of named product types, the first user-defined type introduced in Primer.
 
-This is a design proposal. The current Primer language is defined by the [language reference](../reference/language.en.md).
+The [language reference](../reference/language.en.md) defines the rules needed to use the feature. This document also explains why those rules were chosen and how values are transformed into emitted artifacts.
 
 The [compiler architecture](architecture.en.md) defines the overall compiler structure, the [compiler evolution plan](evolution-plan.en.md) defines development order, and the [Secret value design](secrets.en.md) covers values containing secrets.
 
@@ -48,7 +48,7 @@ The first product type has the following properties:
 - explicit aggregate literal values are evaluated in source order, followed by omitted defaults in type-definition order;
 - memory layout and ABI decisions happen during or after backend lowering.
 
-## Proposed syntax
+## Syntax
 
 ```text
 type_definition :=
@@ -71,7 +71,9 @@ field_access :=
     postfix "." IDENT
 ```
 
-Whether empty types and empty aggregate literals are accepted remains open.
+The current implementation rejects product types with no fields and empty aggregate literals. A diagnostic points to the `{}` in the type definition and explains that at least one field is required.
+
+Empty types can represent markers and states that carry no data. However, C has no standard empty struct, and physical representations of zero-sized values differ by backend. Primer will add them only after their use and observation behavior are designed separately. Allowing empty types later does not change the meaning of programs accepted today.
 
 ## Type definitions
 
@@ -283,6 +285,14 @@ print(line.start.y);
 
 Semantic analysis resolves a field access to its type and field. Backends do not receive an unresolved field name and repeat this lookup.
 
+In an `if` or `while`, the `{` immediately after the condition starts the body. Parenthesize a construction expression when accessing one of its fields in a condition.
+
+```primer
+if (Flags { enabled: true, }).enabled {
+    print(true);
+}
+```
+
 ## Immutability and reassignment
 
 Fields are not directly mutated after construction:
@@ -346,7 +356,7 @@ FieldValueOrigin
 
 `TypeId` represents type identity. `FieldId` represents a resolved field within a type. Both are deterministic compilation-local identifiers.
 
-A conceptual text representation follows. Exact spelling is fixed by snapshots during implementation.
+The text representation has the following form, with its exact spelling fixed by snapshots.
 
 ```text
 type %Point@0 {
@@ -375,7 +385,9 @@ Primer IR retains type names, field names, types, construction, and field access
 - physical copying or sharing;
 - ABI passing rules.
 
-The same Primer IR may become a C struct, LLVM aggregate, QBE memory representation, WAT locals or linear memory, x86-64 stack or registers, or a Primer VM value. These differences are observable in emitted artifacts.
+The current lowering uses C structs, LLVM named aggregates, QBE `alloc8` storage, WAT linear memory, the x86-64 stack, and structured Primer VM values. QBE copies values with `blit`; WAT and x86-64 use field loads and stores. These differences are observable in emitted artifacts.
+
+The current internal WAT, QBE, and x86-64 layouts reserve eight bytes for each scalar field. This is not a language-level promise about external ABI or future layout.
 
 Source syntax for forcing a physical layout and compatibility with an external ABI are outside this design's scope.
 
@@ -391,9 +403,9 @@ field token = <secret> [default]
 
 Implementing aggregates and deciding the final syntax or release mechanism for `Secret` remain separate tasks.
 
-## First implementation scope
+## Current implementation scope
 
-The first vertical implementation includes:
+The following scope is implemented:
 
 - top-level named product types declared with `type`;
 - nominal type identity;
@@ -408,7 +420,7 @@ The first vertical implementation includes:
 - normal, diagnostic, and observation snapshots;
 - synchronized Japanese and English documentation.
 
-The feature is not merged into main until every output route is complete. During development, an unsupported route must return an explicit diagnostic rather than panic, emit an invalid artifact, or silently fall back.
+`check`, Primer IR, bytecode, the VM, C, LLVM, WAT, QBE, and Windows x86-64 all handle the same language-level semantics. Tests fix the successful behavior, diagnostics, and all eight observation artifacts.
 
 ## Deferred features
 
@@ -425,11 +437,6 @@ The following are not rejected. They are separated into later design decisions:
 - custom layout and external ABI;
 - concrete `Secret` representation and propagation.
 
-## Decisions remaining before implementation
+## Verification
 
-The following must be decided before code changes begin:
-
-1. whether empty product types are accepted;
-2. the diagnostic used for a backend that is temporarily unsupported during development.
-
-After these decisions, implementation proceeds through top-level AST items, type registration, semantic analysis, Primer IR, and each backend.
+The product observation fixture transforms one source program containing defaults, value copying, whole-binding reassignment, and nested field access into every artifact. C, LLVM, and Windows x86-64 output can additionally be checked with `clang`. Environments without WAT or QBE runtimes verify their structured IR and snapshots.

@@ -144,3 +144,10 @@ fn pythagorean_triples_example_runs() {
 
     assert_eq!(output, "3\n4\n5\n5\n12\n13\n6\n8\n10\n9\n12\n15\n");
 }
+
+#[test]
+fn product_point_example_runs() {
+    let output = run_vm(include_str!("../examples/product-point.prim")).unwrap();
+
+    assert_eq!(output, "0\n2\n");
+}

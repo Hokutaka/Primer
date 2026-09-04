@@ -1,11 +1,54 @@
 use crate::ir as primer_ir;
 
-use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp};
+use super::ir::{
+    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Module, PrintFormat, Statement, Type,
+    TypeDefinition, UnaryOp,
+};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     Module {
+        type_definitions: lower_type_definitions(program),
         statements: program.statements.iter().map(lower_statement).collect(),
     }
+}
+
+fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
+    fn visit(
+        id: usize,
+        program: &primer_ir::Program,
+        visited: &mut [bool],
+        definitions: &mut Vec<TypeDefinition>,
+    ) {
+        if visited[id] {
+            return;
+        }
+        visited[id] = true;
+        let definition = &program.type_definitions[id];
+        for field in &definition.fields {
+            if let primer_ir::Type::Named(dependency) = field.ty {
+                visit(dependency.0, program, visited, definitions);
+            }
+        }
+        definitions.push(TypeDefinition {
+            id,
+            name: definition.name.clone(),
+            fields: definition
+                .fields
+                .iter()
+                .map(|field| FieldDefinition {
+                    name: field.name.clone(),
+                    ty: field.ty.into(),
+                })
+                .collect(),
+        });
+    }
+
+    let mut visited = vec![false; program.type_definitions.len()];
+    let mut definitions = Vec::new();
+    for id in 0..program.type_definitions.len() {
+        visit(id, program, &mut visited, &mut definitions);
+    }
+    definitions
 }
 
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
@@ -83,6 +126,26 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
             left: Box::new(lower_expr(left)),
             right: Box::new(lower_expr(right)),
         },
+
+        primer_ir::ExprKind::Construct {
+            type_id, fields, ..
+        } => ExprKind::Construct {
+            type_id: type_id.0,
+            fields: fields
+                .iter()
+                .map(|field| FieldValue {
+                    name: field.name.clone(),
+                    value: lower_expr(&field.value),
+                })
+                .collect(),
+        },
+
+        primer_ir::ExprKind::FieldAccess {
+            field_name, base, ..
+        } => ExprKind::FieldAccess {
+            field_name: field_name.clone(),
+            base: Box::new(lower_expr(base)),
+        },
     };
 
     Expr {
@@ -97,6 +160,7 @@ fn print_format(ty: primer_ir::Type) -> PrintFormat {
         primer_ir::Type::I64 => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
+        primer_ir::Type::Named(_) => unreachable!("semantic analysis rejects aggregate printing"),
     }
 }
 
@@ -107,6 +171,7 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::I64 => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
+            primer_ir::Type::Named(id) => Self::Named(id.0),
         }
     }
 }

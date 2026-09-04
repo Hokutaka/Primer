@@ -2,6 +2,7 @@ use crate::{diagnostic::Diagnostic, source::Span};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
+    Type,
     Print,
     Mut,
     If,
@@ -27,6 +28,8 @@ pub enum TokenKind {
     Greater,
     GreaterEqual,
     Colon,
+    Comma,
+    Dot,
 
     Plus,
     Minus,
@@ -79,6 +82,16 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b':' => {
                 i += 1;
                 TokenKind::Colon
+            }
+
+            b',' => {
+                i += 1;
+                TokenKind::Comma
+            }
+
+            b'.' => {
+                i += 1;
+                TokenKind::Dot
             }
 
             b'=' => {
@@ -256,6 +269,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                 }
 
                 match &source[start..i] {
+                    "type" => TokenKind::Type,
                     "print" => TokenKind::Print,
                     "mut" => TokenKind::Mut,
                     "if" => TokenKind::If,
@@ -311,6 +325,17 @@ mod tests {
         assert_eq!(tokens[5].kind, TokenKind::Plus);
         assert_eq!(tokens[6].kind, TokenKind::Integer(2));
         assert_eq!(tokens[8].kind, TokenKind::Print);
+    }
+
+    #[test]
+    fn lexes_product_type_syntax() {
+        let tokens =
+            lex("type Point { x: f64, } point: Point = Point { x: 1.0, }; print(point.x);")
+                .unwrap();
+
+        assert_eq!(tokens[0].kind, TokenKind::Type);
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Comma));
+        assert!(tokens.iter().any(|token| token.kind == TokenKind::Dot));
     }
 
     #[test]

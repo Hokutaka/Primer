@@ -7,7 +7,15 @@
 ## 文法
 
 ```text
-program     := statement* EOF
+program     := item* EOF
+
+item        := type_definition
+             | statement
+
+type_definition :=
+    "type" IDENT "{" field_definition ("," field_definition)* ","? "}"
+
+field_definition := IDENT ":" type_ref ("=" expression)?
 
 statement   := binding
              | assignment
@@ -36,7 +44,10 @@ type_spec   := "i64"
              | "f32"
              | "f64"
              | "bool"
+             | IDENT
              | "infer"
+
+type_ref    := "i64" | "f32" | "f64" | "bool" | IDENT
 
 expression  := equality
 
@@ -49,14 +60,19 @@ additive    := multiply (("+" | "-") multiply)*
 multiply    := unary (("*" | "/") unary)*
 
 unary       := ("-" | "!") unary
-             | primary
+             | postfix
+
+postfix     := primary ("." IDENT)*
 
 primary     := "true"
              | "false"
              | INTEGER
              | FLOAT
              | IDENT
+             | IDENT "{" field_value ("," field_value)* ","? "}"
              | "(" expression ")"
+
+field_value := IDENT ":" expression
 ```
 
 変数束縛は標準では不変です。`mut`を付けた束縛だけが再代入できます。式から参照できるのは、その式より前に宣言された変数束縛だけです。
@@ -71,6 +87,50 @@ value: infer = count * 2;
 ```
 
 `infer`は型推論を明示的に要求します。`infer`自体が実行時の型になることはありません。
+
+## 名前付きproduct type
+
+`type`は、複数のfieldを一つの値へまとめる名前付きproduct typeを定義します。型は名前で区別されるため、同じfieldを持つ二つの型も別の型です。
+
+```primer
+type Point {
+    x: f64 = 0.0,
+    y: f64,
+}
+
+point: Point = Point {
+    y: 2.0,
+};
+
+print(point.x);
+```
+
+fieldの型は定義時に必ず指定し、`infer`は使用できません。既定値のないfieldは値を作るときに必要です。fieldは名前で指定するため、記述順は型定義と異なっても構いません。末尾のカンマも使用できます。
+
+明示したfieldの式はソースに書いた順番で評価します。その後、省略したfieldの既定値を型定義順で評価します。Primer IRでは、この順番と、値が明示されたか既定値から来たかを観測できます。
+
+field accessには`.`を使い、`segment.start.x`のように入れ子にできます。fieldは直接変更できません。変更するときは新しい値を作り、`mut`な束縛へ全体を再代入します。
+
+```primer
+mut point: Point = Point { x: 1.0, y: 2.0, };
+point = Point { x: 3.0, y: point.y, };
+```
+
+積値を別の束縛へ入れた後で元の束縛へ再代入しても、先の値は変化しません。これは言語上の値としての規則です。各backendが物理的にどう配置・コピーするかは、生成物で観測できます。
+
+`if`と`while`の条件の直後にある`{`はブロックの開始として読みます。構築式から得たfieldを条件にする場合は、構築式を丸括弧で囲みます。
+
+```primer
+type Flags { enabled: bool, }
+
+if (Flags { enabled: true, }).enabled {
+    print(true);
+}
+```
+
+空のproduct type、空の構築式、無限サイズになる値による再帰型、積値どうしの比較、積値そのものの`print`は現在サポートしません。
+
+詳細な設計と各backendの表現は[名前付きproduct typeの設計](../design/product-types.ja.md)で説明します。
 
 ## 可変な束縛と再代入
 
@@ -180,13 +240,14 @@ Primer IRは各束縛へ決定的なIDを付け、同じ名前でもどの宣言
 
 ## 型
 
-Primer v0.1には、一つの真偽値型と三つの数値型があります。
+Primer v0.1には、一つの真偽値型、三つの数値型、ユーザーが定義する名前付きproduct typeがあります。
 
 ```text
 bool
 i64
 f32
 f64
+名前付きproduct type
 ```
 
 バックエンドへのlowering時に、各バックエンドがこれらの型を自身の表現へ対応付けます。
@@ -297,7 +358,7 @@ x: f32 = 0.1 + 0.2;
 
 ## 出力
 
-`print(expression);`は、現在のすべての具体的な型を受け付けます。
+`print(expression);`は、現在の真偽値型と数値型を受け付けます。名前付きproduct typeは、そのfieldを指定して出力します。
 
 Primerは、観測対象となる浮動小数点数の挙動が見えるだけの精度を保って出力します。
 

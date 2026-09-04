@@ -3,14 +3,14 @@ pub mod ir;
 mod lower;
 
 pub use emit::emit;
-pub use lower::lower;
+use lower::lower;
 
-use crate::ir as primer_ir;
+use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
-pub fn emit_x86_64_win_asm(program: &primer_ir::Program) -> String {
+pub fn emit_x86_64_win_asm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
     let module = lower(program);
 
-    emit(&module)
+    Ok(emit(&module))
 }
 
 #[cfg(test)]
@@ -55,7 +55,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addq %rcx, %rax"));
 
@@ -70,7 +70,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addss %xmm1, %xmm0"));
 
@@ -85,7 +85,7 @@ mod tests {
         )
         .unwrap();
 
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         assert!(asm.contains("addsd %xmm1, %xmm0"));
 
@@ -99,7 +99,7 @@ mod tests {
              d: bool = 1 <= 2; e: bool = 2 > 1; f: bool = 2 >= 1;",
         )
         .unwrap();
-        let asm = emit_x86_64_win_asm(&program);
+        let asm = emit_x86_64_win_asm(&program).unwrap();
 
         for instruction in [
             "sete %al",
@@ -111,5 +111,21 @@ mod tests {
         ] {
             assert!(asm.contains(instruction));
         }
+    }
+
+    #[test]
+    fn lowers_product_values_to_stack_fields() {
+        let program = compile_to_ir(
+            "type Point { x: f64 = 0.0, y: f64, }
+             point: Point = Point { y: 2.0, };
+             print(point.x);",
+        )
+        .unwrap();
+        let asm = emit_x86_64_win_asm(&program).unwrap();
+
+        assert!(asm.contains("movsd %xmm0, -8(%rbp)"));
+        assert!(asm.contains("movsd %xmm0, -16(%rbp)"));
+        assert!(asm.contains("movsd -8(%rbp), %xmm0"));
+        assert!(asm.contains("callq printf"));
     }
 }

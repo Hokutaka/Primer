@@ -1,12 +1,28 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{BinaryOp, Expr, ExprKind, Program, Stmt, StmtKind, Type, TypeSpec},
+    ast::{self, BinaryOp, Expr, ExprKind, Item, Program, Stmt, StmtKind, TypeSpec},
     diagnostic::Diagnostic,
+    source::Span,
 };
 
 pub type Bindings = HashMap<String, BindingInfo>;
 type SemanticResult<T> = Result<T, Diagnostic>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TypeId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FieldId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Type {
+    Bool,
+    I64,
+    F32,
+    F64,
+    Named(TypeId),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BindingInfo {
@@ -14,16 +30,267 @@ pub struct BindingInfo {
     pub mutable: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct FieldDefinition {
+    pub id: FieldId,
+    pub name: String,
+    pub name_span: Span,
+    pub ty: Type,
+    pub type_span: Span,
+    pub default: Option<Expr>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDefinition {
+    pub id: TypeId,
+    pub name: String,
+    pub name_span: Span,
+    pub fields: Vec<FieldDefinition>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct SemanticModel {
+    pub bindings: Bindings,
+    pub type_definitions: Vec<TypeDefinition>,
+    type_names: HashMap<String, TypeId>,
+}
+
+impl SemanticModel {
+    pub fn resolve_type_ref(&self, type_ref: &ast::TypeRef) -> SemanticResult<Type> {
+        resolve_type_name(&type_ref.name, type_ref.span, &self.type_names)
+    }
+
+    pub fn type_definition(&self, id: TypeId) -> &TypeDefinition {
+        &self.type_definitions[id.0]
+    }
+
+    pub fn resolve_type_name(&self, name: &str, span: Span) -> SemanticResult<TypeId> {
+        self.type_names
+            .get(name)
+            .copied()
+            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span))
+    }
+
+    pub fn type_of_expr(&self, expr: &Expr, bindings: &Bindings) -> SemanticResult<Type> {
+        type_of_expr_expected(expr, bindings, None, self)
+    }
+
+    pub(crate) fn type_of_expr_expected(
+        &self,
+        expr: &Expr,
+        bindings: &Bindings,
+        expected: Option<Type>,
+    ) -> SemanticResult<Type> {
+        type_of_expr_expected(expr, bindings, expected, self)
+    }
+
+    pub fn type_name(&self, ty: Type) -> String {
+        match ty {
+            Type::Bool => "bool".into(),
+            Type::I64 => "i64".into(),
+            Type::F32 => "f32".into(),
+            Type::F64 => "f64".into(),
+            Type::Named(id) => self.type_definition(id).name.clone(),
+        }
+    }
+}
+
 pub fn check(program: &Program) -> SemanticResult<Bindings> {
+    Ok(analyze(program)?.bindings)
+}
+
+pub fn analyze(program: &Program) -> SemanticResult<SemanticModel> {
+    let type_names = register_type_names(program)?;
+    let type_definitions = resolve_type_definitions(program, &type_names)?;
+    let mut model = SemanticModel {
+        bindings: HashMap::new(),
+        type_definitions,
+        type_names,
+    };
+
+    reject_infinite_types(&model)?;
+    check_defaults(&model)?;
+
     let mut scopes = vec![HashMap::new()];
-    check_statements(&program.statements, &mut scopes, 0)?;
-    Ok(scopes.pop().expect("top-level scope must exist"))
+    for item in &program.items {
+        match item {
+            Item::TypeDefinition(_) => {}
+            Item::Statement(statement) => {
+                check_statements(std::slice::from_ref(statement), &mut scopes, 0, &model)?;
+            }
+        }
+    }
+    model.bindings = scopes.pop().expect("top-level scope must exist");
+    Ok(model)
+}
+
+fn register_type_names(program: &Program) -> SemanticResult<HashMap<String, TypeId>> {
+    let mut names = HashMap::new();
+
+    for item in &program.items {
+        let Item::TypeDefinition(definition) = item else {
+            continue;
+        };
+        let id = TypeId(names.len());
+
+        if names.insert(definition.name.clone(), id).is_some() {
+            return Err(Diagnostic::new(
+                format!("duplicate type `{}`", definition.name),
+                definition.name_span,
+            ));
+        }
+    }
+
+    Ok(names)
+}
+
+fn resolve_type_definitions(
+    program: &Program,
+    type_names: &HashMap<String, TypeId>,
+) -> SemanticResult<Vec<TypeDefinition>> {
+    let mut definitions = Vec::new();
+
+    for item in &program.items {
+        let Item::TypeDefinition(definition) = item else {
+            continue;
+        };
+        let id = *type_names
+            .get(&definition.name)
+            .expect("registered type must have an id");
+        let mut field_names = HashMap::new();
+        let mut fields = Vec::new();
+
+        for field in &definition.fields {
+            let field_id = FieldId(fields.len());
+            if field_names.insert(field.name.clone(), field_id).is_some() {
+                return Err(Diagnostic::new(
+                    format!(
+                        "duplicate field `{}` in type `{}`",
+                        field.name, definition.name
+                    ),
+                    field.name_span,
+                ));
+            }
+
+            fields.push(FieldDefinition {
+                id: field_id,
+                name: field.name.clone(),
+                name_span: field.name_span,
+                ty: resolve_type_name(&field.type_ref.name, field.type_ref.span, type_names)?,
+                type_span: field.type_ref.span,
+                default: field.default.clone(),
+                span: field.span,
+            });
+        }
+
+        definitions.push(TypeDefinition {
+            id,
+            name: definition.name.clone(),
+            name_span: definition.name_span,
+            fields,
+            span: definition.span,
+        });
+    }
+
+    definitions.sort_by_key(|definition| definition.id.0);
+    Ok(definitions)
+}
+
+fn resolve_type_name(
+    name: &str,
+    span: Span,
+    type_names: &HashMap<String, TypeId>,
+) -> SemanticResult<Type> {
+    match name {
+        "bool" => Ok(Type::Bool),
+        "i64" => Ok(Type::I64),
+        "f32" => Ok(Type::F32),
+        "f64" => Ok(Type::F64),
+        _ => type_names
+            .get(name)
+            .copied()
+            .map(Type::Named)
+            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span)),
+    }
+}
+
+fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum Visit {
+        Unvisited,
+        Visiting,
+        Done,
+    }
+
+    fn visit(id: TypeId, model: &SemanticModel, states: &mut [Visit]) -> SemanticResult<()> {
+        states[id.0] = Visit::Visiting;
+
+        for field in &model.type_definition(id).fields {
+            let Type::Named(next) = field.ty else {
+                continue;
+            };
+
+            match states[next.0] {
+                Visit::Visiting => {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "type `{}` has infinite size through field `{}`",
+                            model.type_definition(id).name,
+                            field.name
+                        ),
+                        field.type_span,
+                    ));
+                }
+                Visit::Unvisited => visit(next, model, states)?,
+                Visit::Done => {}
+            }
+        }
+
+        states[id.0] = Visit::Done;
+        Ok(())
+    }
+
+    let mut states = vec![Visit::Unvisited; model.type_definitions.len()];
+    for index in 0..states.len() {
+        if states[index] == Visit::Unvisited {
+            visit(TypeId(index), model, &mut states)?;
+        }
+    }
+    Ok(())
+}
+
+fn check_defaults(model: &SemanticModel) -> SemanticResult<()> {
+    let bindings = HashMap::new();
+
+    for definition in &model.type_definitions {
+        for field in &definition.fields {
+            let Some(default) = &field.default else {
+                continue;
+            };
+            let actual = model.type_of_expr_expected(default, &bindings, Some(field.ty))?;
+            if actual != field.ty {
+                return Err(Diagnostic::new(
+                    format!(
+                        "default for field `{}` expects {}, found {}",
+                        field.name,
+                        model.type_name(field.ty),
+                        model.type_name(actual)
+                    ),
+                    default.span,
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn check_statements(
     statements: &[Stmt],
     scopes: &mut Vec<Bindings>,
     loop_depth: usize,
+    model: &SemanticModel,
 ) -> SemanticResult<()> {
     for statement in statements {
         let bindings = visible_bindings(scopes);
@@ -48,26 +315,28 @@ fn check_statements(
 
                 let value_type = match type_spec {
                     TypeSpec::Explicit(expected) => {
+                        let expected = model.resolve_type_ref(expected)?;
                         // 左辺の明示型を右辺へ渡す
-                        let actual = type_of_expr_expected(value, &bindings, Some(*expected))?;
+                        let actual =
+                            model.type_of_expr_expected(value, &bindings, Some(expected))?;
 
-                        if actual != *expected {
+                        if actual != expected {
                             return Err(Diagnostic::new(
                                 format!(
                                     "type mismatch for `{name}`: expected {}, found {}",
-                                    type_name(*expected),
-                                    type_name(actual),
+                                    model.type_name(expected),
+                                    model.type_name(actual),
                                 ),
                                 value.span,
                             ));
                         }
 
-                        *expected
+                        expected
                     }
 
                     TypeSpec::Infer => {
                         // inferの場合は文脈なしで推論
-                        type_of_expr_expected(value, &bindings, None)?
+                        model.type_of_expr(value, &bindings)?
                     }
                 };
 
@@ -96,14 +365,14 @@ fn check_statements(
                     ));
                 }
 
-                let actual = type_of_expr_expected(value, &bindings, Some(binding.ty))?;
+                let actual = model.type_of_expr_expected(value, &bindings, Some(binding.ty))?;
 
                 if actual != binding.ty {
                     return Err(Diagnostic::new(
                         format!(
                             "type mismatch for assignment to `{name}`: expected {}, found {}",
-                            type_name(binding.ty),
-                            type_name(actual),
+                            model.type_name(binding.ty),
+                            model.type_name(actual),
                         ),
                         value.span,
                     ));
@@ -111,7 +380,13 @@ fn check_statements(
             }
 
             StmtKind::Print { value } => {
-                type_of_expr_expected(value, &bindings, None)?;
+                let ty = model.type_of_expr(value, &bindings)?;
+                if matches!(ty, Type::Named(_)) {
+                    return Err(Diagnostic::new(
+                        format!("cannot print value of type {}", model.type_name(ty)),
+                        value.span,
+                    ));
+                }
             }
 
             StmtKind::If {
@@ -119,42 +394,44 @@ fn check_statements(
                 then_body,
                 else_body,
             } => {
-                let condition_ty = type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
+                let condition_ty =
+                    model.type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
 
                 if condition_ty != Type::Bool {
                     return Err(Diagnostic::new(
                         format!(
                             "if condition must be bool, found {}",
-                            type_name(condition_ty)
+                            model.type_name(condition_ty)
                         ),
                         condition.span,
                     ));
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(then_body, scopes, loop_depth)?;
+                check_statements(then_body, scopes, loop_depth, model)?;
                 scopes.pop();
 
                 scopes.push(HashMap::new());
-                check_statements(else_body, scopes, loop_depth)?;
+                check_statements(else_body, scopes, loop_depth, model)?;
                 scopes.pop();
             }
 
             StmtKind::While { condition, body } => {
-                let condition_ty = type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
+                let condition_ty =
+                    model.type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
 
                 if condition_ty != Type::Bool {
                     return Err(Diagnostic::new(
                         format!(
                             "while condition must be bool, found {}",
-                            type_name(condition_ty)
+                            model.type_name(condition_ty)
                         ),
                         condition.span,
                     ));
                 }
 
                 scopes.push(HashMap::new());
-                check_statements(body, scopes, loop_depth + 1)?;
+                check_statements(body, scopes, loop_depth + 1, model)?;
                 scopes.pop();
             }
 
@@ -165,25 +442,26 @@ fn check_statements(
                 body,
             } => {
                 scopes.push(HashMap::new());
-                check_statements(std::slice::from_ref(initializer), scopes, loop_depth)?;
+                check_statements(std::slice::from_ref(initializer), scopes, loop_depth, model)?;
 
                 let bindings = visible_bindings(scopes);
-                let condition_ty = type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
+                let condition_ty =
+                    model.type_of_expr_expected(condition, &bindings, Some(Type::Bool))?;
 
                 if condition_ty != Type::Bool {
                     return Err(Diagnostic::new(
                         format!(
                             "for condition must be bool, found {}",
-                            type_name(condition_ty)
+                            model.type_name(condition_ty)
                         ),
                         condition.span,
                     ));
                 }
 
-                check_statements(std::slice::from_ref(update), scopes, loop_depth)?;
+                check_statements(std::slice::from_ref(update), scopes, loop_depth, model)?;
 
                 scopes.push(HashMap::new());
-                check_statements(body, scopes, loop_depth + 1)?;
+                check_statements(body, scopes, loop_depth + 1, model)?;
                 scopes.pop();
                 scopes.pop();
             }
@@ -221,14 +499,11 @@ fn visible_bindings(scopes: &[Bindings]) -> Bindings {
     visible
 }
 
-pub fn type_of_expr(expr: &Expr, bindings: &Bindings) -> SemanticResult<Type> {
-    type_of_expr_expected(expr, bindings, None)
-}
-
-pub(crate) fn type_of_expr_expected(
+fn type_of_expr_expected(
     expr: &Expr,
     bindings: &Bindings,
     expected: Option<Type>,
+    model: &SemanticModel,
 ) -> SemanticResult<Type> {
     match &expr.kind {
         ExprKind::Boolean(_) => Ok(Type::Bool),
@@ -238,7 +513,7 @@ pub(crate) fn type_of_expr_expected(
         ExprKind::Float { explicit_type, .. } => {
             // suffix付きなら絶対その型
             if let Some(ty) = explicit_type {
-                return Ok(*ty);
+                return Ok(scalar_type(*ty));
             }
 
             // suffixなしなら文脈を見る
@@ -256,13 +531,98 @@ pub(crate) fn type_of_expr_expected(
             .map(|binding| binding.ty)
             .ok_or_else(|| Diagnostic::new(format!("unknown binding `{name}`"), expr.span)),
 
+        ExprKind::Construct {
+            type_name,
+            type_name_span,
+            fields,
+        } => {
+            let type_id = model.resolve_type_name(type_name, *type_name_span)?;
+            let definition = model.type_definition(type_id);
+            let mut supplied = vec![false; definition.fields.len()];
+
+            for field_value in fields {
+                let field = definition
+                    .fields
+                    .iter()
+                    .find(|field| field.name == field_value.name)
+                    .ok_or_else(|| {
+                        Diagnostic::new(
+                            format!("type `{type_name}` has no field `{}`", field_value.name),
+                            field_value.name_span,
+                        )
+                    })?;
+
+                if supplied[field.id.0] {
+                    return Err(Diagnostic::new(
+                        format!("field `{}` is specified more than once", field.name),
+                        field_value.name_span,
+                    ));
+                }
+
+                let actual =
+                    model.type_of_expr_expected(&field_value.value, bindings, Some(field.ty))?;
+                if actual != field.ty {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "field `{}` expects {}, found {}",
+                            field.name,
+                            model.type_name(field.ty),
+                            model.type_name(actual)
+                        ),
+                        field_value.value.span,
+                    ));
+                }
+                supplied[field.id.0] = true;
+            }
+
+            for field in &definition.fields {
+                if !supplied[field.id.0] && field.default.is_none() {
+                    return Err(Diagnostic::new(
+                        format!("missing field `{}` for type `{type_name}`", field.name),
+                        expr.span,
+                    ));
+                }
+            }
+
+            Ok(Type::Named(type_id))
+        }
+
+        ExprKind::FieldAccess {
+            base,
+            field_name,
+            field_name_span,
+        } => {
+            let base_type = model.type_of_expr(base, bindings)?;
+            let Type::Named(type_id) = base_type else {
+                return Err(Diagnostic::new(
+                    format!(
+                        "cannot access field `{field_name}` on {}",
+                        model.type_name(base_type)
+                    ),
+                    *field_name_span,
+                ));
+            };
+            let definition = model.type_definition(type_id);
+            definition
+                .fields
+                .iter()
+                .find(|field| field.name == *field_name)
+                .map(|field| field.ty)
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        format!("type `{}` has no field `{field_name}`", definition.name),
+                        *field_name_span,
+                    )
+                })
+        }
+
         ExprKind::Unary { op, value } => match op {
             crate::ast::UnaryOp::Negate => {
-                let ty = type_of_expr_expected(value, bindings, expected)?;
+                let ty = type_of_expr_expected(value, bindings, expected, model)?;
 
                 if !is_numeric(ty) {
                     return Err(Diagnostic::new(
-                        format!("cannot apply `-` to {}", type_name(ty)),
+                        format!("cannot apply `-` to {}", model.type_name(ty)),
                         expr.span,
                     ));
                 }
@@ -271,11 +631,11 @@ pub(crate) fn type_of_expr_expected(
             }
 
             crate::ast::UnaryOp::Not => {
-                let ty = type_of_expr_expected(value, bindings, Some(Type::Bool))?;
+                let ty = type_of_expr_expected(value, bindings, Some(Type::Bool), model)?;
 
                 if ty != Type::Bool {
                     return Err(Diagnostic::new(
-                        format!("cannot apply `!` to {}", type_name(ty)),
+                        format!("cannot apply `!` to {}", model.type_name(ty)),
                         expr.span,
                     ));
                 }
@@ -286,12 +646,12 @@ pub(crate) fn type_of_expr_expected(
 
         ExprKind::Binary { op, left, right } => {
             let (left_type, right_type) = if is_comparison(*op) {
-                comparison_operand_types(left, right, bindings)?
+                comparison_operand_types(left, right, bindings, model)?
             } else {
                 // 親から来た期待型を左右両方へ伝える
                 (
-                    type_of_expr_expected(left, bindings, expected)?,
-                    type_of_expr_expected(right, bindings, expected)?,
+                    type_of_expr_expected(left, bindings, expected, model)?,
+                    type_of_expr_expected(right, bindings, expected, model)?,
                 )
             };
 
@@ -300,8 +660,19 @@ pub(crate) fn type_of_expr_expected(
                     format!(
                         "cannot apply `{}` to {} and {}",
                         operator_name(*op),
-                        type_name(left_type),
-                        type_name(right_type),
+                        model.type_name(left_type),
+                        model.type_name(right_type),
+                    ),
+                    expr.span,
+                ));
+            }
+
+            if matches!(left_type, Type::Named(_)) {
+                return Err(Diagnostic::new(
+                    format!(
+                        "cannot apply `{}` to {}",
+                        operator_name(*op),
+                        model.type_name(left_type)
                     ),
                     expr.span,
                 ));
@@ -313,7 +684,7 @@ pub(crate) fn type_of_expr_expected(
                         format!(
                             "cannot apply `{}` to {}",
                             operator_name(*op),
-                            type_name(left_type),
+                            model.type_name(left_type),
                         ),
                         expr.span,
                     ));
@@ -326,7 +697,7 @@ pub(crate) fn type_of_expr_expected(
                         format!(
                             "cannot apply `{}` to {}",
                             operator_name(*op),
-                            type_name(left_type),
+                            model.type_name(left_type),
                         ),
                         expr.span,
                     ));
@@ -340,36 +711,37 @@ pub(crate) fn type_of_expr_expected(
     }
 }
 
+const fn scalar_type(ty: ast::Type) -> Type {
+    match ty {
+        ast::Type::Bool => Type::Bool,
+        ast::Type::I64 => Type::I64,
+        ast::Type::F32 => Type::F32,
+        ast::Type::F64 => Type::F64,
+    }
+}
+
 pub(crate) fn comparison_operand_types(
     left: &Expr,
     right: &Expr,
     bindings: &Bindings,
+    model: &SemanticModel,
 ) -> SemanticResult<(Type, Type)> {
-    let left_type = type_of_expr_expected(left, bindings, None)?;
-    let right_type = type_of_expr_expected(right, bindings, None)?;
+    let left_type = type_of_expr_expected(left, bindings, None, model)?;
+    let right_type = type_of_expr_expected(right, bindings, None, model)?;
 
     if left_type == right_type {
         return Ok((left_type, right_type));
     }
 
-    let contextual_left = type_of_expr_expected(left, bindings, Some(right_type))?;
+    let contextual_left = type_of_expr_expected(left, bindings, Some(right_type), model)?;
 
     if contextual_left == right_type {
         return Ok((contextual_left, right_type));
     }
 
-    let contextual_right = type_of_expr_expected(right, bindings, Some(left_type))?;
+    let contextual_right = type_of_expr_expected(right, bindings, Some(left_type), model)?;
 
     Ok((left_type, contextual_right))
-}
-
-fn type_name(ty: Type) -> &'static str {
-    match ty {
-        Type::Bool => "bool",
-        Type::I64 => "i64",
-        Type::F32 => "f32",
-        Type::F64 => "f64",
-    }
 }
 
 fn operator_name(op: BinaryOp) -> &'static str {
@@ -411,9 +783,9 @@ const fn is_comparison(op: BinaryOp) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ast::Type, lexer::lex, parser::parse, source::Span};
+    use crate::{lexer::lex, parser::parse, source::Span};
 
-    use super::check;
+    use super::{Type, analyze, check};
 
     #[test]
     fn explicit_f32_guides_float_literals() {
@@ -643,5 +1015,75 @@ mod tests {
         .unwrap();
 
         check(&program).unwrap();
+    }
+
+    #[test]
+    fn resolves_forward_product_type_references_and_fields() {
+        let source = "
+            type Line { start: Point, end: Point, }
+            type Point { x: f64, y: f64 = 0.0, }
+            line: Line = Line {
+                end: Point { x: 2.0, },
+                start: Point { y: 1.0, x: 0.0, },
+            };
+            print(line.end.x);
+        ";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let model = analyze(&program).unwrap();
+
+        assert_eq!(model.type_definitions[0].id.0, 0);
+        assert_eq!(model.type_definitions[0].name, "Line");
+        assert_eq!(model.type_definitions[1].id.0, 1);
+        assert_eq!(model.type_definitions[1].fields[1].id.0, 1);
+        assert_eq!(
+            model.bindings.get("line").map(|binding| binding.ty),
+            Some(Type::Named(super::TypeId(0)))
+        );
+    }
+
+    #[test]
+    fn rejects_missing_product_field_without_default() {
+        let source = "type Point { x: f64, y: f64, } p: Point = Point { x: 1.0, };";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(error.message(), "missing field `y` for type `Point`");
+    }
+
+    #[test]
+    fn rejects_duplicate_product_fields() {
+        let source = "type Point { x: f64, } p: Point = Point { x: 1.0, x: 2.0, };";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(error.message(), "field `x` is specified more than once");
+    }
+
+    #[test]
+    fn rejects_recursive_product_type_with_infinite_size() {
+        let source = "type A { b: B, } type B { a: A, }";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "type `B` has infinite size through field `a`"
+        );
+    }
+
+    #[test]
+    fn keeps_named_product_types_distinct() {
+        let source = "
+            type Point { x: f64, }
+            type Velocity { x: f64, }
+            point: Point = Velocity { x: 1.0, };
+        ";
+        let program = parse(lex(source).unwrap()).unwrap();
+        let error = check(&program).unwrap_err();
+
+        assert_eq!(
+            error.message(),
+            "type mismatch for `point`: expected Point, found Velocity"
+        );
     }
 }

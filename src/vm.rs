@@ -11,6 +11,12 @@ pub enum VmErrorKind {
     /// 存在しないスロットへアクセスしました。
     InvalidSlot { slot: usize },
 
+    /// 存在しないproduct typeを使おうとしました。
+    InvalidType { type_id: usize },
+
+    /// product typeに存在しないfieldを使おうとしました。
+    InvalidField { type_id: usize, field_id: usize },
+
     /// 初期化前のスロットを読み取りました。
     UninitializedSlot { slot: usize },
 
@@ -74,6 +80,7 @@ enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
+    Aggregate { type_id: usize, fields: Vec<Value> },
 }
 
 impl Value {
@@ -83,6 +90,7 @@ impl Value {
             Self::I64(_) => Type::I64,
             Self::F32(_) => Type::F32,
             Self::F64(_) => Type::F64,
+            Self::Aggregate { type_id, .. } => Type::Named(*type_id),
         }
     }
 }
@@ -215,6 +223,97 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                 }
 
                 *destination = Some(value);
+            }
+
+            InstructionKind::Construct { type_id, fields } => {
+                let definition = program.type_definitions.get(*type_id).ok_or_else(|| {
+                    VmError::new(VmErrorKind::InvalidType { type_id: *type_id }, pc)
+                })?;
+                let mut values = vec![None; definition.fields.len()];
+
+                for field in fields.iter().rev() {
+                    let value = at_instruction(pop_value(&mut stack), pc)?;
+                    let expected = definition
+                        .fields
+                        .get(field.field_id)
+                        .ok_or_else(|| {
+                            VmError::new(
+                                VmErrorKind::InvalidField {
+                                    type_id: *type_id,
+                                    field_id: field.field_id,
+                                },
+                                pc,
+                            )
+                        })?
+                        .ty;
+                    if value.ty() != expected {
+                        return Err(VmError::new(
+                            VmErrorKind::TypeMismatch {
+                                expected,
+                                actual: value.ty(),
+                            },
+                            pc,
+                        ));
+                    }
+                    values[field.field_id] = Some(value);
+                }
+
+                let values = values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(field_id, value)| {
+                        value.ok_or_else(|| {
+                            VmError::new(
+                                VmErrorKind::InvalidField {
+                                    type_id: *type_id,
+                                    field_id,
+                                },
+                                pc,
+                            )
+                        })
+                    })
+                    .collect::<Result<_, _>>()?;
+                stack.push(Value::Aggregate {
+                    type_id: *type_id,
+                    fields: values,
+                });
+            }
+
+            InstructionKind::FieldGet { type_id, field_id } => {
+                let value = at_instruction(pop_value(&mut stack), pc)?;
+                let actual_type = value.ty();
+                let Value::Aggregate {
+                    type_id: aggregate_type,
+                    fields,
+                } = value
+                else {
+                    return Err(VmError::new(
+                        VmErrorKind::TypeMismatch {
+                            expected: Type::Named(*type_id),
+                            actual: actual_type,
+                        },
+                        pc,
+                    ));
+                };
+                if aggregate_type != *type_id {
+                    return Err(VmError::new(
+                        VmErrorKind::TypeMismatch {
+                            expected: Type::Named(*type_id),
+                            actual: Type::Named(aggregate_type),
+                        },
+                        pc,
+                    ));
+                }
+                let field = fields.get(*field_id).cloned().ok_or_else(|| {
+                    VmError::new(
+                        VmErrorKind::InvalidField {
+                            type_id: *type_id,
+                            field_id: *field_id,
+                        },
+                        pc,
+                    )
+                })?;
+                stack.push(field);
             }
 
             InstructionKind::Add(ty) => {
@@ -385,6 +484,13 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
 
             stack.push(Value::F64(value));
         }
+
+        Type::Named(_) => {
+            return Err(VmErrorKind::TypeMismatch {
+                expected: Type::I64,
+                actual: ty,
+            });
+        }
     }
 
     Ok(())
@@ -432,6 +538,7 @@ fn compare(ty: Type, stack: &mut Vec<Value>, comparison: Comparison) -> VmResult
             let left = pop_f64(stack)?;
             compare_values(left, right, comparison)
         }
+        Type::Named(_) => return Err(VmErrorKind::InvalidComparisonType { ty }),
     };
 
     stack.push(Value::Bool(result));
@@ -474,6 +581,13 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
             let value = pop_f64(stack)?;
 
             stack.push(Value::F64(-value));
+        }
+
+        Type::Named(_) => {
+            return Err(VmErrorKind::TypeMismatch {
+                expected: Type::I64,
+                actual: ty,
+            });
         }
     }
 
@@ -579,7 +693,7 @@ mod tests {
         let program =
             compile_to_ir("a: f32 = 0.1 + 0.2; b: f64 = 0.1 + 0.2; print(a); print(b);").unwrap();
 
-        let bytecode = bytecode::lower(&program);
+        let bytecode = bytecode::lower(&program).unwrap();
 
         let output = run(&bytecode).unwrap();
 
@@ -599,6 +713,7 @@ mod tests {
     #[test]
     fn distinguishes_integer_division_overflow() {
         let program = BytecodeProgram {
+            type_definitions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
                 Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
@@ -617,6 +732,7 @@ mod tests {
     #[test]
     fn rejects_bytecode_assignment_to_immutable_slot() {
         let program = BytecodeProgram {
+            type_definitions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
                 ty: Type::I64,
@@ -643,6 +759,7 @@ mod tests {
     #[test]
     fn rejects_distinct_initializers_for_the_same_slot() {
         let program = BytecodeProgram {
+            type_definitions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
                 ty: Type::I64,
@@ -669,6 +786,7 @@ mod tests {
     #[test]
     fn reports_missing_instruction_without_panicking() {
         let program = BytecodeProgram {
+            type_definitions: Vec::new(),
             slots: Vec::new(),
             instructions: Vec::new(),
         };
