@@ -515,15 +515,7 @@ fn resolve_type_definitions(
                 id: field_id,
                 name: field.name.clone(),
                 name_span: field.name_span,
-                ty: {
-                    if matches!(&field.type_ref.kind, ast::TypeRefKind::Array { .. }) {
-                        return Err(Diagnostic::new(
-                            "array fields are not supported yet",
-                            field.type_ref.span,
-                        ));
-                    }
-                    resolve_type_ref(&field.type_ref, type_names)?
-                },
+                ty: resolve_type_ref(&field.type_ref, type_names)?,
                 type_span: field.type_ref.span,
                 default: field.default.clone(),
                 span: field.span,
@@ -1684,6 +1676,14 @@ mod tests {
             error.message(),
             "array elements currently require a scalar type"
         );
+    }
+
+    #[test]
+    fn accepts_fixed_array_fields() {
+        let source = "type Row { values: [i64; 2], } row: Row = Row { values: [1, 2], };";
+        let program = parse(lex(source).unwrap()).unwrap();
+
+        check(&program).unwrap();
     }
 
     #[test]

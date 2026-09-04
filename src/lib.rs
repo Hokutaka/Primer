@@ -272,6 +272,46 @@ mod tests {
     }
 
     #[test]
+    fn product_types_can_hold_fixed_arrays() {
+        let source = "
+            type Row { values: [i64; 3], }
+            mut first: Row = Row { values: [1, 2, 3], };
+            second: Row = first;
+            first = Row { values: [4, 5, 6], };
+            print(second.values[1]);
+            print(first.values[2]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "2\n6\n");
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn fixed_array_fields_support_defaults() {
+        let source = "
+            type Row { id: i64, values: [i64; 2] = [7, 8], }
+            row: Row = Row { id: 1, };
+            print(row.values[0]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "7\n");
+        assert!(compile_to_ir_text(source).unwrap().contains("[default]"));
+    }
+
+    #[test]
+    fn c_backend_declares_unused_array_field_types() {
+        let c = compile_to_c("type Row { values: [i64; 3], }").unwrap();
+        let array = c.find("typedef struct primer_array_i64_3").unwrap();
+        let product = c.find("typedef struct primer_type_Row_0").unwrap();
+
+        assert!(array < product);
+    }
+
+    #[test]
     fn fixed_array_out_of_bounds_keeps_its_source_origin() {
         let source = "values: [i64; 2] = [10, 20]; print(values[2]);";
         let RunError::Execution(error) = run_vm(source).unwrap_err() else {

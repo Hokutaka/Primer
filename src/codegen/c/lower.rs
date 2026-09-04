@@ -347,6 +347,11 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     }
 
     let mut types = Vec::new();
+    for definition in &program.type_definitions {
+        for field in &definition.fields {
+            add(&field.ty, &mut types);
+        }
+    }
     for function in &program.function_definitions {
         for statement in &function.body {
             visit_statement(statement, &mut types);

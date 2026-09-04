@@ -483,6 +483,19 @@ impl Lowerer<'_> {
                             debug_assert_eq!(nested.0, actual);
                             self.copy_aggregate(nested.0, source, field_slot);
                         }
+                        (
+                            primer_ir::Type::Array { element, length },
+                            Value::Array {
+                                element: actual_element,
+                                length: actual_length,
+                                base_slot: source,
+                            },
+                        ) => {
+                            let element = array_element_scalar_type(element);
+                            debug_assert_eq!(element, actual_element);
+                            debug_assert_eq!(*length, actual_length);
+                            self.copy_array(element, *length, source, field_slot);
+                        }
                         (scalar, Value::Scalar(actual)) => {
                             debug_assert_eq!(scalar_type(scalar), actual);
                             self.store_scalar(actual, slot_offset(field_slot));
@@ -508,6 +521,11 @@ impl Lowerer<'_> {
                 match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
+                        base_slot: field_slot,
+                    },
+                    primer_ir::Type::Array { element, length } => Value::Array {
+                        element: array_element_scalar_type(element),
+                        length: *length,
                         base_slot: field_slot,
                     },
                     scalar => {
@@ -596,6 +614,12 @@ impl Lowerer<'_> {
                 primer_ir::Type::Named(nested) => {
                     self.copy_aggregate(nested.0, source + offset, destination + offset)
                 }
+                primer_ir::Type::Array { element, length } => self.copy_array(
+                    array_element_scalar_type(element),
+                    *length,
+                    source + offset,
+                    destination + offset,
+                ),
                 scalar => {
                     let ty = scalar_type(scalar);
                     self.load_scalar(ty, slot_offset(source + offset));

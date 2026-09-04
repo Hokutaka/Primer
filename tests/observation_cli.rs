@@ -12,6 +12,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "product-types",
     "functions",
     "fixed-arrays",
+    "product-array-field",
 ];
 
 fn fixture_path(case_name: &str) -> PathBuf {

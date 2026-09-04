@@ -412,6 +412,20 @@ impl LoweringContext<'_> {
                             debug_assert_eq!(source_type, nested.0);
                             self.copy_aggregate(nested.0, source, destination, instructions);
                         }
+                        primer_ir::Type::Array { element, length } => {
+                            let Value::Array {
+                                element: actual_element,
+                                length: actual_length,
+                                address: source,
+                            } = self.lower_expr(&field.value, instructions)
+                            else {
+                                unreachable!("semantic analysis keeps field types equal")
+                            };
+                            let element = array_element_scalar_type(element);
+                            debug_assert_eq!(element, actual_element);
+                            debug_assert_eq!(*length, actual_length);
+                            self.copy_array(element, *length, source, destination, instructions);
+                        }
                         scalar => {
                             instructions.push(Instruction::I32Const(destination as i32));
                             let Value::Scalar(actual) = self.lower_expr(&field.value, instructions)
@@ -441,6 +455,11 @@ impl LoweringContext<'_> {
                 match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
+                        address,
+                    },
+                    primer_ir::Type::Array { element, length } => Value::Array {
+                        element: array_element_scalar_type(element),
+                        length: *length,
                         address,
                     },
                     scalar => {
@@ -587,6 +606,13 @@ impl LoweringContext<'_> {
             match &field.ty {
                 primer_ir::Type::Named(nested) => self.copy_aggregate(
                     nested.0,
+                    source + offset,
+                    destination + offset,
+                    instructions,
+                ),
+                primer_ir::Type::Array { element, length } => self.copy_array(
+                    array_element_scalar_type(element),
+                    *length,
                     source + offset,
                     destination + offset,
                     instructions,

@@ -511,6 +511,22 @@ impl Lowerer<'_> {
                                 size: type_size(self.program, &definition.ty),
                             });
                         }
+                        (
+                            primer_ir::Type::Array { element, length },
+                            Value::Array {
+                                element: actual_element,
+                                length: actual_length,
+                                address,
+                            },
+                        ) => {
+                            debug_assert_eq!(array_element_scalar_type(element), actual_element);
+                            debug_assert_eq!(*length, actual_length);
+                            self.instructions.push(Instruction::Blit {
+                                source: address,
+                                destination,
+                                size: type_size(self.program, &definition.ty),
+                            });
+                        }
                         (scalar, Value::Scalar { ty, operand }) => {
                             debug_assert_eq!(scalar_type(scalar), ty);
                             self.instructions.push(Instruction::Store {
@@ -541,6 +557,11 @@ impl Lowerer<'_> {
                 match &expr.ty {
                     primer_ir::Type::Named(nested) => Value::Aggregate {
                         type_id: nested.0,
+                        address,
+                    },
+                    primer_ir::Type::Array { element, length } => Value::Array {
+                        element: array_element_scalar_type(element),
+                        length: *length,
                         address,
                     },
                     scalar => {

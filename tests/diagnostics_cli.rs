@@ -145,11 +145,6 @@ fn semantic_function_array_signature_matches_expected_diagnostic() {
 }
 
 #[test]
-fn semantic_array_field_matches_expected_diagnostic() {
-    assert_diagnostic("semantic-array-field", "check", "check.stderr");
-}
-
-#[test]
 fn semantic_immutable_assignment_matches_expected_diagnostic() {
     assert_diagnostic("semantic-immutable-assignment", "check", "check.stderr");
 }
