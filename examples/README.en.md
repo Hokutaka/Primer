@@ -18,8 +18,8 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 
 | Example | Demonstrates |
 | --- | --- |
-| [hello.prim](hello.prim) | bindings, arithmetic, and `print` |
-| [floating_point.prim](floating_point.prim) | `i64`, `f32`, and `f64` |
+| [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
+| [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |

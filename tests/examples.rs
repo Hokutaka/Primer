@@ -1,6 +1,23 @@
 use primer_lang::run_vm;
 
 #[test]
+fn hello_example_adds_two_named_integers() {
+    let output = run_vm(include_str!("../examples/hello.prim")).unwrap();
+
+    assert_eq!(output, "42\n");
+}
+
+#[test]
+fn floating_point_example_exposes_precision_and_inferred_type() {
+    let output = run_vm(include_str!("../examples/floating_point.prim")).unwrap();
+
+    assert_eq!(
+        output,
+        "0.300000012\n0.30000000000000004\n0.30000000000000004\n"
+    );
+}
+
+#[test]
 fn coin_change_finds_a_better_answer_than_greedy_selection() {
     let output = run_vm(include_str!("../examples/coin_change.prim")).unwrap();
 
