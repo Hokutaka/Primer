@@ -6,6 +6,23 @@
 
 declare i32 @printf(ptr, ...)
 declare i32 @puts(ptr)
+declare void @llvm.trap()
+declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)
+
+define internal i64 @primer_i64_sub(i64 %left, i64 %right) {
+entry:
+  %checked = call { i64, i1 } @llvm.ssub.with.overflow.i64(i64 %left, i64 %right)
+  %result = extractvalue { i64, i1 } %checked, 0
+  %overflow = extractvalue { i64, i1 } %checked, 1
+  br i1 %overflow, label %trap, label %ok
+
+trap:
+  call void @llvm.trap()
+  unreachable
+
+ok:
+  ret i64 %result
+}
 
 define i32 @main() {
 entry:
@@ -23,7 +40,7 @@ block0: ; if_then
   call i32 @puts(ptr %tmp3)
   br label %block2
 block1: ; if_else
-  %tmp4 = sub i64 0, 1
+  %tmp4 = call i64 @primer_i64_sub(i64 0, i64 1)
   store i64 %tmp4, ptr %primer_value
   br label %block2
 block2: ; if_end

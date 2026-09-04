@@ -68,10 +68,10 @@ pub enum Operand {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
-    Add,
-    Sub,
-    Mul,
-    SDiv,
+    CheckedI64Add,
+    CheckedI64Sub,
+    CheckedI64Mul,
+    CheckedI64Div,
     FAdd,
     FSub,
     FMul,

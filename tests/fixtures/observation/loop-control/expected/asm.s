@@ -44,6 +44,9 @@ main:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_2
+  ud2
+.Lprimer_main_integer_ok_2:
   movq %rax, -8(%rbp)
   movq -8(%rbp), %rax
   movq %rax, -24(%rbp)
@@ -54,9 +57,9 @@ main:
   setl %al
   movzbq %al, %rax
   testq %rax, %rax
-  je .Lprimer_block_3
+  je .Lprimer_block_4
   jmp .Lprimer_block_0
-.Lprimer_block_3: # if_end
+.Lprimer_block_4: # if_end
   movq -8(%rbp), %rax
   movq %rax, -24(%rbp)
   movabsq $5, %rax
@@ -66,15 +69,18 @@ main:
   setg %al
   movzbq %al, %rax
   testq %rax, %rax
-  je .Lprimer_block_5
+  je .Lprimer_block_6
   jmp .Lprimer_block_1
-.Lprimer_block_5: # if_end
+.Lprimer_block_6: # if_end
   movq -16(%rbp), %rax
   movq %rax, -24(%rbp)
   movq -8(%rbp), %rax
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_7
+  ud2
+.Lprimer_main_integer_ok_7:
   movq %rax, -16(%rbp)
   jmp .Lprimer_block_0
 .Lprimer_block_1: # while_end

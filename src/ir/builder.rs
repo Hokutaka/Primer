@@ -333,7 +333,9 @@ impl Builder<'_> {
 
         let kind = match &expr.kind {
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
-            ast::ExprKind::Integer(value) => ExprKind::Integer(*value),
+            ast::ExprKind::Integer(literal) => {
+                ExprKind::Integer(semantic::resolve_i64_literal(literal, expr.span)?)
+            }
             ast::ExprKind::Float { text, .. } => ExprKind::Float { text: text.clone() },
             ast::ExprKind::Variable(name) => {
                 let binding = self.resolve(name).ok_or_else(|| {
@@ -458,10 +460,26 @@ impl Builder<'_> {
                     arguments,
                 }
             }
-            ast::ExprKind::Unary { op, value } => ExprKind::Unary {
-                op: (*op).into(),
-                value: Box::new(self.build_expr(value, Some(ty.clone()), bindings)?),
-            },
+            ast::ExprKind::Unary { op, value } => {
+                let is_minimum_literal = if *op == ast::UnaryOp::Negate {
+                    if let ast::ExprKind::Integer(literal) = &value.kind {
+                        semantic::resolve_negated_i64_literal(literal, expr.span)? == i64::MIN
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if is_minimum_literal {
+                    ExprKind::Integer(i64::MIN)
+                } else {
+                    ExprKind::Unary {
+                        op: (*op).into(),
+                        value: Box::new(self.build_expr(value, Some(ty.clone()), bindings)?),
+                    }
+                }
+            }
             ast::ExprKind::Binary { op, left, right } => {
                 let (left_expected, right_expected) = if is_comparison(*op) {
                     semantic::comparison_operand_types(left, right, bindings, self.model)?
@@ -599,6 +617,7 @@ mod tests {
         Program as AstProgram, Stmt, StmtKind as AstStmtKind, TypeRef, TypeRefKind, TypeSpec,
     };
     use crate::source::Span;
+    use crate::{lexer::lex, parser::parse};
 
     use super::*;
 
@@ -685,6 +704,19 @@ mod tests {
     }
 
     #[test]
+    fn resolves_the_minimum_i64_after_parsing_its_sign() {
+        let ast = parse(lex("x: i64 = -9223372036854775808;").unwrap()).unwrap();
+
+        let ir = build(&ast).unwrap();
+        let StatementKind::Binding { value, .. } = &ir.statements[0].kind else {
+            panic!("expected binding")
+        };
+
+        assert_eq!(value.kind, ExprKind::Integer(i64::MIN));
+        assert_eq!(value.span, Span::new(9, 29));
+    }
+
+    #[test]
     fn preserves_expression_spans() {
         let ast = AstProgram {
             items: vec![ast_item(AstStmtKind::Print {
@@ -692,11 +724,11 @@ mod tests {
                     kind: AstExprKind::Binary {
                         op: AstBinaryOp::Add,
                         left: Box::new(AstExpr {
-                            kind: AstExprKind::Integer(1),
+                            kind: AstExprKind::Integer(ast::IntegerLiteral::decimal("1")),
                             span: Span::new(0, 1),
                         }),
                         right: Box::new(AstExpr {
-                            kind: AstExprKind::Integer(2),
+                            kind: AstExprKind::Integer(ast::IntegerLiteral::decimal("2")),
                             span: Span::new(4, 5),
                         }),
                     },
@@ -726,7 +758,7 @@ mod tests {
         let ast = AstProgram {
             items: vec![AstItem::Statement(Stmt {
                 kind: AstStmtKind::Print {
-                    value: ast_expr(AstExprKind::Integer(1)),
+                    value: ast_expr(AstExprKind::Integer(ast::IntegerLiteral::decimal("1"))),
                 },
                 span: statement_span,
             })],
@@ -743,8 +775,12 @@ mod tests {
             items: vec![ast_item(AstStmtKind::Print {
                 value: ast_expr(AstExprKind::Binary {
                     op: AstBinaryOp::Add,
-                    left: Box::new(ast_expr(AstExprKind::Integer(1))),
-                    right: Box::new(ast_expr(AstExprKind::Integer(2))),
+                    left: Box::new(ast_expr(AstExprKind::Integer(
+                        ast::IntegerLiteral::decimal("1"),
+                    ))),
+                    right: Box::new(ast_expr(AstExprKind::Integer(
+                        ast::IntegerLiteral::decimal("2"),
+                    ))),
                 }),
             })],
         };

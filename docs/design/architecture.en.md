@@ -109,6 +109,8 @@ fixed arrays
 
 Unsuffixed floating-point literals are also resolved before backend lowering. A backend does not need to repeat contextual type inference.
 
+Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.
+
 Primer IR deliberately does not attempt to be a universal machine IR or prematurely impose SSA form. It represents Primer semantics closely enough to keep the frontend/backend boundary visible.
 
 Primer IR statements and expressions share one sequence of `NodeId` values. `emit-ir` renders them as `#0`, `#1`, and so on. IDs are allocated deterministically, with a parent before its children and in textual IR order, so the same Primer version and input produce the same IDs.
@@ -118,6 +120,8 @@ A `NodeId` refers to an element within one compilation result. It is not stable 
 ## Backend lowering
 
 Each backend lowers Primer IR into a backend-specific Rust representation before emission.
+
+An expression represented as one integer operation in Primer IR may become the operation plus an overflow check during backend lowering. The check is not left to accidental behavior in an external tool. Backend IR retains it as a checked integer operation or an explicit trap condition. The generated artifact exposes the target-appropriate result, such as a helper call, an overflow-flag branch, or `unreachable`.
 
 The current output routes and implementation boundaries are:
 

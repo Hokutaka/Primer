@@ -7,6 +7,7 @@ use super::ir::{
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
+    let i64_operations = i64_operations(module);
 
     output.push_str("@.fmt_i64 = private unnamed_addr constant [6 x i8] c\"%lld\\0A\\00\"\n");
     output.push_str("@.fmt_f32 = private unnamed_addr constant [6 x i8] c\"%.9g\\0A\\00\"\n");
@@ -43,11 +44,23 @@ pub fn emit(module: &Module) -> String {
 
     let array_types = array_types(module);
     let array_set_types = array_set_types(module);
-    if !array_types.is_empty() {
+    if !array_types.is_empty() || i64_operations.any() {
         output.push_str("declare void @llvm.trap()\n");
     }
 
+    if i64_operations.add {
+        output.push_str("declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)\n");
+    }
+    if i64_operations.subtract {
+        output.push_str("declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)\n");
+    }
+    if i64_operations.multiply {
+        output.push_str("declare { i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)\n");
+    }
+
     output.push('\n');
+
+    emit_i64_operation_support(i64_operations, &mut output);
 
     for ty in &array_types {
         emit_array_get(ty, module, &mut output);
@@ -323,16 +336,27 @@ fn emit_instruction(
             left,
             right,
         } => {
-            writeln!(
-                output,
-                "  {} = {} {} {}, {}",
-                temp(*dest),
-                binary_name(*op),
-                type_name(ty, module),
-                operand(*left),
-                operand(*right),
-            )
-            .unwrap();
+            if let Some(helper) = checked_i64_helper(*op) {
+                writeln!(
+                    output,
+                    "  {} = call i64 @{helper}(i64 {}, i64 {})",
+                    temp(*dest),
+                    operand(*left),
+                    operand(*right),
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    output,
+                    "  {} = {} {} {}, {}",
+                    temp(*dest),
+                    binary_name(*op),
+                    type_name(ty, module),
+                    operand(*left),
+                    operand(*right),
+                )
+                .unwrap();
+            }
         }
 
         Instruction::Compare {
@@ -440,15 +464,108 @@ fn type_name(ty: &Type, module: &Module) -> String {
 
 fn binary_name(op: BinaryOp) -> &'static str {
     match op {
-        BinaryOp::Add => "add",
-        BinaryOp::Sub => "sub",
-        BinaryOp::Mul => "mul",
-        BinaryOp::SDiv => "sdiv",
+        BinaryOp::CheckedI64Add
+        | BinaryOp::CheckedI64Sub
+        | BinaryOp::CheckedI64Mul
+        | BinaryOp::CheckedI64Div => {
+            unreachable!("checked integer operations are emitted as helper calls")
+        }
         BinaryOp::FAdd => "fadd",
         BinaryOp::FSub => "fsub",
         BinaryOp::FMul => "fmul",
         BinaryOp::FDiv => "fdiv",
         BinaryOp::Xor => "xor",
+    }
+}
+
+fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::CheckedI64Add => Some("primer_i64_add"),
+        BinaryOp::CheckedI64Sub => Some("primer_i64_sub"),
+        BinaryOp::CheckedI64Mul => Some("primer_i64_mul"),
+        BinaryOp::CheckedI64Div => Some("primer_i64_div"),
+        BinaryOp::FAdd | BinaryOp::FSub | BinaryOp::FMul | BinaryOp::FDiv | BinaryOp::Xor => None,
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct I64Operations {
+    add: bool,
+    subtract: bool,
+    multiply: bool,
+    divide: bool,
+}
+
+impl I64Operations {
+    const fn any(self) -> bool {
+        self.add || self.subtract || self.multiply || self.divide
+    }
+
+    fn include(&mut self, instruction: &Instruction) {
+        let Instruction::Binary { op, .. } = instruction else {
+            return;
+        };
+        match op {
+            BinaryOp::CheckedI64Add => self.add = true,
+            BinaryOp::CheckedI64Sub => self.subtract = true,
+            BinaryOp::CheckedI64Mul => self.multiply = true,
+            BinaryOp::CheckedI64Div => self.divide = true,
+            BinaryOp::FAdd | BinaryOp::FSub | BinaryOp::FMul | BinaryOp::FDiv | BinaryOp::Xor => {}
+        }
+    }
+}
+
+fn i64_operations(module: &Module) -> I64Operations {
+    let mut operations = I64Operations::default();
+    for instruction in &module.instructions {
+        operations.include(instruction);
+    }
+    for function in &module.functions {
+        for instruction in &function.instructions {
+            operations.include(instruction);
+        }
+    }
+    operations
+}
+
+fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for (enabled, name, intrinsic) in [
+        (operations.add, "add", "sadd"),
+        (operations.subtract, "sub", "ssub"),
+        (operations.multiply, "mul", "smul"),
+    ] {
+        if !enabled {
+            continue;
+        }
+        writeln!(
+            output,
+            "define internal i64 @primer_i64_{name}(i64 %left, i64 %right) {{"
+        )
+        .unwrap();
+        output.push_str("entry:\n");
+        writeln!(
+            output,
+            "  %checked = call {{ i64, i1 }} @llvm.{intrinsic}.with.overflow.i64(i64 %left, i64 %right)"
+        )
+        .unwrap();
+        output.push_str("  %result = extractvalue { i64, i1 } %checked, 0\n");
+        output.push_str("  %overflow = extractvalue { i64, i1 } %checked, 1\n");
+        output.push_str("  br i1 %overflow, label %trap, label %ok\n\n");
+        output.push_str("trap:\n  call void @llvm.trap()\n  unreachable\n\n");
+        output.push_str("ok:\n  ret i64 %result\n}\n\n");
+    }
+
+    if operations.divide {
+        output.push_str("define internal i64 @primer_i64_div(i64 %left, i64 %right) {\n");
+        output.push_str("entry:\n");
+        output.push_str("  %is_zero = icmp eq i64 %right, 0\n");
+        output.push_str("  %is_min = icmp eq i64 %left, -9223372036854775808\n");
+        output.push_str("  %is_negative_one = icmp eq i64 %right, -1\n");
+        output.push_str("  %overflows = and i1 %is_min, %is_negative_one\n");
+        output.push_str("  %invalid = or i1 %is_zero, %overflows\n");
+        output.push_str("  br i1 %invalid, label %trap, label %ok\n\n");
+        output.push_str("trap:\n  call void @llvm.trap()\n  unreachable\n\n");
+        output.push_str("ok:\n  %result = sdiv i64 %left, %right\n  ret i64 %result\n}\n\n");
     }
 }
 

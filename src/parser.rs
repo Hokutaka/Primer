@@ -311,14 +311,7 @@ impl Parser {
             self.expect_simple(TokenKind::Semicolon)?;
             let length_token = self.advance().clone();
             let length = match length_token.kind {
-                TokenKind::Integer(value) if value > 0 => usize::try_from(value)
-                    .map_err(|_| Diagnostic::new("array length is too large", length_token.span))?,
-                TokenKind::Integer(_) => {
-                    return Err(Diagnostic::new(
-                        "array length must be greater than zero",
-                        length_token.span,
-                    ));
-                }
+                TokenKind::Integer(digits) => parse_array_length(&digits, length_token.span)?,
                 other => {
                     return Err(Diagnostic::new(
                         format!("expected positive integer array length, found {other:?}"),
@@ -701,8 +694,8 @@ impl Parser {
                 span,
             }),
 
-            TokenKind::Integer(value) => Ok(Expr {
-                kind: ExprKind::Integer(value),
+            TokenKind::Integer(digits) => Ok(Expr {
+                kind: ExprKind::Integer(crate::ast::IntegerLiteral::decimal(digits)),
                 span,
             }),
 
@@ -924,10 +917,30 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
     Expr { kind, span }
 }
 
+fn parse_array_length(digits: &str, span: Span) -> ParseResult<usize> {
+    let value = digits
+        .parse::<u64>()
+        .map_err(|_| Diagnostic::new("array length is too large", span))?;
+
+    if value == 0 {
+        return Err(Diagnostic::new(
+            "array length must be greater than zero",
+            span,
+        ));
+    }
+
+    if value > i64::MAX as u64 {
+        return Err(Diagnostic::new("array length is too large", span));
+    }
+
+    usize::try_from(value).map_err(|_| Diagnostic::new("array length is too large", span))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::ast::{
-        BinaryOp, ExprKind, Item, ReturnTypeRef, StmtKind, TypeRef, TypeRefKind, TypeSpec, UnaryOp,
+        BinaryOp, ExprKind, IntegerLiteral, Item, ReturnTypeRef, StmtKind, TypeRef, TypeRefKind,
+        TypeSpec, UnaryOp,
     };
     use crate::lexer::lex;
     use crate::source::Span;
@@ -957,7 +970,7 @@ mod tests {
                 span: Span::new(3, 6),
             })
         );
-        assert_eq!(value.kind, ExprKind::Integer(42));
+        assert_eq!(value.kind, ExprKind::Integer(IntegerLiteral::decimal("42")));
         assert_eq!(value.span, Span::new(9, 11));
         assert_eq!(program.statement(0).span, Span::new(0, 12));
     }
@@ -1037,6 +1050,14 @@ mod tests {
         let error = parse(lex("values: [i64; 0] = [1];").unwrap()).unwrap_err();
 
         assert_eq!(error.message(), "array length must be greater than zero");
+    }
+
+    #[test]
+    fn rejects_array_length_beyond_the_language_limit() {
+        let error = parse(lex("values: [i64; 9223372036854775808] = [1];").unwrap()).unwrap_err();
+
+        assert_eq!(error.message(), "array length is too large");
+        assert_eq!(error.primary_span(), Some(Span::new(14, 33)));
     }
 
     #[test]

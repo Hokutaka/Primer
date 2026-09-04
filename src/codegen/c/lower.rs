@@ -245,12 +245,12 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
         primer_ir::ExprKind::Variable { name, .. } => ExprKind::Variable(name.clone()),
 
         primer_ir::ExprKind::Unary { op, value } => ExprKind::Unary {
-            op: (*op).into(),
+            op: lower_unary_op(*op, &expr.ty),
             value: Box::new(lower_expr(value)),
         },
 
         primer_ir::ExprKind::Binary { op, left, right } => ExprKind::Binary {
-            op: (*op).into(),
+            op: lower_binary_op(*op, &left.ty),
             left: Box::new(lower_expr(left)),
             right: Box::new(lower_expr(right)),
         },
@@ -446,28 +446,29 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     types
 }
 
-impl From<primer_ir::UnaryOp> for UnaryOp {
-    fn from(value: primer_ir::UnaryOp) -> Self {
-        match value {
-            primer_ir::UnaryOp::Negate => Self::Negate,
-            primer_ir::UnaryOp::Not => Self::Not,
-        }
+fn lower_unary_op(op: primer_ir::UnaryOp, ty: &primer_ir::Type) -> UnaryOp {
+    match (op, ty) {
+        (primer_ir::UnaryOp::Negate, primer_ir::Type::I64) => UnaryOp::CheckedI64Negate,
+        (primer_ir::UnaryOp::Negate, _) => UnaryOp::Negate,
+        (primer_ir::UnaryOp::Not, _) => UnaryOp::Not,
     }
 }
 
-impl From<primer_ir::BinaryOp> for BinaryOp {
-    fn from(value: primer_ir::BinaryOp) -> Self {
-        match value {
-            primer_ir::BinaryOp::Add => Self::Add,
-            primer_ir::BinaryOp::Subtract => Self::Subtract,
-            primer_ir::BinaryOp::Multiply => Self::Multiply,
-            primer_ir::BinaryOp::Divide => Self::Divide,
-            primer_ir::BinaryOp::Equal => Self::Equal,
-            primer_ir::BinaryOp::NotEqual => Self::NotEqual,
-            primer_ir::BinaryOp::Less => Self::Less,
-            primer_ir::BinaryOp::LessEqual => Self::LessEqual,
-            primer_ir::BinaryOp::Greater => Self::Greater,
-            primer_ir::BinaryOp::GreaterEqual => Self::GreaterEqual,
-        }
+fn lower_binary_op(op: primer_ir::BinaryOp, operand_ty: &primer_ir::Type) -> BinaryOp {
+    match (op, operand_ty) {
+        (primer_ir::BinaryOp::Add, primer_ir::Type::I64) => BinaryOp::CheckedI64Add,
+        (primer_ir::BinaryOp::Subtract, primer_ir::Type::I64) => BinaryOp::CheckedI64Subtract,
+        (primer_ir::BinaryOp::Multiply, primer_ir::Type::I64) => BinaryOp::CheckedI64Multiply,
+        (primer_ir::BinaryOp::Divide, primer_ir::Type::I64) => BinaryOp::CheckedI64Divide,
+        (primer_ir::BinaryOp::Add, _) => BinaryOp::Add,
+        (primer_ir::BinaryOp::Subtract, _) => BinaryOp::Subtract,
+        (primer_ir::BinaryOp::Multiply, _) => BinaryOp::Multiply,
+        (primer_ir::BinaryOp::Divide, _) => BinaryOp::Divide,
+        (primer_ir::BinaryOp::Equal, _) => BinaryOp::Equal,
+        (primer_ir::BinaryOp::NotEqual, _) => BinaryOp::NotEqual,
+        (primer_ir::BinaryOp::Less, _) => BinaryOp::Less,
+        (primer_ir::BinaryOp::LessEqual, _) => BinaryOp::LessEqual,
+        (primer_ir::BinaryOp::Greater, _) => BinaryOp::Greater,
+        (primer_ir::BinaryOp::GreaterEqual, _) => BinaryOp::GreaterEqual,
     }
 }

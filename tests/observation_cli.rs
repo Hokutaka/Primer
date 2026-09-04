@@ -2,6 +2,8 @@ use std::{fs, path::PathBuf, process::Command};
 
 const OBSERVATION_CASES: &[&str] = &[
     "i64-addition",
+    "checked-i64-arithmetic",
+    "i64-minimum-literal",
     "float-types",
     "mutable-assignment",
     "boolean-comparisons",

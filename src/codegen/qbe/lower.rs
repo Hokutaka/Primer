@@ -464,13 +464,21 @@ impl Lowerer<'_> {
             primer_ir::ExprKind::Unary { op, value } => {
                 let (ty, operand) = self.lower_scalar_expr(value);
                 let dest = self.next_temp();
-                match op {
-                    primer_ir::UnaryOp::Negate => self.instructions.push(Instruction::Negate {
-                        dest,
-                        ty,
-                        value: operand,
-                    }),
-                    primer_ir::UnaryOp::Not => self.instructions.push(Instruction::Not {
+                match (op, ty) {
+                    (primer_ir::UnaryOp::Negate, Type::I64) => {
+                        self.instructions.push(Instruction::CheckedI64Negate {
+                            dest,
+                            value: operand,
+                        })
+                    }
+                    (primer_ir::UnaryOp::Negate, _) => {
+                        self.instructions.push(Instruction::Negate {
+                            dest,
+                            ty,
+                            value: operand,
+                        })
+                    }
+                    (primer_ir::UnaryOp::Not, _) => self.instructions.push(Instruction::Not {
                         dest,
                         value: operand,
                     }),
@@ -495,9 +503,20 @@ impl Lowerer<'_> {
                         right,
                     });
                 } else {
+                    let op = if left_ty == Type::I64 {
+                        match op {
+                            primer_ir::BinaryOp::Add => BinaryOp::CheckedI64Add,
+                            primer_ir::BinaryOp::Subtract => BinaryOp::CheckedI64Subtract,
+                            primer_ir::BinaryOp::Multiply => BinaryOp::CheckedI64Multiply,
+                            primer_ir::BinaryOp::Divide => BinaryOp::CheckedI64Divide,
+                            _ => unreachable!("comparisons use dedicated QBE instructions"),
+                        }
+                    } else {
+                        (*op).into()
+                    };
                     self.instructions.push(Instruction::Binary {
                         dest,
-                        op: (*op).into(),
+                        op,
                         ty: left_ty,
                         left,
                         right,

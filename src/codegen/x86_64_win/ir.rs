@@ -139,6 +139,7 @@ pub enum Instruction {
     LoadF64Constant(usize),
 
     NegI64,
+    TrapIfOverflow(usize),
     NotBool,
     NegF32,
     NegF64,
@@ -148,6 +149,7 @@ pub enum Instruction {
     I64Binary(BinaryOp),
     CompareI64(CompareOp),
     SignExtendRax,
+    TrapIfInvalidI64Division(usize),
     DivideRaxByRcx,
 
     CopyXmm0ToXmm1F32,

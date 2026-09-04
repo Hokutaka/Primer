@@ -408,6 +408,8 @@ Integer literals have type `i64`.
 x: i64 = 42;
 ```
 
+An integer literal remains a sequence of decimal digits until its type is known. Once resolved as `i64`, its range is checked and an out-of-range value is a compilation error. The sign is parsed as unary `-`, but `-9223372036854775808` is accepted as the minimum `i64` value.
+
 Floating-point literals without a suffix are contextually typed when an explicit floating-point type is available.
 
 ```primer
@@ -454,6 +456,10 @@ i64 op i64 -> i64
 f32 op f32 -> f32
 f64 op f64 -> f64
 ```
+
+The `i64` operators `+`, `-`, `*`, and unary `-` stop execution when their result is outside the `i64` range. They do not silently wrap from one end of the range to the other. Integer division by zero and division of the minimum `i64` value by `-1` also stop execution.
+
+The Primer VM diagnoses the failing operation kind, type, bytecode instruction index, and source location. Generated C, LLVM IR, QBE IR, WebAssembly Text, and Windows x86-64 assembly retain corresponding checks or traps, making the enforcement point observable.
 
 Primer v0.1 performs no implicit numeric conversion.
 

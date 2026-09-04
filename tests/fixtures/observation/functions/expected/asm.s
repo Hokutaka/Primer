@@ -30,6 +30,9 @@ primer_fn_add_0:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_fn_0_integer_ok_0
+  ud2
+.Lprimer_fn_0_integer_ok_0:
   addq $80, %rsp
   popq %rbp
   retq

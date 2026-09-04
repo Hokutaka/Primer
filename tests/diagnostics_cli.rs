@@ -173,6 +173,11 @@ fn semantic_boolean_arithmetic_matches_expected_diagnostic() {
 }
 
 #[test]
+fn semantic_integer_literal_range_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-integer-literal-range", "check", "check.stderr");
+}
+
+#[test]
 fn semantic_if_condition_matches_expected_diagnostic() {
     assert_diagnostic("semantic-if-condition", "check", "check.stderr");
 }
@@ -250,6 +255,11 @@ fn run_compilation_error_matches_expected_diagnostic() {
 #[test]
 fn run_vm_error_matches_expected_diagnostic() {
     assert_diagnostic("vm-division-by-zero", "run", "run.stderr");
+}
+
+#[test]
+fn run_integer_overflow_matches_expected_diagnostic() {
+    assert_diagnostic("vm-integer-overflow", "run", "run.stderr");
 }
 
 #[test]

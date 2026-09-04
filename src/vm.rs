@@ -2,6 +2,15 @@ pub mod render;
 
 use crate::bytecode::{ArrayAccess, BytecodeProgram, InstructionKind, ReturnType, Type};
 
+/// 整数の桁あふれを起こした演算を表します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntegerOperation {
+    Add,
+    Subtract,
+    Multiply,
+    Negate,
+}
+
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
@@ -52,6 +61,12 @@ pub enum VmErrorKind {
 
     /// 整数除算の結果を`i64`で表現できませんでした。
     DivisionOverflow,
+
+    /// 整数演算の結果を指定された型で表現できませんでした。
+    IntegerOverflow {
+        operation: IntegerOperation,
+        ty: Type,
+    },
 
     /// 配列の外側を読み取ろうとしました。
     ArrayIndexOutOfBounds { index: i64, length: usize },
@@ -736,11 +751,29 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
             let left = pop_i64(stack)?;
 
             let value = match operation {
-                BinaryOperation::Add => left.wrapping_add(right),
+                BinaryOperation::Add => {
+                    left.checked_add(right)
+                        .ok_or(VmErrorKind::IntegerOverflow {
+                            operation: IntegerOperation::Add,
+                            ty: Type::I64,
+                        })?
+                }
 
-                BinaryOperation::Subtract => left.wrapping_sub(right),
+                BinaryOperation::Subtract => {
+                    left.checked_sub(right)
+                        .ok_or(VmErrorKind::IntegerOverflow {
+                            operation: IntegerOperation::Subtract,
+                            ty: Type::I64,
+                        })?
+                }
 
-                BinaryOperation::Multiply => left.wrapping_mul(right),
+                BinaryOperation::Multiply => {
+                    left.checked_mul(right)
+                        .ok_or(VmErrorKind::IntegerOverflow {
+                            operation: IntegerOperation::Multiply,
+                            ty: Type::I64,
+                        })?
+                }
 
                 BinaryOperation::Divide => {
                     if right == 0 {
@@ -876,7 +909,12 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
         Type::I64 => {
             let value = pop_i64(stack)?;
 
-            stack.push(Value::I64(value.wrapping_neg()));
+            let value = value.checked_neg().ok_or(VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Negate,
+                ty: Type::I64,
+            })?;
+
+            stack.push(Value::I64(value));
         }
 
         Type::F32 => {
@@ -1080,7 +1118,7 @@ mod tests {
         compile_to_bytecode, compile_to_ir,
     };
 
-    use super::{VmErrorKind, run};
+    use super::{IntegerOperation, VmErrorKind, run};
 
     #[test]
     fn executes_floating_point_program() {
@@ -1122,6 +1160,105 @@ mod tests {
 
         assert_eq!(error.kind(), VmErrorKind::DivisionOverflow);
         assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn reports_integer_addition_overflow_at_instruction() {
+        let program = compile_to_bytecode("print(9223372036854775807 + 1);").unwrap();
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Add,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn reports_integer_subtraction_overflow_at_instruction() {
+        let program = BytecodeProgram {
+            type_definitions: Vec::new(),
+            functions: Vec::new(),
+            slots: Vec::new(),
+            instructions: vec![
+                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
+                Instruction::synthetic(InstructionKind::PushI64(1)),
+                Instruction::synthetic(InstructionKind::Subtract(Type::I64)),
+                Instruction::synthetic(InstructionKind::Halt),
+            ],
+        };
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Subtract,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn reports_integer_multiplication_overflow_at_instruction() {
+        let program = compile_to_bytecode("print(9223372036854775807 * 2);").unwrap();
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Multiply,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 2);
+    }
+
+    #[test]
+    fn reports_integer_negation_overflow_at_instruction() {
+        let program = BytecodeProgram {
+            type_definitions: Vec::new(),
+            functions: Vec::new(),
+            slots: Vec::new(),
+            instructions: vec![
+                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
+                Instruction::synthetic(InstructionKind::Negate(Type::I64)),
+                Instruction::synthetic(InstructionKind::Halt),
+            ],
+        };
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Negate,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 1);
+    }
+
+    #[test]
+    fn reports_overflow_when_negating_the_minimum_i64_literal() {
+        let program = compile_to_bytecode("print(--9223372036854775808);").unwrap();
+
+        let error = run(&program).unwrap_err();
+
+        assert_eq!(
+            error.kind(),
+            VmErrorKind::IntegerOverflow {
+                operation: IntegerOperation::Negate,
+                ty: Type::I64,
+            }
+        );
+        assert_eq!(error.instruction_index(), 1);
     }
 
     #[test]

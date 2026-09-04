@@ -1,0 +1,12 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %slot_value =l alloc8 8
+  storel -9223372036854775808, %slot_value
+  %tmp0 =l loadl %slot_value
+  %tmp1 =w call $printf(l $fmt_i64, ..., l %tmp0)
+  ret 0
+}

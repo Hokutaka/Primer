@@ -328,6 +328,13 @@ fn emit_instruction(
             output.push_str("  negq %rax\n");
         }
 
+        Instruction::TrapIfOverflow(label) => {
+            let done = format!(".Lprimer_{label_prefix}_integer_ok_{label}");
+            output.push_str(&format!("  jno {done}\n"));
+            output.push_str("  ud2\n");
+            output.push_str(&format!("{done}:\n"));
+        }
+
         Instruction::NotBool => {
             output.push_str("  xorq $1, %rax\n");
         }
@@ -363,6 +370,21 @@ fn emit_instruction(
 
         Instruction::SignExtendRax => {
             output.push_str("  cqto\n");
+        }
+
+        Instruction::TrapIfInvalidI64Division(label) => {
+            let trap = format!(".Lprimer_{label_prefix}_division_trap_{label}");
+            let done = format!(".Lprimer_{label_prefix}_division_ok_{label}");
+            output.push_str("  testq %rcx, %rcx\n");
+            output.push_str(&format!("  je {trap}\n"));
+            output.push_str("  cmpq $-1, %rcx\n");
+            output.push_str(&format!("  jne {done}\n"));
+            output.push_str("  movabsq $-9223372036854775808, %rdx\n");
+            output.push_str("  cmpq %rdx, %rax\n");
+            output.push_str(&format!("  jne {done}\n"));
+            output.push_str(&format!("{trap}:\n"));
+            output.push_str("  ud2\n");
+            output.push_str(&format!("{done}:\n"));
         }
 
         Instruction::DivideRaxByRcx => {

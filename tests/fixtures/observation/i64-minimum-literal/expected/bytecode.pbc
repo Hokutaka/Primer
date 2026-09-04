@@ -1,0 +1,9 @@
+; Primer bytecode v0.1
+
+.slot 0 value i64
+
+0000  push.i64 -9223372036854775808
+0001  store 0       ; value
+0002  load 0        ; value
+0003  print.i64
+0004  halt

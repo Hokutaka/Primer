@@ -513,7 +513,7 @@ impl Lowerer {
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         self.instructions.push(Instruction::Binary {
                             dest,
-                            op: BinaryOp::Sub,
+                            op: BinaryOp::CheckedI64Sub,
                             ty: Type::I64,
                             left: Operand::Integer(0),
                             right: value.operand,
@@ -837,10 +837,10 @@ impl From<primer_ir::Type> for Type {
 
 fn binary_op(op: primer_ir::BinaryOp, ty: &Type) -> BinaryOp {
     match (op, ty) {
-        (primer_ir::BinaryOp::Add, Type::I64) => BinaryOp::Add,
-        (primer_ir::BinaryOp::Subtract, Type::I64) => BinaryOp::Sub,
-        (primer_ir::BinaryOp::Multiply, Type::I64) => BinaryOp::Mul,
-        (primer_ir::BinaryOp::Divide, Type::I64) => BinaryOp::SDiv,
+        (primer_ir::BinaryOp::Add, Type::I64) => BinaryOp::CheckedI64Add,
+        (primer_ir::BinaryOp::Subtract, Type::I64) => BinaryOp::CheckedI64Sub,
+        (primer_ir::BinaryOp::Multiply, Type::I64) => BinaryOp::CheckedI64Mul,
+        (primer_ir::BinaryOp::Divide, Type::I64) => BinaryOp::CheckedI64Div,
 
         (primer_ir::BinaryOp::Add, Type::Float | Type::Double) => BinaryOp::FAdd,
         (primer_ir::BinaryOp::Subtract, Type::Float | Type::Double) => BinaryOp::FSub,

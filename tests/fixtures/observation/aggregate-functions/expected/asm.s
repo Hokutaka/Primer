@@ -34,6 +34,9 @@ primer_fn_move_x_0:
   movq %rax, %rcx
   movq -32(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_fn_0_integer_ok_0
+  ud2
+.Lprimer_fn_0_integer_ok_0:
   movq %rax, -96(%rbp)
   movq -16(%rbp), %rax
   movq %rax, -104(%rbp)

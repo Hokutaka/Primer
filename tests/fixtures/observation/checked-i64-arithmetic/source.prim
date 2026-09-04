@@ -1,0 +1,6 @@
+value: i64 = 8;
+print(value + 1);
+print(value - 1);
+print(value * 2);
+print(value / 2);
+print(-value);

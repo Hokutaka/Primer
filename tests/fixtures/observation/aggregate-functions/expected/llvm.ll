@@ -5,6 +5,22 @@
 
 declare i32 @printf(ptr, ...)
 declare void @llvm.trap()
+declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
+
+define internal i64 @primer_i64_add(i64 %left, i64 %right) {
+entry:
+  %checked = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %left, i64 %right)
+  %result = extractvalue { i64, i1 } %checked, 0
+  %overflow = extractvalue { i64, i1 } %checked, 1
+  br i1 %overflow, label %trap, label %ok
+
+trap:
+  call void @llvm.trap()
+  unreachable
+
+ok:
+  ret i64 %result
+}
 
 define internal i64 @primer.array.get.i64.2([2 x i64] %value, i64 %index) {
 entry:
@@ -49,7 +65,7 @@ entry:
   %tmp0 = load %primer.type.Point.0, ptr %primer_point
   %tmp1 = extractvalue %primer.type.Point.0 %tmp0, 0
   %tmp2 = load i64, ptr %primer_amount
-  %tmp3 = add i64 %tmp1, %tmp2
+  %tmp3 = call i64 @primer_i64_add(i64 %tmp1, i64 %tmp2)
   %tmp4 = insertvalue %primer.type.Point.0 poison, i64 %tmp3, 0
   %tmp5 = load %primer.type.Point.0, ptr %primer_point
   %tmp6 = extractvalue %primer.type.Point.0 %tmp5, 1

@@ -29,6 +29,9 @@ main:
   movq %rax, %rcx
   movq -16(%rbp), %rax
   addq %rcx, %rax
+  jno .Lprimer_main_integer_ok_0
+  ud2
+.Lprimer_main_integer_ok_0:
   movq %rax, -8(%rbp)
   movq -8(%rbp), %rax
   movq %rax, %rdx
