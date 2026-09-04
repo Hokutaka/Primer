@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt::Write};
 
 use crate::{
     diagnostic::Diagnostic,
-    ir::{self, BinaryOp, BindingId, Expr, ExprKind, Program, Statement, StatementKind, UnaryOp},
+    ir::{
+        self, BinaryOp, BindingId, Expr, ExprKind, NodeId, Program, Statement, StatementKind,
+        UnaryOp,
+    },
     source::Span,
 };
 
@@ -66,10 +69,10 @@ pub struct Instruction {
 
 impl Instruction {
     /// ソースコードに由来する命令を作ります。
-    pub const fn source(kind: InstructionKind, span: Span) -> Self {
+    pub const fn source(kind: InstructionKind, node_id: NodeId, span: Span) -> Self {
         Self {
             kind,
-            origin: InstructionOrigin::Source(span),
+            origin: InstructionOrigin::Source { node_id, span },
         }
     }
 
@@ -86,7 +89,13 @@ impl Instruction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstructionOrigin {
     /// ソースコード中の構文要素から生成された命令です。
-    Source(Span),
+    Source {
+        /// 命令を生成したPrimer IRの文または式です。
+        node_id: NodeId,
+
+        /// 実行時診断で強調するソース範囲です。
+        span: Span,
+    },
 
     /// ソースコード上に対応箇所を持たない、コンパイラ生成の命令です。
     Synthetic,
@@ -372,7 +381,7 @@ impl Compiler {
                     .copied()
                     .expect("binding must have a bytecode slot");
 
-                self.emit_source(InstructionKind::Store(slot), statement.span);
+                self.emit_source(InstructionKind::Store(slot), statement.id, statement.span);
                 false
             }
 
@@ -385,7 +394,7 @@ impl Compiler {
 
                 if target.projections.is_empty() {
                     self.emit_expr(value);
-                    self.emit_source(InstructionKind::Assign(slot), statement.span);
+                    self.emit_source(InstructionKind::Assign(slot), statement.id, statement.span);
                 } else {
                     for (projection_index, projection) in target.projections.iter().enumerate() {
                         let ir::AssignmentProjection::Index { index, span, .. } = projection;
@@ -398,6 +407,7 @@ impl Compiler {
                                     .map(array_access)
                                     .collect(),
                             },
+                            statement.id,
                             *span,
                         );
                     }
@@ -407,6 +417,7 @@ impl Compiler {
                             slot,
                             path: target.projections.iter().map(array_access).collect(),
                         },
+                        statement.id,
                         statement.span,
                     );
                 }
@@ -418,6 +429,7 @@ impl Compiler {
 
                 self.emit_source(
                     InstructionKind::Print(value.ty.clone().into()),
+                    statement.id,
                     statement.span,
                 );
                 false
@@ -436,6 +448,7 @@ impl Compiler {
                         function_id: function_id.0,
                         argument_count: arguments.len(),
                     },
+                    statement.id,
                     statement.span,
                 );
                 false
@@ -449,6 +462,7 @@ impl Compiler {
                     InstructionKind::Return {
                         has_value: value.is_some(),
                     },
+                    statement.id,
                     statement.span,
                 );
                 true
@@ -461,7 +475,11 @@ impl Compiler {
             } => {
                 self.emit_expr(condition);
                 let false_jump = self.instructions.len();
-                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+                self.emit_source(
+                    InstructionKind::JumpIfFalse(usize::MAX),
+                    statement.id,
+                    condition.span,
+                );
 
                 let then_terminates = self.emit_statements(then_body);
 
@@ -474,7 +492,11 @@ impl Compiler {
                         None
                     } else {
                         let index = self.instructions.len();
-                        self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                        self.emit_source(
+                            InstructionKind::Jump(usize::MAX),
+                            statement.id,
+                            statement.span,
+                        );
                         Some(index)
                     };
                     let else_start = self.instructions.len();
@@ -495,7 +517,11 @@ impl Compiler {
                 let condition_start = self.instructions.len();
                 self.emit_expr(condition);
                 let end_jump = self.instructions.len();
-                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+                self.emit_source(
+                    InstructionKind::JumpIfFalse(usize::MAX),
+                    statement.id,
+                    condition.span,
+                );
 
                 self.loops.push(LoopContext {
                     break_jumps: Vec::new(),
@@ -505,7 +531,11 @@ impl Compiler {
                 let loop_context = self.loops.pop().expect("while loop context must exist");
 
                 if !body_terminates {
-                    self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+                    self.emit_source(
+                        InstructionKind::Jump(condition_start),
+                        statement.id,
+                        statement.span,
+                    );
                 }
                 for continue_jump in loop_context.continue_jumps {
                     self.patch_jump(continue_jump, condition_start);
@@ -530,7 +560,11 @@ impl Compiler {
                 let condition_start = self.instructions.len();
                 self.emit_expr(condition);
                 let end_jump = self.instructions.len();
-                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), condition.span);
+                self.emit_source(
+                    InstructionKind::JumpIfFalse(usize::MAX),
+                    statement.id,
+                    condition.span,
+                );
 
                 self.loops.push(LoopContext {
                     break_jumps: Vec::new(),
@@ -544,7 +578,11 @@ impl Compiler {
                     self.patch_jump(continue_jump, update_start);
                 }
                 self.emit_statement(update);
-                self.emit_source(InstructionKind::Jump(condition_start), statement.span);
+                self.emit_source(
+                    InstructionKind::Jump(condition_start),
+                    statement.id,
+                    statement.span,
+                );
 
                 let end = self.instructions.len();
                 self.patch_jump(end_jump, end);
@@ -557,7 +595,11 @@ impl Compiler {
 
             StatementKind::Break => {
                 let jump = self.instructions.len();
-                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.emit_source(
+                    InstructionKind::Jump(usize::MAX),
+                    statement.id,
+                    statement.span,
+                );
                 self.loops
                     .last_mut()
                     .expect("semantic analysis rejects break outside a loop")
@@ -568,7 +610,11 @@ impl Compiler {
 
             StatementKind::Continue => {
                 let jump = self.instructions.len();
-                self.emit_source(InstructionKind::Jump(usize::MAX), statement.span);
+                self.emit_source(
+                    InstructionKind::Jump(usize::MAX),
+                    statement.id,
+                    statement.span,
+                );
                 self.loops
                     .last_mut()
                     .expect("semantic analysis rejects continue outside a loop")
@@ -582,11 +628,11 @@ impl Compiler {
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Boolean(value) => {
-                self.emit_source(InstructionKind::PushBool(*value), expr.span);
+                self.emit_source(InstructionKind::PushBool(*value), expr.id, expr.span);
             }
 
             ExprKind::Integer(value) => {
-                self.emit_source(InstructionKind::PushI64(*value), expr.span);
+                self.emit_source(InstructionKind::PushI64(*value), expr.id, expr.span);
             }
 
             ExprKind::Float { text } => match expr.ty {
@@ -595,7 +641,7 @@ impl Compiler {
                         .parse::<f32>()
                         .expect("validated floating-point literal");
 
-                    self.emit_source(InstructionKind::PushF32(value), expr.span);
+                    self.emit_source(InstructionKind::PushF32(value), expr.id, expr.span);
                 }
 
                 ir::Type::F64 => {
@@ -603,7 +649,7 @@ impl Compiler {
                         .parse::<f64>()
                         .expect("validated floating-point literal");
 
-                    self.emit_source(InstructionKind::PushF64(value), expr.span);
+                    self.emit_source(InstructionKind::PushF64(value), expr.id, expr.span);
                 }
 
                 ir::Type::I64 => {
@@ -625,7 +671,7 @@ impl Compiler {
                     .copied()
                     .expect("variable must have a bytecode slot");
 
-                self.emit_source(InstructionKind::Load(slot), expr.span);
+                self.emit_source(InstructionKind::Load(slot), expr.id, expr.span);
             }
 
             ExprKind::Construct {
@@ -648,6 +694,7 @@ impl Compiler {
                             })
                             .collect(),
                     },
+                    expr.id,
                     expr.span,
                 );
             }
@@ -664,6 +711,7 @@ impl Compiler {
                         type_id: type_id.0,
                         field_id: field_id.0,
                     },
+                    expr.id,
                     expr.span,
                 );
             }
@@ -680,6 +728,7 @@ impl Compiler {
                         element: (**element).clone().into(),
                         length: *length,
                     },
+                    expr.id,
                     expr.span,
                 );
             }
@@ -695,6 +744,7 @@ impl Compiler {
                         element: (**element).clone().into(),
                         length: *length,
                     },
+                    expr.id,
                     expr.span,
                 );
             }
@@ -712,6 +762,7 @@ impl Compiler {
                         function_id: function_id.0,
                         argument_count: arguments.len(),
                     },
+                    expr.id,
                     expr.span,
                 );
             }
@@ -723,11 +774,12 @@ impl Compiler {
                     UnaryOp::Negate => {
                         self.emit_source(
                             InstructionKind::Negate(expr.ty.clone().into()),
+                            expr.id,
                             expr.span,
                         );
                     }
                     UnaryOp::Not => {
-                        self.emit_source(InstructionKind::Not, expr.span);
+                        self.emit_source(InstructionKind::Not, expr.id, expr.span);
                     }
                 }
             }
@@ -749,13 +801,14 @@ impl Compiler {
                     BinaryOp::GreaterEqual => InstructionKind::GreaterEqual(left.ty.clone().into()),
                 };
 
-                self.emit_source(instruction, expr.span);
+                self.emit_source(instruction, expr.id, expr.span);
             }
         }
     }
 
-    fn emit_source(&mut self, kind: InstructionKind, span: Span) {
-        self.instructions.push(Instruction::source(kind, span));
+    fn emit_source(&mut self, kind: InstructionKind, node_id: NodeId, span: Span) {
+        self.instructions
+            .push(Instruction::source(kind, node_id, span));
     }
 
     fn patch_jump(&mut self, index: usize, target: usize) {
@@ -1057,7 +1110,11 @@ fn type_name(ty: &Type, program: &BytecodeProgram) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::{compile_to_bytecode, compile_to_ir, source::Span};
+    use crate::{
+        compile_to_bytecode, compile_to_ir,
+        ir::{NodeId, StatementKind},
+        source::Span,
+    };
 
     use super::{BytecodeProgram, InstructionKind, InstructionOrigin, Type, format_program, lower};
 
@@ -1110,10 +1167,22 @@ mod tests {
         assert_eq!(
             origins,
             vec![
-                InstructionOrigin::Source(Span::new(6, 7)),
-                InstructionOrigin::Source(Span::new(10, 11)),
-                InstructionOrigin::Source(Span::new(6, 11)),
-                InstructionOrigin::Source(Span::new(0, 13)),
+                InstructionOrigin::Source {
+                    node_id: NodeId(2),
+                    span: Span::new(6, 7),
+                },
+                InstructionOrigin::Source {
+                    node_id: NodeId(3),
+                    span: Span::new(10, 11),
+                },
+                InstructionOrigin::Source {
+                    node_id: NodeId(1),
+                    span: Span::new(6, 11),
+                },
+                InstructionOrigin::Source {
+                    node_id: NodeId(0),
+                    span: Span::new(0, 13),
+                },
                 InstructionOrigin::Synthetic,
             ]
         );
@@ -1133,6 +1202,53 @@ mod tests {
         };
 
         assert_eq!(origins(&first), origins(&second));
+    }
+
+    #[test]
+    fn one_array_assignment_node_maps_to_each_check_and_the_write() {
+        let source = "mut matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]]; matrix[0][1] = 9;";
+        let ir = compile_to_ir(source).unwrap();
+        let statement = &ir.statements[1];
+        let StatementKind::Assignment { target, .. } = &statement.kind else {
+            panic!("expected assignment");
+        };
+        let projection_spans = target
+            .projections
+            .iter()
+            .map(|projection| match projection {
+                crate::ir::AssignmentProjection::Index { span, .. } => *span,
+            })
+            .collect::<Vec<_>>();
+
+        let bytecode = lower(&ir).unwrap();
+        let origins = bytecode
+            .instructions
+            .iter()
+            .filter_map(|instruction| match &instruction.kind {
+                InstructionKind::ArrayCheck { .. } | InstructionKind::ArrayAssign { .. } => {
+                    Some(instruction.origin)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            origins,
+            vec![
+                InstructionOrigin::Source {
+                    node_id: statement.id,
+                    span: projection_spans[0],
+                },
+                InstructionOrigin::Source {
+                    node_id: statement.id,
+                    span: projection_spans[1],
+                },
+                InstructionOrigin::Source {
+                    node_id: statement.id,
+                    span: statement.span,
+                },
+            ]
+        );
     }
 
     #[test]

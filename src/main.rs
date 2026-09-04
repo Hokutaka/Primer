@@ -189,7 +189,7 @@ fn render_run_error(error: RunError, source: &str) -> String {
     match error {
         RunError::Compilation(diagnostic) => render_compact(&diagnostic, source),
         RunError::Execution(error) => match error.origin() {
-            Some(InstructionOrigin::Source(span)) => {
+            Some(InstructionOrigin::Source { span, .. }) => {
                 render_vm_error_with_source(error.vm_error(), source, span)
             }
             Some(InstructionOrigin::Synthetic) | None => render_vm_error(error.vm_error()),

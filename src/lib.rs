@@ -139,6 +139,7 @@ mod tests {
     };
     use crate::{
         bytecode::{InstructionKind, InstructionOrigin},
+        ir::NodeId,
         source::Span,
         vm::VmErrorKind,
     };
@@ -171,7 +172,10 @@ mod tests {
                 assert_eq!(error.vm_error().instruction_index(), 2);
                 assert_eq!(
                     error.origin(),
-                    Some(InstructionOrigin::Source(Span::new(6, 11)))
+                    Some(InstructionOrigin::Source {
+                        node_id: NodeId(1),
+                        span: Span::new(6, 11),
+                    })
                 );
             }
             RunError::Compilation(diagnostic) => {
@@ -360,7 +364,10 @@ mod tests {
         let start = source.rfind("[2]").unwrap();
         assert_eq!(
             error.origin(),
-            Some(InstructionOrigin::Source(Span::new(start, start + 3)))
+            Some(InstructionOrigin::Source {
+                node_id: NodeId(4),
+                span: Span::new(start, start + 3),
+            })
         );
     }
 
@@ -494,7 +501,10 @@ mod tests {
         );
         assert_eq!(
             error.origin(),
-            Some(InstructionOrigin::Source(Span::new(35, 44)))
+            Some(InstructionOrigin::Source {
+                node_id: NodeId(5),
+                span: Span::new(35, 44),
+            })
         );
 
         let RunError::Execution(error) =
@@ -649,7 +659,10 @@ mod tests {
         assert_eq!(error.vm_error().instruction_index(), 2);
         assert_eq!(
             error.origin(),
-            Some(InstructionOrigin::Source(Span::new(36, 45)))
+            Some(InstructionOrigin::Source {
+                node_id: NodeId(1),
+                span: Span::new(36, 45),
+            })
         );
     }
 
