@@ -20,6 +20,7 @@
 | --- | --- |
 | [hello.prim](hello.prim) | 束縛、四則演算、`print` |
 | [floating_point.prim](floating_point.prim) | `i64`、`f32`、`f64` |
+| [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | 真偽値と比較演算 |
 | [conditional.prim](conditional.prim) | `if` / `else`とscope |
 | [loop_control.prim](loop_control.prim) | `while`、`break`、`continue` |
@@ -40,6 +41,8 @@
 | [square_root.prim](square_root.prim) | 手順を展開した平方根の近似 |
 | [while_square_root.prim](while_square_root.prim) | `while`で繰り返す平方根の近似 |
 | [logistic_map.prim](logistic_map.prim) | `f32`と`f64`で生まれる計算結果の違い |
+| [heat_diffusion.prim](heat_diffusion.prim) | 棒の熱が広がる4段階の計算。更新前の配列から次の温度を求める |
+| [linear_regression.prim](linear_regression.prim) | 5点から直線を学習し、傾き・切片・誤差の変化を追う |
 
 ## アルゴリズム
 
@@ -59,6 +62,28 @@
 | [matrix_vector_product.prim](matrix_vector_product.prim) | 3×3行列と3要素vectorの積 |
 | [matrix_composition.prim](matrix_composition.prim) | 2×2行列の合成と、合成した行列によるvector変換 |
 | [xor_neural_network.prim](xor_neural_network.prim) | 固定長配列の重みを使う小さなニューラルネットのXOR推論 |
+| [coin_change.prim](coin_change.prim) | 少ない金額の答えを使い回して最少枚数を求め、使った硬貨も復元する動的計画法 |
+| [shortest_paths.prim](shortest_paths.prim) | 途中で寄れる町を増やして、全組み合わせの最短距離を求める |
+
+## 計算途中を読む
+
+追加例では、答えに至る途中の数値も`print`しています。出力の順番は各ファイルの日本語コメントで説明しています。
+
+- `coin_change.prim`: 1円から6円までの最少枚数、その後に使う硬貨の3円と3円。
+- `shortest_paths.prim`: 町0から町3への距離の変化、その後に4行4列の距離表。`-1`は到達できない印です。
+- `heat_diffusion.prim`: 1段階につき5区間の温度を4回、その後に保存しておいた初期の中央温度。
+- `linear_regression.prim`: 学習前の誤差、10回ごとの学習回数・傾き・切片・誤差、最後に新しい入力3の予測値。
+
+直線の学習を試すには、`rate`（1回でどれだけ動かすか）や繰り返し回数を変え、誤差の変化を比較できます。各段階の表現を見るには、たとえば次を実行します。
+
+```powershell
+cargo run --quiet -- run examples/linear_regression.prim
+cargo run --quiet -- emit-ir examples/linear_regression.prim
+cargo run --quiet -- emit-bytecode examples/linear_regression.prim
+cargo run --quiet -- emit-c examples/linear_regression.prim
+```
+
+`integer_limits.prim`は通常は成功します。末尾のコメントアウトした式を有効にすると、桁あふれによる停止と診断位置を確認できます。
 
 ## 現在の範囲
 
@@ -66,4 +91,4 @@
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。文字列、再帰、動的な長さのcollectionはまだありません。
 
-`xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。重みを変えて答えを学ぶ処理はまだ含みません。
+`xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。`linear_regression.prim`では、勾配降下法で直線の傾きと切片をデータから学びます。XORニューラルネット自体の学習はまだ含みません。

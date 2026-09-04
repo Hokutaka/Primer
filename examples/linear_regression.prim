@@ -1,0 +1,54 @@
+// 点の並びから「予測 = 傾き * 入力 + 切片」の直線を学習します。
+// この例の正解は傾き2、切片1ですが、学習はどちらも0から始めます。
+type Line {
+    slope: f64,
+    intercept: f64,
+}
+
+fn predict(line: Line, x: f64) -> f64 {
+    return line.slope * x + line.intercept;
+}
+
+// 予測の外れ具合を一つの数値にします。小さいほどよく合っています。
+fn loss(line: Line, inputs: [f64; 5], answers: [f64; 5]) -> f64 {
+    mut total: f64 = 0.0;
+    for (mut index: i64 = 0; index < 5; index = index + 1) {
+        error: f64 = predict(line, inputs[index]) - answers[index];
+        total = total + error * error;
+    }
+    return total / 5.0;
+}
+
+inputs: [f64; 5] = [-2.0, -1.0, 0.0, 1.0, 2.0];
+answers: [f64; 5] = [-3.0, -1.0, 1.0, 3.0, 5.0];
+mut line: Line = Line { slope: 0.0, intercept: 0.0, };
+rate: f64 = 0.1;
+
+// 学習前の二乗誤差は9です。
+print(loss(line, inputs, answers));
+for (mut epoch: i64 = 0; epoch < 60; epoch = epoch + 1) {
+    mut slope_gradient: f64 = 0.0;
+    mut intercept_gradient: f64 = 0.0;
+    for (mut index: i64 = 0; index < 5; index = index + 1) {
+        error: f64 = predict(line, inputs[index]) - answers[index];
+        // 誤差が増える方向を、5点すべてについて合計します。
+        slope_gradient = slope_gradient + 2.0 * error * inputs[index];
+        intercept_gradient = intercept_gradient + 2.0 * error;
+    }
+    // 逆方向へ少し進みます。傾きと切片は同じ旧状態から更新します。
+    line = Line {
+        slope: line.slope - rate * slope_gradient / 5.0,
+        intercept: line.intercept - rate * intercept_gradient / 5.0,
+    };
+    // 10回ごとに学習回数、傾き、切片、二乗誤差を出力します。
+    completed: i64 = epoch + 1;
+    if completed - (completed / 10) * 10 == 0 {
+        print(completed);
+        print(line.slope);
+        print(line.intercept);
+        print(loss(line, inputs, answers));
+    }
+}
+
+// 学習に使わなかった入力3の予測は、7に近づきます。
+print(predict(line, 3.0));

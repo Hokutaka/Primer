@@ -1,0 +1,18 @@
+// i64の最小値と最大値、そのすぐ内側の値を調べます。
+minimum: i64 = -9223372036854775808;
+maximum: i64 = 9223372036854775807;
+print(minimum);
+print(maximum);
+print(minimum + 1);
+print(maximum - 1);
+
+// 最大値を超えそうな加算は、計算する前に条件で見分けられます。
+// この条件は、増加量が0以上の場合に使えます。
+increase: i64 = 1;
+fits: bool = maximum <= maximum - increase;
+print(fits); // false
+
+// 次の行を有効にすると、桁あふれの場所を報告して実行が停止します。
+// print(maximum + increase);
+// 最小値の符号反転も、正のi64の範囲に入らないため停止します。
+// print(-minimum);

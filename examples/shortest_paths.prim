@@ -1,0 +1,41 @@
+// 町0、1、2、3を結ぶ道です。表の行が出発地、列が目的地です。
+// -1は道がないこと、対角線の0は同じ町への距離を表します。
+// 町3から外へ向かう道はありません。
+mut distance: [[i64; 4]; 4] = [
+    [0, 3, 10, -1],
+    [-1, 0, 2, 8],
+    [-1, -1, 0, 1],
+    [-1, -1, -1, 0],
+];
+
+// ワーシャル・フロイド法: 途中で寄れる町を一つずつ増やします。
+for (mut via: i64 = 0; via < 4; via = via + 1) {
+    for (mut start: i64 = 0; start < 4; start = start + 1) {
+        for (mut goal: i64 = 0; goal < 4; goal = goal + 1) {
+            first: i64 = distance[start][via];
+            second: i64 = distance[via][goal];
+            // 道がない印の-1を、距離として足さないようにします。
+            if first >= 0 {
+                if second >= 0 {
+                    candidate: i64 = first + second;
+                    if distance[start][goal] < 0 {
+                        distance[start][goal] = candidate;
+                    } else {
+                        if candidate < distance[start][goal] {
+                            distance[start][goal] = candidate;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // 町0から町3への距離の変化: -1, 11, 6, 6。
+    print(distance[0][3]);
+}
+
+// 最後に全組み合わせを行ごとに出力します。
+for (mut row: i64 = 0; row < 4; row = row + 1) {
+    for (mut column: i64 = 0; column < 4; column = column + 1) {
+        print(distance[row][column]);
+    }
+}
