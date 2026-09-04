@@ -1,0 +1,44 @@
+type Point {
+    x: i64,
+    y: i64,
+}
+
+mut points: [Point; 5] = [
+    Point { x: 1, y: 1, },
+    Point { x: 4, y: 8, },
+    Point { x: -3, y: 2, },
+    Point { x: 6, y: 2, },
+    Point { x: 9, y: 9, },
+];
+
+snapshot: [Point; 5] = points;
+points = [
+    Point { x: 100, y: 100, },
+    Point { x: 100, y: 100, },
+    Point { x: 100, y: 100, },
+    Point { x: 100, y: 100, },
+    Point { x: 100, y: 100, },
+];
+
+target: Point = Point { x: 5, y: 3, };
+mut nearest_index: i64 = 0;
+mut nearest_distance: i64 = 9223372036854775807;
+
+for (mut index: i64 = 0; index < 5; index = index + 1) {
+    point: Point = snapshot[index];
+    dx: i64 = point.x - target.x;
+    dy: i64 = point.y - target.y;
+    distance: i64 = dx * dx + dy * dy;
+
+    if distance < nearest_distance {
+        nearest_index = index;
+        nearest_distance = distance;
+    }
+}
+
+nearest: Point = snapshot[nearest_index];
+print(nearest_index);
+print(nearest.x);
+print(nearest.y);
+print(nearest_distance);
+print(points[0].x);

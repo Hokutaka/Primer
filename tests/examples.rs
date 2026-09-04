@@ -167,6 +167,13 @@ fn fixed_arrays_example_runs() {
 }
 
 #[test]
+fn product_arrays_example_runs() {
+    let output = run_vm(include_str!("../examples/product_arrays.prim")).unwrap();
+
+    assert_eq!(output, "3\n6\n2\n2\n100\n");
+}
+
+#[test]
 fn xor_neural_network_example_runs() {
     let output = run_vm(include_str!("../examples/xor_neural_network.prim")).unwrap();
 

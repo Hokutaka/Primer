@@ -17,6 +17,7 @@ This directory contains programs that can be read and executed with the current 
 | [product-point.prim](product-point.prim) | named product types, defaults, and field access |
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
 | [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
+| [product_arrays.prim](product_arrays.prim) | point arrays, indexed product values, and array value copies |
 
 ## Numerical computation
 
@@ -39,6 +40,7 @@ This directory contains programs that can be read and executed with the current 
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | exponentiation by squaring |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
 | [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
+| [product_arrays.prim](product_arrays.prim) | linear search for the nearest point in a point array |
 | [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
 
 ## Current scope
