@@ -188,6 +188,13 @@ fn matrix_vector_product_example_runs() {
 }
 
 #[test]
+fn matrix_composition_example_runs() {
+    let output = run_vm(include_str!("../examples/matrix_composition.prim")).unwrap();
+
+    assert_eq!(output, "0\n3\n2\n0\n4\n5\n15\n8\n");
+}
+
+#[test]
 fn xor_neural_network_example_runs() {
     let output = run_vm(include_str!("../examples/xor_neural_network.prim")).unwrap();
 
