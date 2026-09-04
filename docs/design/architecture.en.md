@@ -148,12 +148,14 @@ Primer IR statements and expressions retain their corresponding UTF-8 byte range
 
 Each bytecode instruction stores one of the following origins separately from the instruction itself:
 
-- `Source(span)`: the instruction was lowered from a Primer IR statement or expression;
+- `Source { node_id, span }`: the instruction was lowered from a Primer IR statement or expression;
 - `Synthetic`: the compiler generated the instruction without a directly corresponding source range.
 
 `Synthetic` does not mean that provenance was lost. It explicitly identifies compiler-generated instructions.
 
-The VM reports an execution error using its bytecode instruction index. `run_vm` resolves that instruction's origin and associates a source location with the execution error when one is available. This provenance is currently an internal representation and is not included in the `emit-bytecode` text format.
+The `node_id` identifies the Primer IR element that produced an instruction. When one IR element lowers into several instructions, those instructions may share the same `node_id`. The `span` is the focused source range used for diagnostics and does not have to cover the whole IR element. For example, bounds checks produced by a nested array-element assignment share the assignment statement's `node_id` while retaining a different index `span` for each check.
+
+The VM reports an execution error using its bytecode instruction index. `run_vm` resolves that instruction's origin and associates the Primer IR `NodeId` and, when available, a source location with the execution error. This provenance is currently an internal representation and is not included in the `emit-bytecode` text format.
 
 ## Observation boundaries
 
