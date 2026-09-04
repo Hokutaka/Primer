@@ -81,7 +81,7 @@ Primer currently supports:
 - static typing;
 - `bool`, `i64`, `f32`, and `f64`;
 - named product types, default field values, and field access;
-- scalar fixed arrays, indexing, value copies, and runtime bounds checks;
+- fixed arrays of scalar or named product values that may also be product-type fields, indexing, value copies, and runtime bounds checks;
 - typed functions, `void`, and explicit `return`;
 - top-level executable statements or an explicit `fn main() -> void`;
 - explicit type declarations;

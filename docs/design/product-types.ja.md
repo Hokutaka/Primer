@@ -95,12 +95,16 @@ point: Point = Point {
 };
 ```
 
-型定義内のfieldには、組み込み型だけでなくユーザー定義型も指定できます。
+型定義内のfieldには、組み込み型、固定長配列、ユーザー定義型を指定できます。
 
 ```primer
 type Line {
     start: Point,
     end: Point,
+}
+
+type Path {
+    points: [Point; 4],
 }
 ```
 
@@ -409,7 +413,7 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 
 - `type`によるtop-levelの名前付きproduct type
 - nominalな型identity
-- 組み込み型およびユーザー定義型を持つfield
+- 組み込み型、固定長配列、ユーザー定義型を持つfield
 - 明示値と既定値によるaggregate構築
 - field access
 - aggregate全体の束縛と再代入
@@ -430,7 +434,7 @@ aggregateを実装することと、`Secret`の最終的な構文や解除方法
 - aggregate全体の`==`と`!=`
 - `print(aggregate)`と安定したformat
 - type aliasとnewtype
-- tuple、array、sum type、generic type
+- tuple、sum type、generic type
 - field visibilityとmodule境界
 - copy、move、borrow、reference
 - 参照を通した再帰型

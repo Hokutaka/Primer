@@ -66,7 +66,7 @@ type_spec   := "i64"
 
 type_ref    := "i64" | "f32" | "f64" | "bool" | fixed_array_type | IDENT
 
-fixed_array_type := "[" ("i64" | "f32" | "f64" | "bool") ";" INTEGER "]"
+fixed_array_type := "[" type_ref ";" INTEGER "]"
 
 expression  := equality
 
@@ -177,7 +177,31 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-現在の要素型は`bool`、`i64`、`f32`、`f64`です。配列の入れ子、product typeのfield、関数のparameterや戻り値にはまだ配列を使えません。`values[0] = 1;`のような要素への直接代入も未対応です。これらは黙って別の意味にせず、診断として報告します。
+要素型には`bool`、`i64`、`f32`、`f64`または名前付きproduct typeを使用できます。固定長配列はproduct typeのfieldにも使用できます。
+
+```primer
+type Point {
+    x: i64,
+    y: i64,
+}
+
+type Path {
+    points: [Point; 4],
+}
+
+path: Path = Path {
+    points: [
+        Point { x: 0, y: 0, },
+        Point { x: 1, y: 1, },
+        Point { x: 2, y: 4, },
+        Point { x: 3, y: 9, },
+    ],
+};
+
+print(path.points[2].y);
+```
+
+`[[i64; 2]; 2]`のように固定長配列を直接入れ子にすること、関数のparameterや戻り値に配列を使うこと、`values[0] = 1;`のように要素へ直接代入することは未対応です。これらは黙って別の意味にせず、診断として報告します。
 
 詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
 
