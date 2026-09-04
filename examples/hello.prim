@@ -1,9 +1,9 @@
-x: i64 = 42;
-a: f32 = 0.1f32 + 0.2f32;
+// 数に名前を付けます。i64は整数の型、=の右側は最初の値です。
+count: i64 = 40;
+additional: i64 = 2;
 
-print(a);
+// 二つの数を足して、結果にtotalという名前を付けます。
+total: i64 = count + additional;
 
-b: f64 = 0.1 + 0.2;
-c: infer = a + a;
-
-print(c);
+// printで結果を表示します。出力は42です。
+print(total);
