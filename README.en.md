@@ -126,6 +126,14 @@ print(inferred);
 
 Programs demonstrating basics, numerical computation, and algorithms supported by the current language are collected in the [examples index](examples/README.en.md).
 
+Run every example and display its output from the repository root with:
+
+```powershell
+.\scripts\run-examples.ps1
+```
+
+Use `-Pattern "matrix*.prim"` to select matching examples. Use `cargo test --test examples` when the expected output should also be verified automatically.
+
 The type field is always required. `infer` explicitly requests inference rather than omitting the type:
 
 ```primer
