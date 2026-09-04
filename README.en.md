@@ -283,9 +283,6 @@ Primer documentation is organized by purpose:
 - [compiler design](docs/design/architecture.en.md);
 - [observability contract](docs/design/observability.en.md);
 - [output routes and targets](docs/design/targets.en.md);
-- [compiler evolution plan (Draft)](docs/design/evolution-plan.en.md);
-- [use cases for design decisions (Draft)](docs/design/use-case-analysis.en.md);
-- [Secret value design (Draft)](docs/design/secrets.en.md);
 - [named product type design](docs/design/product-types.en.md);
 - [function design](docs/design/functions.en.md);
 - [fixed array design](docs/design/fixed-arrays.en.md);

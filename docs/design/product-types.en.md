@@ -8,7 +8,7 @@ This document organizes the semantics, syntax, observability, and implementation
 
 The [language reference](../reference/language.en.md) defines the rules needed to use the feature. This document also explains why those rules were chosen and how values are transformed into emitted artifacts.
 
-The [compiler architecture](architecture.en.md) defines the overall compiler structure, the [compiler evolution plan](evolution-plan.en.md) defines development order, and the [Secret value design](secrets.en.md) covers values containing secrets.
+The [compiler architecture](architecture.en.md) defines the overall compiler structure. Undecided future features remain outside the public design set until agreement moves them into a focused design document.
 
 ## Purpose
 

@@ -13,18 +13,7 @@ Primer documentation is divided into `design`, which records design decisions, a
 | Output routes and targets / 出力経路とターゲット | [日本語](design/targets.ja.md) | [English](design/targets.en.md) |
 | Functions / 関数 | [日本語](design/functions.ja.md) | [English](design/functions.en.md) |
 | Named product types / 名前付きproduct type | [日本語](design/product-types.ja.md) | [English](design/product-types.en.md) |
-
-## Draft planning / 設計検討
-
-次の文書は検討中の課題と設計案を整理するDraftであり、現在の仕様や公開契約を変更するものではありません。
-
-The following draft organizes open problems and design candidates. It does not change the current specification or public contracts.
-
-| Document | 日本語 | English |
-| --- | --- | --- |
-| Compiler evolution plan / コンパイラ進化計画 | [日本語](design/evolution-plan.ja.md) | [English](design/evolution-plan.en.md) |
-| Use cases for design decisions / 設計判断のための利用シナリオ | [日本語](design/use-case-analysis.ja.md) | [English](design/use-case-analysis.en.md) |
-| Secret value design / Secret値の設計 | [日本語](design/secrets.ja.md) | [English](design/secrets.en.md) |
+| Fixed arrays / 固定長配列 | [日本語](design/fixed-arrays.ja.md) | [English](design/fixed-arrays.en.md) |
 
 ## Reference / リファレンス
 
