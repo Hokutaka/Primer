@@ -1,14 +1,18 @@
 use std::fmt::Write;
 
 use super::{
-    BinaryOp, Expr, ExprKind, FieldValueOrigin, Program, Statement, StatementKind, Type, UnaryOp,
+    BinaryOp, Expr, ExprKind, FieldValueOrigin, Program, ReturnType, Statement, StatementKind,
+    Type, UnaryOp,
 };
 
 pub fn emit(program: &Program) -> String {
     let mut output = String::new();
     writeln!(output, "; Primer IR v0.1").unwrap();
 
-    if !program.type_definitions.is_empty() || !program.statements.is_empty() {
+    if !program.type_definitions.is_empty()
+        || !program.function_definitions.is_empty()
+        || !program.statements.is_empty()
+    {
         writeln!(output).unwrap();
     }
 
@@ -30,7 +34,37 @@ pub fn emit(program: &Program) -> String {
             writeln!(output).unwrap();
         }
         writeln!(output, "}}").unwrap();
-        if !program.statements.is_empty() {
+        if !program.function_definitions.is_empty() || !program.statements.is_empty() {
+            writeln!(output).unwrap();
+        }
+    }
+
+    for (index, function) in program.function_definitions.iter().enumerate() {
+        write!(output, "fn %{}@{}(", function.name, function.id.0).unwrap();
+        for (parameter_index, parameter) in function.parameters.iter().enumerate() {
+            if parameter_index > 0 {
+                output.push_str(", ");
+            }
+            write!(
+                output,
+                "%{}@{}: {}",
+                parameter.name,
+                parameter.id.0,
+                type_name(parameter.ty, program)
+            )
+            .unwrap();
+        }
+        match function.return_type {
+            ReturnType::Void => writeln!(output, ") -> void {{").unwrap(),
+            ReturnType::Value(ty) => {
+                writeln!(output, ") -> {} {{", type_name(ty, program)).unwrap()
+            }
+        }
+        for statement in &function.body {
+            emit_statement(statement, 1, program, &mut output);
+        }
+        writeln!(output, "}}").unwrap();
+        if index + 1 < program.function_definitions.len() || !program.statements.is_empty() {
             writeln!(output).unwrap();
         }
     }
@@ -82,6 +116,23 @@ fn emit_statement(statement: &Statement, indent: usize, program: &Program, outpu
         StatementKind::Print { value } => {
             write!(output, "{prefix}print.{} ", type_name(value.ty, program)).unwrap();
             emit_expr(value, program, output);
+            writeln!(output).unwrap();
+        }
+        StatementKind::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => {
+            write!(output, "{prefix}call %{function_name}@{}(", function_id.0).unwrap();
+            emit_arguments(arguments, program, output);
+            writeln!(output, ")").unwrap();
+        }
+        StatementKind::Return { value } => {
+            write!(output, "{prefix}return").unwrap();
+            if let Some(value) = value {
+                output.push(' ');
+                emit_expr(value, program, output);
+            }
             writeln!(output).unwrap();
         }
         StatementKind::If {
@@ -195,6 +246,15 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
             )
             .unwrap();
         }
+        ExprKind::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => {
+            write!(output, "call %{function_name}@{}(", function_id.0).unwrap();
+            emit_arguments(arguments, program, output);
+            write!(output, "):{}", type_name(expr.ty, program)).unwrap();
+        }
         ExprKind::Unary { op, value } => {
             write!(
                 output,
@@ -221,6 +281,15 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
             emit_expr(right, program, output);
             output.push(')');
         }
+    }
+}
+
+fn emit_arguments(arguments: &[Expr], program: &Program, output: &mut String) {
+    for (index, argument) in arguments.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        emit_expr(argument, program, output);
     }
 }
 

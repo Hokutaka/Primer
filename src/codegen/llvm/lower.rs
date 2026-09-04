@@ -3,11 +3,16 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId, Temp,
-    Type, TypeDefinition,
+    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
+    Slot, SlotId, Temp, Type, TypeDefinition,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let functions = program
+        .function_definitions
+        .iter()
+        .map(lower_function)
+        .collect();
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
     let mut name_counts = HashMap::new();
@@ -42,6 +47,64 @@ pub fn lower(program: &primer_ir::Program) -> Module {
                     .collect(),
             })
             .collect(),
+        functions,
+        explicit_main: program
+            .function_definitions
+            .iter()
+            .find(|function| function.name == "main")
+            .map(|function| function.id.0),
+        slots,
+        instructions: lowerer.instructions,
+    }
+}
+
+fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
+    let mut slots = Vec::new();
+    let mut slot_map = HashMap::new();
+    let mut name_counts = HashMap::new();
+    let parameters = function
+        .parameters
+        .iter()
+        .map(|parameter| {
+            let slot = SlotId(slots.len());
+            slots.push(Slot {
+                name: parameter.name.clone(),
+                ty: parameter.ty.into(),
+            });
+            slot_map.insert(parameter.id, slot);
+            name_counts.insert(parameter.name.clone(), 1);
+            Parameter {
+                name: parameter.name.clone(),
+                ty: parameter.ty.into(),
+                slot,
+            }
+        })
+        .collect();
+    collect_slots(&function.body, &mut slots, &mut slot_map, &mut name_counts);
+
+    let mut lowerer = Lowerer {
+        slot_map,
+        instructions: Vec::new(),
+        temp: 0,
+        label: 0,
+        loops: Vec::new(),
+    };
+    let terminates = lowerer.lower_statements(&function.body);
+    let return_type = match function.return_type {
+        primer_ir::ReturnType::Void => None,
+        primer_ir::ReturnType::Value(ty) => Some(ty.into()),
+    };
+    if !terminates {
+        lowerer
+            .instructions
+            .push(Instruction::Return { value: None });
+    }
+
+    Function {
+        id: function.id.0,
+        name: function.name.clone(),
+        parameters,
+        return_type,
         slots,
         instructions: lowerer.instructions,
     }
@@ -291,6 +354,34 @@ impl Lowerer {
                 self.instructions.push(Instruction::Jump { label: target });
                 true
             }
+            primer_ir::StatementKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                let arguments = arguments
+                    .iter()
+                    .map(|argument| {
+                        let value = self.lower_expr(argument);
+                        (value.ty, value.operand)
+                    })
+                    .collect();
+                self.instructions.push(Instruction::Call {
+                    dest: None,
+                    function_id: function_id.0,
+                    return_type: None,
+                    arguments,
+                });
+                false
+            }
+            primer_ir::StatementKind::Return { value } => {
+                let value = value.as_ref().map(|value| {
+                    let value = self.lower_expr(value);
+                    (value.ty, value.operand)
+                });
+                self.instructions.push(Instruction::Return { value });
+                true
+            }
         }
     }
 
@@ -470,6 +561,31 @@ impl Lowerer {
                     operand: Operand::Temp(dest),
                 }
             }
+            primer_ir::ExprKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                let arguments = arguments
+                    .iter()
+                    .map(|argument| {
+                        let value = self.lower_expr(argument);
+                        (value.ty, value.operand)
+                    })
+                    .collect();
+                let ty = expr.ty.into();
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::Call {
+                    dest: Some(dest),
+                    function_id: function_id.0,
+                    return_type: Some(ty),
+                    arguments,
+                });
+                Value {
+                    ty,
+                    operand: Operand::Temp(dest),
+                }
+            }
         }
     }
 
@@ -593,6 +709,8 @@ fn collect_slots(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }

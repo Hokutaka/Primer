@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Item, Program, Stmt, StmtKind, Type,
-    TypeDefinition, TypeRef, TypeSpec, UnaryOp,
+    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, FunctionDefinition, Item, Parameter,
+    Program, ReturnTypeRef, Stmt, StmtKind, Type, TypeDefinition, TypeRef, TypeSpec, UnaryOp,
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
@@ -30,6 +30,8 @@ impl Parser {
         while !matches!(&self.peek().kind, TokenKind::Eof) {
             if matches!(&self.peek().kind, TokenKind::Type) {
                 items.push(Item::TypeDefinition(self.parse_type_definition()?));
+            } else if matches!(&self.peek().kind, TokenKind::Fn) {
+                items.push(Item::FunctionDefinition(self.parse_function_definition()?));
             } else {
                 items.push(Item::Statement(self.parse_statement()?));
             }
@@ -103,12 +105,72 @@ impl Parser {
         })
     }
 
+    fn parse_function_definition(&mut self) -> ParseResult<FunctionDefinition> {
+        let start = self.advance().span.start();
+        let (name, name_span) = self.expect_identifier()?;
+        self.expect_simple(TokenKind::LeftParen)?;
+        let mut parameters = Vec::new();
+
+        while !matches!(&self.peek().kind, TokenKind::RightParen) {
+            let (parameter_name, parameter_name_span) = self.expect_identifier()?;
+            self.expect_simple(TokenKind::Colon)?;
+            let type_ref = self.parse_type_ref()?;
+            if type_ref.name == "infer" {
+                return Err(Diagnostic::new(
+                    "function parameters require an explicit type",
+                    type_ref.span,
+                ));
+            }
+            parameters.push(Parameter {
+                name: parameter_name,
+                name_span: parameter_name_span,
+                span: Span::new(parameter_name_span.start(), type_ref.span.end()),
+                type_ref,
+            });
+
+            if matches!(&self.peek().kind, TokenKind::Comma) {
+                self.advance();
+                if matches!(&self.peek().kind, TokenKind::RightParen) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        self.expect_simple(TokenKind::RightParen)?;
+        self.expect_simple(TokenKind::Arrow)?;
+        let return_type = if matches!(&self.peek().kind, TokenKind::Void) {
+            ReturnTypeRef::Void(self.advance().span)
+        } else {
+            let type_ref = self.parse_type_ref()?;
+            if type_ref.name == "infer" {
+                return Err(Diagnostic::new(
+                    "function return types require an explicit type",
+                    type_ref.span,
+                ));
+            }
+            ReturnTypeRef::Value(type_ref)
+        };
+        let (body, end) = self.parse_block()?;
+
+        Ok(FunctionDefinition {
+            name,
+            name_span,
+            parameters,
+            return_type,
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
     fn parse_statement(&mut self) -> ParseResult<Stmt> {
         match &self.peek().kind {
             TokenKind::Mut => self.parse_binding(),
             TokenKind::Identifier(_) => match &self.peek_next().kind {
                 TokenKind::Colon => self.parse_binding(),
                 TokenKind::Equal => self.parse_assignment(),
+                TokenKind::LeftParen => self.parse_call_statement(),
                 TokenKind::Dot => Err(Diagnostic::new(
                     "fields cannot be assigned directly; construct a new value and reassign the whole mutable binding",
                     self.peek_next().span,
@@ -119,6 +181,7 @@ impl Parser {
                 )),
             },
             TokenKind::Print => self.parse_print(),
+            TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
@@ -226,6 +289,36 @@ impl Parser {
         Ok(Stmt {
             kind: StmtKind::Print { value },
             span: Span::new(start, semicolon.end()),
+        })
+    }
+
+    fn parse_call_statement(&mut self) -> ParseResult<Stmt> {
+        let value = self.parse_expression()?;
+        let semicolon = self.expect_simple(TokenKind::Semicolon)?;
+        let span = Span::new(value.span.start(), semicolon.end());
+        if !matches!(value.kind, ExprKind::Call { .. }) {
+            return Err(Diagnostic::new(
+                "only a function call can be used as an expression statement",
+                value.span,
+            ));
+        }
+        Ok(Stmt {
+            kind: StmtKind::Call { value },
+            span,
+        })
+    }
+
+    fn parse_return(&mut self) -> ParseResult<Stmt> {
+        let start = self.advance().span.start();
+        let value = if matches!(&self.peek().kind, TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+        let end = self.expect_simple(TokenKind::Semicolon)?.end();
+        Ok(Stmt {
+            kind: StmtKind::Return { value },
+            span: Span::new(start, end),
         })
     }
 
@@ -535,7 +628,9 @@ impl Parser {
             TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 
             TokenKind::Identifier(name) => {
-                if self.starts_construct() {
+                if matches!(&self.peek().kind, TokenKind::LeftParen) {
+                    self.parse_call(name, span)
+                } else if self.starts_construct() {
                     self.parse_construct(name, span)
                 } else {
                     Ok(Expr {
@@ -562,6 +657,31 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn parse_call(&mut self, name: String, name_span: Span) -> ParseResult<Expr> {
+        self.expect_simple(TokenKind::LeftParen)?;
+        let mut arguments = Vec::new();
+        while !matches!(&self.peek().kind, TokenKind::RightParen) {
+            arguments.push(self.parse_expression()?);
+            if matches!(&self.peek().kind, TokenKind::Comma) {
+                self.advance();
+                if matches!(&self.peek().kind, TokenKind::RightParen) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        let closing = self.expect_simple(TokenKind::RightParen)?;
+        Ok(Expr {
+            kind: ExprKind::Call {
+                name,
+                name_span,
+                arguments,
+            },
+            span: Span::new(name_span.start(), closing.end()),
+        })
     }
 
     fn parse_construct(&mut self, type_name: String, type_name_span: Span) -> ParseResult<Expr> {
@@ -695,7 +815,9 @@ fn parse_float_literal(text: String, span: Span) -> Expr {
 
 #[cfg(test)]
 mod tests {
-    use crate::ast::{BinaryOp, ExprKind, Item, StmtKind, TypeRef, TypeSpec, UnaryOp};
+    use crate::ast::{
+        BinaryOp, ExprKind, Item, ReturnTypeRef, StmtKind, TypeRef, TypeSpec, UnaryOp,
+    };
     use crate::lexer::lex;
     use crate::source::Span;
 
@@ -755,6 +877,30 @@ mod tests {
             panic!("expected print");
         };
         assert!(matches!(value.kind, ExprKind::FieldAccess { .. }));
+    }
+
+    #[test]
+    fn parses_function_definition_call_and_return() {
+        let program = parse(
+            lex("fn identity(value: i64) -> i64 { return value; }
+                 answer: i64 = identity(42);")
+            .unwrap(),
+        )
+        .unwrap();
+
+        let Item::FunctionDefinition(function) = &program.items[0] else {
+            panic!("expected function definition");
+        };
+        assert_eq!(function.name, "identity");
+        assert_eq!(function.parameters.len(), 1);
+        assert_eq!(function.parameters[0].name, "value");
+        assert!(matches!(function.return_type, ReturnTypeRef::Value(ref ty) if ty.name == "i64"));
+        assert!(matches!(function.body[0].kind, StmtKind::Return { .. }));
+
+        let StmtKind::Binding { value, .. } = &program.statement(0).kind else {
+            panic!("expected binding");
+        };
+        assert!(matches!(value.kind, ExprKind::Call { ref name, .. } if name == "identity"));
     }
 
     #[test]

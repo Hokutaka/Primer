@@ -1,0 +1,10 @@
+fn add(left: i64, right: i64) -> i64 {
+    return left + right;
+}
+
+fn show(value: i64) -> void {
+    print(value);
+}
+
+answer: i64 = add(20, 22);
+show(answer);

@@ -1,0 +1,5 @@
+fn identity(value: i64) -> i64 {
+    return value;
+}
+
+answer: i64 = identity(true);

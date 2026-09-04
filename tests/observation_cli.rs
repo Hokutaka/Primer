@@ -10,6 +10,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "loop-control",
     "for-loop",
     "product-types",
+    "functions",
 ];
 
 fn fixture_path(case_name: &str) -> PathBuf {

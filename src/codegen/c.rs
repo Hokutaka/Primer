@@ -85,4 +85,19 @@ mod tests {
             assert!(c.contains(operator));
         }
     }
+
+    #[test]
+    fn emits_typed_functions_and_calls() {
+        let program = compile_to_ir(
+            "fn add(left: i64, right: i64) -> i64 { return left + right; }
+             answer: i64 = add(20, 22);
+             print(answer);",
+        )
+        .unwrap();
+        let c = emit_c(&program).unwrap();
+
+        assert!(c.contains("int64_t primer_fn_add_0(int64_t primer_left, int64_t primer_right);"));
+        assert!(c.contains("return (primer_left + primer_right);"));
+        assert!(c.contains("primer_fn_add_0(20, 22)"));
+    }
 }

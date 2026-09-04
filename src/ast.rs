@@ -31,7 +31,7 @@ impl Program {
         self.items
             .iter()
             .filter_map(|item| match item {
-                Item::TypeDefinition(_) => None,
+                Item::TypeDefinition(_) | Item::FunctionDefinition(_) => None,
                 Item::Statement(statement) => Some(statement),
             })
             .nth(index)
@@ -42,7 +42,32 @@ impl Program {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Item {
     TypeDefinition(TypeDefinition),
+    FunctionDefinition(FunctionDefinition),
     Statement(Stmt),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDefinition {
+    pub name: String,
+    pub name_span: Span,
+    pub parameters: Vec<Parameter>,
+    pub return_type: ReturnTypeRef,
+    pub body: Vec<Stmt>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    pub name: String,
+    pub name_span: Span,
+    pub type_ref: TypeRef,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReturnTypeRef {
+    Void(Span),
+    Value(TypeRef),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +108,12 @@ pub enum StmtKind {
     },
     Print {
         value: Expr,
+    },
+    Call {
+        value: Expr,
+    },
+    Return {
+        value: Option<Expr>,
     },
     If {
         condition: Expr,
@@ -127,6 +158,11 @@ pub enum ExprKind {
         base: Box<Expr>,
         field_name: String,
         field_name_span: Span,
+    },
+    Call {
+        name: String,
+        name_span: Span,
+        arguments: Vec<Expr>,
     },
     Unary {
         op: UnaryOp,

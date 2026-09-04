@@ -2,13 +2,64 @@ use std::collections::HashMap;
 
 use crate::ir as primer_ir;
 
-use super::ir::{BinaryOp, CompareOp, FloatConstant, Instruction, Module, Type};
+use super::ir::{BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
-    let (binding_slots, binding_slot_count) = assign_binding_slots(program);
+    let mut float_id = 0;
+    let mut float_constants = Vec::new();
+    let mut functions = Vec::new();
+    for function in &program.function_definitions {
+        let lowered = lower_body(
+            program,
+            &function.parameters,
+            &function.body,
+            &mut float_id,
+            true,
+        );
+        float_constants.extend(lowered.float_constants);
+        functions.push(Function {
+            id: function.id.0,
+            name: function.name.clone(),
+            frame_size: lowered.frame_size,
+            instructions: lowered.instructions,
+        });
+    }
 
-    // 二項演算の左辺を一時退避する領域を、式の深さに十分なだけ確保する。
-    let scratch_count = count_program_expr_nodes(program).max(1);
+    let lowered = lower_body(program, &[], &program.statements, &mut float_id, false);
+    float_constants.extend(lowered.float_constants);
+
+    Module {
+        functions,
+        explicit_main: program
+            .function_definitions
+            .iter()
+            .find(|function| function.name == "main")
+            .map(|function| function.id.0),
+        frame_size: lowered.frame_size,
+        float_constants,
+        instructions: lowered.instructions,
+    }
+}
+
+struct LoweredBody {
+    frame_size: usize,
+    float_constants: Vec<FloatConstant>,
+    instructions: Vec<Instruction>,
+}
+
+fn lower_body(
+    program: &primer_ir::Program,
+    parameters: &[primer_ir::Parameter],
+    statements: &[primer_ir::Statement],
+    float_id: &mut usize,
+    is_function: bool,
+) -> LoweredBody {
+    let (binding_slots, binding_slot_count) = assign_binding_slots(program, parameters, statements);
+
+    // 従来の式用領域を保ちつつ、入れ子の呼び出しに必要な引数領域だけを追加する。
+    let scratch_count = count_statements_expr_nodes(statements)
+        .max(required_scratch_slots(statements))
+        .max(1);
     let scratch_base = binding_slot_count;
     let aggregate_base = scratch_base + scratch_count;
 
@@ -17,20 +68,31 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         binding_slots,
         scratch_base,
         next_aggregate_slot: aggregate_base,
-        float_id: 0,
+        float_id: *float_id,
         float_constants: Vec::new(),
         instructions: Vec::new(),
         label: 0,
         loops: Vec::new(),
     };
 
-    lowerer.lower_statements(&program.statements);
+    for (index, parameter) in parameters.iter().enumerate() {
+        lowerer.instructions.push(Instruction::StoreParameter {
+            index,
+            ty: scalar_type(parameter.ty),
+            offset: lowerer.binding_offset(parameter.id),
+        });
+    }
+    let terminates = lowerer.lower_statements(statements);
+    if is_function && !terminates {
+        lowerer.instructions.push(Instruction::Return);
+    }
 
     // Windows x64 ABI では、関数呼び出し用に 32 バイトの shadow space が必要になる。
     let local_bytes = 8 * lowerer.next_aggregate_slot;
     let frame_size = align16(32 + local_bytes);
+    *float_id = lowerer.float_id;
 
-    Module {
+    LoweredBody {
         frame_size,
         float_constants: lowerer.float_constants,
         instructions: lowerer.instructions,
@@ -246,6 +308,23 @@ impl Lowerer<'_> {
                 self.instructions.push(Instruction::Jump(target));
                 true
             }
+            primer_ir::StatementKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                self.lower_call(function_id.0, arguments, 0);
+                false
+            }
+            primer_ir::StatementKind::Return { value } => {
+                if let Some(value) = value {
+                    let Value::Scalar(_) = self.lower_expr(value, 0) else {
+                        unreachable!("function signatures currently use scalar types")
+                    };
+                }
+                self.instructions.push(Instruction::Return);
+                true
+            }
         }
     }
 
@@ -413,7 +492,31 @@ impl Lowerer<'_> {
                     }
                 }
             }
+            primer_ir::ExprKind::Call {
+                function_id,
+                arguments,
+                ..
+            } => {
+                self.lower_call(function_id.0, arguments, depth);
+                Value::Scalar(scalar_type(expr.ty))
+            }
         }
+    }
+
+    fn lower_call(&mut self, function_id: usize, arguments: &[primer_ir::Expr], depth: usize) {
+        let mut lowered_arguments = Vec::with_capacity(arguments.len());
+        for (index, argument) in arguments.iter().enumerate() {
+            let Value::Scalar(ty) = self.lower_expr(argument, depth + 4) else {
+                unreachable!("function signatures currently use scalar types")
+            };
+            let offset = self.scratch_offset(depth + index);
+            self.store_scalar(ty, offset);
+            lowered_arguments.push((ty, offset));
+        }
+        self.instructions.push(Instruction::Call {
+            function_id,
+            arguments: lowered_arguments,
+        });
     }
 
     fn copy_aggregate(&mut self, type_id: usize, source: usize, destination: usize) {
@@ -533,10 +636,16 @@ impl Lowerer<'_> {
 
 fn assign_binding_slots(
     program: &primer_ir::Program,
+    parameters: &[primer_ir::Parameter],
+    statements: &[primer_ir::Statement],
 ) -> (HashMap<primer_ir::BindingId, usize>, usize) {
     let mut slots = HashMap::new();
     let mut next = 0;
-    collect_binding_slots(&program.statements, program, &mut slots, &mut next);
+    for parameter in parameters {
+        slots.insert(parameter.id, next);
+        next += 1;
+    }
+    collect_binding_slots(statements, program, &mut slots, &mut next);
     (slots, next)
 }
 
@@ -575,6 +684,8 @@ fn collect_binding_slots(
             }
             primer_ir::StatementKind::Assignment { .. }
             | primer_ir::StatementKind::Print { .. }
+            | primer_ir::StatementKind::Call { .. }
+            | primer_ir::StatementKind::Return { .. }
             | primer_ir::StatementKind::Break
             | primer_ir::StatementKind::Continue => {}
         }
@@ -600,10 +711,6 @@ fn field_slot_offset(program: &primer_ir::Program, type_id: usize, field_id: usi
         .iter()
         .map(|field| type_slot_count(program, field.ty))
         .sum()
-}
-
-fn count_program_expr_nodes(program: &primer_ir::Program) -> usize {
-    count_statements_expr_nodes(&program.statements)
 }
 
 fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
@@ -636,6 +743,12 @@ fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
                     + count_statements_expr_nodes(std::slice::from_ref(update))
                     + count_statements_expr_nodes(body)
             }
+            primer_ir::StatementKind::Call { arguments, .. } => {
+                arguments.iter().map(count_expr_nodes).sum()
+            }
+            primer_ir::StatementKind::Return { value } => {
+                value.as_ref().map_or(0, count_expr_nodes)
+            }
             primer_ir::StatementKind::Break | primer_ir::StatementKind::Continue => 0,
         })
         .sum()
@@ -658,6 +771,77 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
                 .sum::<usize>()
         }
         primer_ir::ExprKind::FieldAccess { base, .. } => 1 + count_expr_nodes(base),
+        primer_ir::ExprKind::Call { arguments, .. } => {
+            1 + arguments.iter().map(count_expr_nodes).sum::<usize>()
+        }
+    }
+}
+
+fn required_scratch_slots(statements: &[primer_ir::Statement]) -> usize {
+    statements
+        .iter()
+        .map(|statement| match &statement.kind {
+            primer_ir::StatementKind::Binding { value, .. }
+            | primer_ir::StatementKind::Assignment { value, .. }
+            | primer_ir::StatementKind::Print { value } => required_expr_scratch(value, 0),
+            primer_ir::StatementKind::Call { arguments, .. } => arguments
+                .iter()
+                .map(|argument| required_expr_scratch(argument, 4))
+                .max()
+                .unwrap_or(0)
+                .max(arguments.len()),
+            primer_ir::StatementKind::Return { value } => value
+                .as_ref()
+                .map_or(0, |value| required_expr_scratch(value, 0)),
+            primer_ir::StatementKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => required_expr_scratch(condition, 0)
+                .max(required_scratch_slots(then_body))
+                .max(required_scratch_slots(else_body)),
+            primer_ir::StatementKind::While { condition, body } => {
+                required_expr_scratch(condition, 0).max(required_scratch_slots(body))
+            }
+            primer_ir::StatementKind::For {
+                initializer,
+                condition,
+                update,
+                body,
+            } => required_scratch_slots(std::slice::from_ref(initializer))
+                .max(required_expr_scratch(condition, 0))
+                .max(required_scratch_slots(std::slice::from_ref(update)))
+                .max(required_scratch_slots(body)),
+            primer_ir::StatementKind::Break | primer_ir::StatementKind::Continue => 0,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
+    match &expr.kind {
+        primer_ir::ExprKind::Boolean(_)
+        | primer_ir::ExprKind::Integer(_)
+        | primer_ir::ExprKind::Float { .. }
+        | primer_ir::ExprKind::Variable { .. } => 0,
+        primer_ir::ExprKind::Unary { value, .. }
+        | primer_ir::ExprKind::FieldAccess { base: value, .. } => {
+            required_expr_scratch(value, depth)
+        }
+        primer_ir::ExprKind::Binary { left, right, .. } => (depth + 1)
+            .max(required_expr_scratch(left, depth + 1))
+            .max(required_expr_scratch(right, depth + 1)),
+        primer_ir::ExprKind::Construct { fields, .. } => fields
+            .iter()
+            .map(|field| required_expr_scratch(&field.value, depth))
+            .max()
+            .unwrap_or(0),
+        primer_ir::ExprKind::Call { arguments, .. } => arguments
+            .iter()
+            .map(|argument| required_expr_scratch(argument, depth + 4))
+            .max()
+            .unwrap_or(0)
+            .max(depth + arguments.len()),
     }
 }
 

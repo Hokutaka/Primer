@@ -160,6 +160,45 @@ fn semantic_block_scope_matches_expected_diagnostic() {
 }
 
 #[test]
+fn semantic_unknown_function_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-unknown-function", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_argument_count_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-argument-count", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_argument_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-argument-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_missing_return_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-missing-return", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_invalid_main_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-invalid-main", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_recursion_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-function-recursion", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_function_product_signature_matches_expected_diagnostic() {
+    assert_diagnostic(
+        "semantic-function-product-signature",
+        "check",
+        "check.stderr",
+    );
+}
+
+#[test]
 fn emit_ir_semantic_unknown_binding_matches_expected_diagnostic() {
     assert_diagnostic("semantic-unknown-binding", "emit-ir", "emit-ir.stderr");
 }

@@ -1,0 +1,27 @@
+; Primer bytecode v0.1
+
+.function 0 add(0:left:i64, 1:right:i64) -> i64
+.slot 0 left i64
+.slot 1 right i64
+0000  load 0        ; left
+0001  load 1        ; right
+0002  add.i64
+0003  return.value
+.end
+
+.function 1 show(0:value:i64) -> void
+.slot 0 value i64
+0000  load 0        ; value
+0001  print.i64
+0002  return
+.end
+
+.slot 0 answer i64
+
+0000  push.i64 20
+0001  push.i64 22
+0002  call 0 2  ; add
+0003  store 0       ; answer
+0004  load 0        ; answer
+0005  call 1 1  ; show
+0006  halt

@@ -15,6 +15,7 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub type_definitions: Vec<TypeDefinition>,
+    pub function_definitions: Vec<FunctionDefinition>,
     pub statements: Vec<Statement>,
 }
 
@@ -23,6 +24,33 @@ pub struct TypeId(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FunctionId(pub usize);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnType {
+    Void,
+    Value(Type),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDefinition {
+    pub id: FunctionId,
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: ReturnType,
+    pub body: Vec<Statement>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    pub id: BindingId,
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeDefinition {
@@ -71,6 +99,14 @@ pub enum StatementKind {
     Print {
         value: Expr,
     },
+    Call {
+        function_id: FunctionId,
+        function_name: String,
+        arguments: Vec<Expr>,
+    },
+    Return {
+        value: Option<Expr>,
+    },
     If {
         condition: Expr,
         then_body: Vec<Statement>,
@@ -118,6 +154,11 @@ pub enum ExprKind {
         field_id: FieldId,
         field_name: String,
         base: Box<Expr>,
+    },
+    Call {
+        function_id: FunctionId,
+        function_name: String,
+        arguments: Vec<Expr>,
     },
     Unary {
         op: UnaryOp,

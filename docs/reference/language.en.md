@@ -10,6 +10,7 @@ This document defines the syntax and semantics of Primer v0.1.
 program     := item* EOF
 
 item        := type_definition
+             | function_definition
              | statement
 
 type_definition :=
@@ -17,9 +18,20 @@ type_definition :=
 
 field_definition := IDENT ":" type_ref ("=" expression)?
 
+function_definition :=
+    "fn" IDENT "(" parameters? ")" "->" return_type block
+
+parameters  := parameter ("," parameter)*
+
+parameter   := IDENT ":" type_ref
+
+return_type := type_ref | "void"
+
 statement   := binding
              | assignment
              | "print" "(" expression ")" ";"
+             | IDENT "(" arguments? ")" ";"
+             | "return" expression? ";"
              | if_statement
              | while_statement
              | for_statement
@@ -30,11 +42,15 @@ if_statement := "if" expression block ("else" block)?
 
 while_statement := "while" expression block
 
-for_statement := "for" binding expression ";" assignment_clause block
+for_statement :=
+    "for" "(" (binding_clause | assignment_clause) ";"
+    expression ";" assignment_clause ")" block
 
 block       := "{" statement* "}"
 
 binding     := "mut"? IDENT ":" type_spec "=" expression ";"
+
+binding_clause := "mut"? IDENT ":" type_spec "=" expression
 
 assignment  := assignment_clause ";"
 
@@ -69,8 +85,11 @@ primary     := "true"
              | INTEGER
              | FLOAT
              | IDENT
+             | IDENT "(" arguments? ")"
              | IDENT "{" field_value ("," field_value)* ","? "}"
              | "(" expression ")"
+
+arguments   := expression ("," expression)*
 
 field_value := IDENT ":" expression
 ```
@@ -131,6 +150,38 @@ if (Flags { enabled: true, }).enabled {
 Empty product types, empty construction expressions, infinitely sized recursion by value, product comparisons, and printing a whole product value are not currently supported.
 
 See [Named product type design](../design/product-types.en.md) for the detailed design and backend representations.
+
+## Functions and entrypoint
+
+`fn` defines a named computation. Every parameter and the return type are explicit.
+
+```primer
+fn add(left: i64, right: i64) -> i64 {
+    return left + right;
+}
+
+answer: i64 = add(20, 22);
+```
+
+A value-returning function uses an explicit `return expression;`. A trailing expression is not an implicit result. Primer reports an error when it cannot prove that every path returns a value.
+
+A function without a value uses `-> void`. It may reach the end of its block or exit early with `return;`. A value-returning call is used as an expression, while a `void` call is a statement.
+
+```primer
+fn show(value: i64) -> void {
+    print(value);
+}
+
+show(answer);
+```
+
+Function names are resolved across the whole file, so a call may precede its definition. Parameters and local bindings are not visible outside their function. A function also cannot read a top-level runtime binding.
+
+Top-level executable statements receive a compiler-generated entrypoint. A program may instead define `fn main() -> void`, but an explicit `main` cannot be combined with top-level executable statements. `main` takes no parameters.
+
+Current function signatures are limited to `bool`, `i64`, `f32`, and `f64`, with at most four parameters. Named product arguments and results, recursion, and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
+
+Primer IR and bytecode expose function IDs, parameter binding IDs, calls, and returns. Backend artifacts expose how those entities become function symbols, arguments, local storage, and ABI registers or memory. See [Function design](../design/functions.en.md) for details.
 
 ## Mutable bindings and reassignment
 

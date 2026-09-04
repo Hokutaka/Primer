@@ -1,13 +1,39 @@
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Module, PrintFormat, Statement, Type,
-    TypeDefinition, UnaryOp,
+    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module, Parameter,
+    PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     Module {
         type_definitions: lower_type_definitions(program),
+        functions: program
+            .function_definitions
+            .iter()
+            .map(|function| Function {
+                id: function.id.0,
+                name: function.name.clone(),
+                parameters: function
+                    .parameters
+                    .iter()
+                    .map(|parameter| Parameter {
+                        name: parameter.name.clone(),
+                        ty: parameter.ty.into(),
+                    })
+                    .collect(),
+                return_type: match function.return_type {
+                    primer_ir::ReturnType::Void => None,
+                    primer_ir::ReturnType::Value(ty) => Some(ty.into()),
+                },
+                body: function.body.iter().map(lower_statement).collect(),
+            })
+            .collect(),
+        explicit_main: program
+            .function_definitions
+            .iter()
+            .find(|function| function.name == "main")
+            .map(|function| function.id.0),
         statements: program.statements.iter().map(lower_statement).collect(),
     }
 }
@@ -70,6 +96,20 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
             format: print_format(value.ty),
             value: lower_expr(value),
         },
+
+        primer_ir::StatementKind::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => Statement::Call {
+            function_id: function_id.0,
+            function_name: function_name.clone(),
+            arguments: arguments.iter().map(lower_expr).collect(),
+        },
+
+        primer_ir::StatementKind::Return { value } => {
+            Statement::Return(value.as_ref().map(lower_expr))
+        }
 
         primer_ir::StatementKind::If {
             condition,
@@ -145,6 +185,15 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
         } => ExprKind::FieldAccess {
             field_name: field_name.clone(),
             base: Box::new(lower_expr(base)),
+        },
+        primer_ir::ExprKind::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => ExprKind::Call {
+            function_id: function_id.0,
+            function_name: function_name.clone(),
+            arguments: arguments.iter().map(lower_expr).collect(),
         },
     };
 

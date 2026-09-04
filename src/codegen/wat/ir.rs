@@ -9,6 +9,18 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     pub memory_pages: u32,
+    pub functions: Vec<Function>,
+    pub explicit_main: Option<usize>,
+    pub locals: Vec<Local>,
+    pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    pub id: usize,
+    pub name: String,
+    pub parameters: Vec<Local>,
+    pub return_type: Option<Type>,
     pub locals: Vec<Local>,
     pub instructions: Vec<Instruction>,
 }
@@ -79,6 +91,10 @@ pub enum Instruction {
         kind: LoopKind,
         id: usize,
     },
+    Call {
+        function_id: usize,
+    },
+    Return,
 
     I64Add,
     I64Sub,

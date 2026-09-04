@@ -151,3 +151,10 @@ fn product_point_example_runs() {
 
     assert_eq!(output, "0\n2\n");
 }
+
+#[test]
+fn functions_example_runs() {
+    let output = run_vm(include_str!("../examples/functions.prim")).unwrap();
+
+    assert_eq!(output, "42\n");
+}

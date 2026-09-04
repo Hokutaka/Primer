@@ -30,16 +30,68 @@ pub fn emit(module: &Module) -> String {
         output.push_str(";\n\n");
     }
 
+    for function in &module.functions {
+        emit_function_signature(function, module, &mut output);
+        output.push_str(";\n");
+    }
+    if !module.functions.is_empty() {
+        output.push('\n');
+    }
+
+    for function in &module.functions {
+        emit_function_signature(function, module, &mut output);
+        output.push_str(" {\n");
+        for statement in &function.body {
+            emit_statement(statement, 1, module, &mut output);
+        }
+        output.push_str("}\n\n");
+    }
+
     output.push_str("int main(void) {\n");
 
     for statement in &module.statements {
         emit_statement(statement, 1, module, &mut output);
     }
 
+    if let Some(function_id) = module.explicit_main {
+        let function = &module.functions[function_id];
+        output.push_str("    ");
+        output.push_str(&function_name(function.id, &function.name));
+        output.push_str("();\n");
+    }
+
     output.push_str("    return 0;\n");
     output.push_str("}\n");
 
     output
+}
+
+fn emit_function_signature(function: &super::ir::Function, module: &Module, output: &mut String) {
+    output.push_str(
+        &function
+            .return_type
+            .map_or_else(|| "void".into(), |ty| c_type(ty, module)),
+    );
+    output.push(' ');
+    output.push_str(&function_name(function.id, &function.name));
+    output.push('(');
+    if function.parameters.is_empty() {
+        output.push_str("void");
+    } else {
+        for (index, parameter) in function.parameters.iter().enumerate() {
+            if index > 0 {
+                output.push_str(", ");
+            }
+            output.push_str(&c_type(parameter.ty, module));
+            output.push_str(" primer_");
+            output.push_str(&parameter.name);
+        }
+    }
+    output.push(')');
+}
+
+fn function_name(id: usize, name: &str) -> String {
+    format!("primer_fn_{name}_{id}")
 }
 
 fn emit_statement(statement: &Statement, indent: usize, module: &Module, output: &mut String) {
@@ -71,6 +123,26 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
 
         Statement::Print { format, value } => {
             emit_print(*format, value, &prefix, module, output);
+        }
+
+        Statement::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => {
+            output.push_str(&prefix);
+            emit_call(*function_id, function_name, arguments, module, output);
+            output.push_str(";\n");
+        }
+
+        Statement::Return(value) => {
+            output.push_str(&prefix);
+            output.push_str("return");
+            if let Some(value) = value {
+                output.push(' ');
+                emit_expr(value, module, output);
+            }
+            output.push_str(";\n");
         }
 
         Statement::If {
@@ -279,6 +351,12 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             output.push_str(field_name);
         }
 
+        ExprKind::Call {
+            function_id,
+            function_name,
+            arguments,
+        } => emit_call(*function_id, function_name, arguments, module, output),
+
         ExprKind::Unary { op, value } => {
             output.push('(');
 
@@ -325,6 +403,24 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     }
 }
 
+fn emit_call(
+    function_id: usize,
+    name: &str,
+    arguments: &[Expr],
+    module: &Module,
+    output: &mut String,
+) {
+    output.push_str(&function_name(function_id, name));
+    output.push('(');
+    for (index, argument) in arguments.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        emit_expr(argument, module, output);
+    }
+    output.push(')');
+}
+
 fn emit_condition(expr: &Expr, module: &Module, output: &mut String) {
     if matches!(&expr.kind, ExprKind::Unary { .. } | ExprKind::Binary { .. }) {
         emit_expr(expr, module, output);
@@ -342,6 +438,14 @@ fn module_uses_bool(module: &Module) -> bool {
         .flat_map(|definition| &definition.fields)
         .any(|field| field.ty == Type::Bool)
         || module.statements.iter().any(statement_uses_bool)
+        || module.functions.iter().any(|function| {
+            function.return_type == Some(Type::Bool)
+                || function
+                    .parameters
+                    .iter()
+                    .any(|parameter| parameter.ty == Type::Bool)
+                || function.body.iter().any(statement_uses_bool)
+        })
 }
 
 fn statement_uses_bool(statement: &Statement) -> bool {
@@ -351,6 +455,8 @@ fn statement_uses_bool(statement: &Statement) -> bool {
         Statement::Print { format, value } => {
             *format == PrintFormat::Bool || value.ty == Type::Bool
         }
+        Statement::Call { arguments, .. } => arguments.iter().any(|value| value.ty == Type::Bool),
+        Statement::Return(value) => value.as_ref().is_some_and(|value| value.ty == Type::Bool),
         Statement::If {
             condition,
             then_body,

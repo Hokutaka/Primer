@@ -1,6 +1,6 @@
 pub mod render;
 
-use crate::bytecode::{BytecodeProgram, InstructionKind, Type};
+use crate::bytecode::{BytecodeProgram, InstructionKind, ReturnType, Type};
 
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +16,15 @@ pub enum VmErrorKind {
 
     /// product typeに存在しないfieldを使おうとしました。
     InvalidField { type_id: usize, field_id: usize },
+
+    /// 存在しない関数を呼び出そうとしました。
+    InvalidFunction { function_id: usize },
+
+    /// 関数へ渡された引数の数が定義と一致しませんでした。
+    InvalidArgumentCount { expected: usize, actual: usize },
+
+    /// 関数の定義と一致しない方法で値を返そうとしました。
+    InvalidReturn,
 
     /// 初期化前のスロットを読み取りました。
     UninitializedSlot { slot: usize },
@@ -53,6 +62,7 @@ pub enum VmErrorKind {
 pub struct VmError {
     kind: VmErrorKind,
     instruction_index: usize,
+    function_id: Option<usize>,
 }
 
 impl VmError {
@@ -60,7 +70,15 @@ impl VmError {
         Self {
             kind,
             instruction_index,
+            function_id: None,
         }
+    }
+
+    const fn in_function(mut self, function_id: usize) -> Self {
+        if self.function_id.is_none() {
+            self.function_id = Some(function_id);
+        }
+        self
     }
 
     /// エラーの種類を返します。
@@ -71,6 +89,11 @@ impl VmError {
     /// `emit-bytecode`の表示と対応する0から始まる命令番号を返します。
     pub const fn instruction_index(self) -> usize {
         self.instruction_index
+    }
+
+    /// エラーが関数内で起きた場合、その関数番号を返します。
+    pub const fn function_id(self) -> Option<usize> {
+        self.function_id
     }
 }
 
@@ -101,19 +124,91 @@ fn at_instruction<T>(result: VmResult<T>, instruction_index: usize) -> Result<T,
     result.map_err(|kind| VmError::new(kind, instruction_index))
 }
 
+#[derive(Clone, Copy)]
+enum Frame {
+    Entry,
+    Function(usize),
+}
+
 pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
-    let mut stack: Vec<Value> = Vec::new();
-
-    let mut slots: Vec<Option<Value>> = vec![None; program.slots.len()];
-    let mut initializers: Vec<Option<usize>> = vec![None; program.slots.len()];
-
     let mut output = String::new();
+    execute_frame(program, Frame::Entry, Vec::new(), &mut output)?;
+    Ok(output)
+}
+
+fn execute_frame(
+    program: &BytecodeProgram,
+    frame: Frame,
+    arguments: Vec<Value>,
+    output: &mut String,
+) -> Result<Option<Value>, VmError> {
+    let result = execute_frame_inner(program, frame, arguments, output);
+    match (frame, result) {
+        (Frame::Function(function_id), Err(error)) => Err(error.in_function(function_id)),
+        (_, result) => result,
+    }
+}
+
+fn execute_frame_inner(
+    program: &BytecodeProgram,
+    frame: Frame,
+    arguments: Vec<Value>,
+    output: &mut String,
+) -> Result<Option<Value>, VmError> {
+    let (instructions, slot_info, parameter_count, return_type) = match frame {
+        Frame::Entry => (
+            program.instructions.as_slice(),
+            program.slots.as_slice(),
+            0,
+            ReturnType::Void,
+        ),
+        Frame::Function(function_id) => {
+            let function = program
+                .functions
+                .get(function_id)
+                .ok_or_else(|| VmError::new(VmErrorKind::InvalidFunction { function_id }, 0))?;
+            (
+                function.instructions.as_slice(),
+                function.slots.as_slice(),
+                function.parameter_count,
+                function.return_type,
+            )
+        }
+    };
+
+    if arguments.len() != parameter_count {
+        return Err(VmError::new(
+            VmErrorKind::InvalidArgumentCount {
+                expected: parameter_count,
+                actual: arguments.len(),
+            },
+            0,
+        ));
+    }
+
+    let mut stack: Vec<Value> = Vec::new();
+    let mut slots: Vec<Option<Value>> = vec![None; slot_info.len()];
+    let mut initializers: Vec<Option<usize>> = vec![None; slot_info.len()];
+
+    for (index, argument) in arguments.into_iter().enumerate() {
+        let expected = slot_info[index].ty;
+        if argument.ty() != expected {
+            return Err(VmError::new(
+                VmErrorKind::TypeMismatch {
+                    expected,
+                    actual: argument.ty(),
+                },
+                0,
+            ));
+        }
+        slots[index] = Some(argument);
+        initializers[index] = Some(usize::MAX);
+    }
 
     let mut pc = 0;
 
     loop {
-        let instruction = program
-            .instructions
+        let instruction = instructions
             .get(pc)
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
@@ -149,8 +244,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
             InstructionKind::Store(slot) => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
 
-                let expected = program
-                    .slots
+                let expected = slot_info
                     .get(*slot)
                     .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?
                     .ty;
@@ -187,19 +281,18 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
             InstructionKind::Assign(slot) => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
 
-                let slot_info = program
-                    .slots
+                let slot_definition = slot_info
                     .get(*slot)
                     .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
 
-                if !slot_info.mutable {
+                if !slot_definition.mutable {
                     return Err(VmError::new(
                         VmErrorKind::AssignmentToImmutableSlot { slot: *slot },
                         pc,
                     ));
                 }
 
-                let expected = slot_info.ty;
+                let expected = slot_definition.ty;
 
                 if value.ty() != expected {
                     return Err(VmError::new(
@@ -316,6 +409,73 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
                 stack.push(field);
             }
 
+            InstructionKind::Call {
+                function_id,
+                argument_count,
+            } => {
+                let function = program.functions.get(*function_id).ok_or_else(|| {
+                    VmError::new(
+                        VmErrorKind::InvalidFunction {
+                            function_id: *function_id,
+                        },
+                        pc,
+                    )
+                })?;
+                if *argument_count != function.parameter_count {
+                    return Err(VmError::new(
+                        VmErrorKind::InvalidArgumentCount {
+                            expected: function.parameter_count,
+                            actual: *argument_count,
+                        },
+                        pc,
+                    ));
+                }
+
+                let mut arguments = Vec::with_capacity(*argument_count);
+                for _ in 0..*argument_count {
+                    arguments.push(at_instruction(pop_value(&mut stack), pc)?);
+                }
+                arguments.reverse();
+
+                if let Some(value) =
+                    execute_frame(program, Frame::Function(*function_id), arguments, output)?
+                {
+                    stack.push(value);
+                }
+            }
+
+            InstructionKind::Return { has_value } => {
+                if matches!(frame, Frame::Entry) {
+                    return Err(VmError::new(VmErrorKind::InvalidReturn, pc));
+                }
+
+                let value = match (return_type, *has_value) {
+                    (ReturnType::Void, false) => None,
+                    (ReturnType::Value(expected), true) => {
+                        let value = at_instruction(pop_value(&mut stack), pc)?;
+                        if value.ty() != expected {
+                            return Err(VmError::new(
+                                VmErrorKind::TypeMismatch {
+                                    expected,
+                                    actual: value.ty(),
+                                },
+                                pc,
+                            ));
+                        }
+                        Some(value)
+                    }
+                    _ => return Err(VmError::new(VmErrorKind::InvalidReturn, pc)),
+                };
+
+                if !stack.is_empty() {
+                    return Err(VmError::new(
+                        VmErrorKind::UnusedStackValues { count: stack.len() },
+                        pc,
+                    ));
+                }
+                return Ok(value);
+            }
+
             InstructionKind::Add(ty) => {
                 at_instruction(binary(*ty, &mut stack, BinaryOperation::Add), pc)?;
             }
@@ -390,6 +550,9 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
             }
 
             InstructionKind::Halt => {
+                if matches!(frame, Frame::Function(_)) {
+                    return Err(VmError::new(VmErrorKind::InvalidReturn, pc));
+                }
                 break;
             }
         }
@@ -404,7 +567,7 @@ pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
         ));
     }
 
-    Ok(output)
+    Ok(None)
 }
 
 #[derive(Clone, Copy)]
@@ -714,6 +877,7 @@ mod tests {
     fn distinguishes_integer_division_overflow() {
         let program = BytecodeProgram {
             type_definitions: Vec::new(),
+            functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
                 Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
@@ -733,6 +897,7 @@ mod tests {
     fn rejects_bytecode_assignment_to_immutable_slot() {
         let program = BytecodeProgram {
             type_definitions: Vec::new(),
+            functions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
                 ty: Type::I64,
@@ -760,6 +925,7 @@ mod tests {
     fn rejects_distinct_initializers_for_the_same_slot() {
         let program = BytecodeProgram {
             type_definitions: Vec::new(),
+            functions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
                 ty: Type::I64,
@@ -787,6 +953,7 @@ mod tests {
     fn reports_missing_instruction_without_panicking() {
         let program = BytecodeProgram {
             type_definitions: Vec::new(),
+            functions: Vec::new(),
             slots: Vec::new(),
             instructions: Vec::new(),
         };

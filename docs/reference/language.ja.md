@@ -10,6 +10,7 @@
 program     := item* EOF
 
 item        := type_definition
+             | function_definition
              | statement
 
 type_definition :=
@@ -17,9 +18,20 @@ type_definition :=
 
 field_definition := IDENT ":" type_ref ("=" expression)?
 
+function_definition :=
+    "fn" IDENT "(" parameters? ")" "->" return_type block
+
+parameters  := parameter ("," parameter)*
+
+parameter   := IDENT ":" type_ref
+
+return_type := type_ref | "void"
+
 statement   := binding
              | assignment
              | "print" "(" expression ")" ";"
+             | IDENT "(" arguments? ")" ";"
+             | "return" expression? ";"
              | if_statement
              | while_statement
              | for_statement
@@ -30,11 +42,15 @@ if_statement := "if" expression block ("else" block)?
 
 while_statement := "while" expression block
 
-for_statement := "for" binding expression ";" assignment_clause block
+for_statement :=
+    "for" "(" (binding_clause | assignment_clause) ";"
+    expression ";" assignment_clause ")" block
 
 block       := "{" statement* "}"
 
 binding     := "mut"? IDENT ":" type_spec "=" expression ";"
+
+binding_clause := "mut"? IDENT ":" type_spec "=" expression
 
 assignment  := assignment_clause ";"
 
@@ -69,8 +85,11 @@ primary     := "true"
              | INTEGER
              | FLOAT
              | IDENT
+             | IDENT "(" arguments? ")"
              | IDENT "{" field_value ("," field_value)* ","? "}"
              | "(" expression ")"
+
+arguments   := expression ("," expression)*
 
 field_value := IDENT ":" expression
 ```
@@ -131,6 +150,38 @@ if (Flags { enabled: true, }).enabled {
 空のproduct type、空の構築式、無限サイズになる値による再帰型、積値どうしの比較、積値そのものの`print`は現在サポートしません。
 
 詳細な設計と各backendの表現は[名前付きproduct typeの設計](../design/product-types.ja.md)で説明します。
+
+## 関数とentry point
+
+`fn`は、名前を付けた処理を定義します。parameterと戻り値の型は必ず書きます。
+
+```primer
+fn add(left: i64, right: i64) -> i64 {
+    return left + right;
+}
+
+answer: i64 = add(20, 22);
+```
+
+値を返す関数では`return expression;`を明示します。blockの最後に式を書いても、暗黙の戻り値にはなりません。どの経路でも値を返すと確認できない場合はエラーになります。
+
+値を返さない関数は`-> void`と書きます。blockの最後まで進むか、`return;`で途中終了できます。値を返す関数の呼び出し結果は式として使い、`void`関数は文として呼び出します。
+
+```primer
+fn show(value: i64) -> void {
+    print(value);
+}
+
+show(answer);
+```
+
+関数名はファイル全体で解決するため、定義より前から呼び出せます。parameterと関数内の束縛は、その関数の外から見えません。関数からトップレベルの実行時束縛を読むこともできません。
+
+トップレベルに実行文がある場合、compilerがentry pointを生成します。代わりに`fn main() -> void`を明示できますが、明示的な`main`とトップレベル実行文は同時に書けません。`main`はparameterを受け取れません。
+
+現在の関数シグネチャは`bool`、`i64`、`f32`、`f64`に限り、parameterは最大4個です。名前付きproduct typeの受け渡し、再帰、command-line argumentはまだサポートしません。未対応の書き方は黙って別の意味にせず、診断します。
+
+Primer IRとbytecodeでは、関数ID、parameterの束縛ID、呼び出し、戻り値を観測できます。各backendの成果物では、これらが関数シンボル、引数、ローカル領域、ABI上のレジスタやメモリへ変わった結果を観測できます。詳細は[関数の設計](../design/functions.ja.md)を参照してください。
 
 ## 可変な束縛と再代入
 

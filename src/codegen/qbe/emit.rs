@@ -1,6 +1,8 @@
 use std::fmt::Write;
 
-use super::ir::{BinaryOp, CompareOp, Instruction, Module, Operand, PrintFormat, Temp, Type};
+use super::ir::{
+    BinaryOp, CompareOp, Function, Instruction, Module, Operand, PrintFormat, Slot, Temp, Type,
+};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -21,6 +23,11 @@ pub fn emit(module: &Module) -> String {
 
     output.push('\n');
 
+    for function in &module.functions {
+        emit_function(function, module, &mut output);
+        output.push('\n');
+    }
+
     output.push_str("export function w $main() {\n");
     output.push_str("@start\n");
 
@@ -29,7 +36,16 @@ pub fn emit(module: &Module) -> String {
     }
 
     for instruction in &module.instructions {
-        emit_instruction(instruction, module, &mut output);
+        emit_instruction(instruction, &module.slots, module, &mut output);
+    }
+
+    if let Some(function_id) = module.explicit_main {
+        writeln!(
+            output,
+            "  call ${}()",
+            function_name(&module.functions[function_id])
+        )
+        .unwrap();
     }
 
     output.push_str("  ret 0\n");
@@ -38,7 +54,48 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut String) {
+fn emit_function(function: &Function, module: &Module, output: &mut String) {
+    output.push_str("function ");
+    if let Some(return_type) = function.return_type {
+        write!(output, "{} ", type_name(return_type)).unwrap();
+    }
+    write!(output, "${}(", function_name(function)).unwrap();
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        if index > 0 {
+            output.push_str(", ");
+        }
+        write!(output, "{} %arg{index}", type_name(parameter.ty)).unwrap();
+    }
+    output.push_str(") {\n@start\n");
+
+    for slot in &function.slots {
+        writeln!(output, "  %slot_{} =l alloc8 {}", slot.name, slot.size).unwrap();
+    }
+    for (index, parameter) in function.parameters.iter().enumerate() {
+        writeln!(
+            output,
+            "  {} %arg{index}, %slot_{}",
+            store_name(parameter.ty),
+            function.slots[parameter.slot].name
+        )
+        .unwrap();
+    }
+    for instruction in &function.instructions {
+        emit_instruction(instruction, &function.slots, module, output);
+    }
+    output.push_str("}\n");
+}
+
+fn function_name(function: &Function) -> String {
+    format!("primer_fn_{}_{}", function.name, function.id)
+}
+
+fn emit_instruction(
+    instruction: &Instruction,
+    slots: &[Slot],
+    module: &Module,
+    output: &mut String,
+) {
     match instruction {
         Instruction::Label { id, name } => {
             writeln!(output, "@block{id} # {name}").unwrap();
@@ -52,7 +109,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             writeln!(
                 output,
                 "  jnz {}, @block{then_label}, @block{else_label}",
-                operand(condition, module)
+                operand(condition, slots)
             )
             .unwrap();
         }
@@ -66,8 +123,8 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} {}, {}",
                 store_name(*ty),
-                operand(value, module),
-                operand(address, module),
+                operand(value, slots),
+                operand(address, slots),
             )
             .unwrap();
         }
@@ -79,7 +136,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 temp(*dest),
                 type_name(*ty),
                 load_name(*ty),
-                operand(address, module),
+                operand(address, slots),
             )
             .unwrap();
         }
@@ -89,7 +146,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} =l add {}, {}",
                 temp(*dest),
-                operand(base, module),
+                operand(base, slots),
                 offset
             )
             .unwrap();
@@ -103,11 +160,43 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
             writeln!(
                 output,
                 "  blit {}, {}, {size}",
-                operand(source, module),
-                operand(destination, module)
+                operand(source, slots),
+                operand(destination, slots)
             )
             .unwrap();
         }
+
+        Instruction::Call {
+            dest,
+            function_id,
+            return_type,
+            arguments,
+        } => {
+            output.push_str("  ");
+            if let (Some(dest), Some(return_type)) = (dest, return_type) {
+                write!(output, "{} ={} ", temp(*dest), type_name(*return_type)).unwrap();
+            }
+            write!(
+                output,
+                "call ${}(",
+                function_name(&module.functions[*function_id])
+            )
+            .unwrap();
+            for (index, (ty, argument)) in arguments.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                write!(output, "{} {}", type_name(*ty), operand(argument, slots)).unwrap();
+            }
+            output.push_str(")\n");
+        }
+
+        Instruction::Return { value } => match value {
+            Some((_, value)) => {
+                writeln!(output, "  ret {}", operand(value, slots)).unwrap();
+            }
+            None => output.push_str("  ret\n"),
+        },
 
         Instruction::Negate { dest, ty, value } => {
             writeln!(
@@ -115,7 +204,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} ={} neg {}",
                 temp(*dest),
                 type_name(*ty),
-                operand(value, module),
+                operand(value, slots),
             )
             .unwrap();
         }
@@ -125,7 +214,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} =w ceqw {}, 0",
                 temp(*dest),
-                operand(value, module)
+                operand(value, slots)
             )
             .unwrap();
         }
@@ -143,8 +232,8 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 temp(*dest),
                 type_name(*ty),
                 binary_name(*op),
-                operand(left, module),
-                operand(right, module),
+                operand(left, slots),
+                operand(right, slots),
             )
             .unwrap();
         }
@@ -161,8 +250,8 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 "  {} =w {} {}, {}",
                 temp(*dest),
                 compare_name(*op, *operand_ty),
-                operand(left, module),
-                operand(right, module),
+                operand(left, slots),
+                operand(right, slots),
             )
             .unwrap();
         }
@@ -172,7 +261,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} =d exts {}",
                 temp(*dest),
-                operand(value, module)
+                operand(value, slots)
             )
             .unwrap();
         }
@@ -189,7 +278,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 temp(*dest),
                 format_name(*format),
                 type_name(*arg_ty),
-                operand(value, module),
+                operand(value, slots),
             )
             .unwrap();
         }
@@ -206,7 +295,7 @@ fn emit_instruction(instruction: &Instruction, module: &Module, output: &mut Str
                 output,
                 "  {} =l extsw {}",
                 temp(*offset),
-                operand(value, module)
+                operand(value, slots)
             )
             .unwrap();
             writeln!(
@@ -314,14 +403,14 @@ fn format_name(format: PrintFormat) -> &'static str {
     }
 }
 
-fn operand(value: &Operand, module: &Module) -> String {
+fn operand(value: &Operand, slots: &[Slot]) -> String {
     match value {
         Operand::Boolean(value) => i32::from(*value).to_string(),
         Operand::Integer(value) => value.to_string(),
         Operand::Float32(text) => format!("s_{text}"),
         Operand::Float64(text) => format!("d_{text}"),
         Operand::Temp(temp) => self::temp(*temp),
-        Operand::Slot(slot) => format!("%slot_{}", module.slots[*slot].name),
+        Operand::Slot(slot) => format!("%slot_{}", slots[*slot].name),
     }
 }
 
@@ -333,5 +422,11 @@ fn uses_bool_print(module: &Module) -> bool {
     module
         .instructions
         .iter()
+        .chain(
+            module
+                .functions
+                .iter()
+                .flat_map(|function| function.instructions.iter()),
+        )
         .any(|instruction| matches!(instruction, Instruction::CallPrintBool { .. }))
 }

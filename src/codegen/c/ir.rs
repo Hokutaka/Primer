@@ -10,7 +10,24 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
     pub type_definitions: Vec<TypeDefinition>,
+    pub functions: Vec<Function>,
+    pub explicit_main: Option<usize>,
     pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    pub id: usize,
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<Type>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Parameter {
+    pub name: String,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +58,12 @@ pub enum Statement {
         format: PrintFormat,
         value: Expr,
     },
+    Call {
+        function_id: usize,
+        function_name: String,
+        arguments: Vec<Expr>,
+    },
+    Return(Option<Expr>),
     If {
         condition: Expr,
         then_body: Vec<Statement>,
@@ -90,6 +113,11 @@ pub enum ExprKind {
     FieldAccess {
         field_name: String,
         base: Box<Expr>,
+    },
+    Call {
+        function_id: usize,
+        function_name: String,
+        arguments: Vec<Expr>,
     },
     Unary {
         op: UnaryOp,

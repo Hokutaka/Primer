@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use super::ir::{Instruction, LoopKind, Module, Type};
+use super::ir::{Function, Instruction, LoopKind, Module, Type};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -8,7 +8,7 @@ pub fn emit(module: &Module) -> String {
     writeln!(output, "(module").unwrap();
 
     // print() is provided by the host.
-    if module.instructions.iter().any(instruction_uses_bool_print) {
+    if module_uses_bool_print(module) {
         writeln!(
             output,
             "  (import \"primer\" \"print_bool\" (func $print_bool (param i32)))"
@@ -41,6 +41,11 @@ pub fn emit(module: &Module) -> String {
         writeln!(output).unwrap();
     }
 
+    for function in &module.functions {
+        emit_function(function, module, &mut output);
+        writeln!(output).unwrap();
+    }
+
     writeln!(output, "  (func $main").unwrap();
 
     for local in &module.locals {
@@ -58,7 +63,16 @@ pub fn emit(module: &Module) -> String {
     }
 
     for instruction in &module.instructions {
-        emit_instruction(instruction, 2, &mut output);
+        emit_instruction(instruction, 2, module, &mut output);
+    }
+
+    if let Some(function_id) = module.explicit_main {
+        writeln!(
+            output,
+            "    call ${}",
+            function_name(&module.functions[function_id])
+        )
+        .unwrap();
     }
 
     writeln!(output, "  )").unwrap();
@@ -70,7 +84,50 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut String) {
+fn emit_function(function: &Function, module: &Module, output: &mut String) {
+    write!(output, "  (func ${}", function_name(function)).unwrap();
+    for parameter in &function.parameters {
+        write!(
+            output,
+            " (param $primer_{} {})",
+            parameter.name,
+            wat_type(parameter.ty)
+        )
+        .unwrap();
+    }
+    if let Some(return_type) = function.return_type {
+        write!(output, " (result {})", wat_type(return_type)).unwrap();
+    }
+    writeln!(output).unwrap();
+
+    for local in &function.locals {
+        writeln!(
+            output,
+            "    (local $primer_{} {})",
+            local.name,
+            wat_type(local.ty)
+        )
+        .unwrap();
+    }
+    if !function.locals.is_empty() {
+        writeln!(output).unwrap();
+    }
+    for instruction in &function.instructions {
+        emit_instruction(instruction, 2, module, output);
+    }
+    write!(output, "  )").unwrap();
+}
+
+fn function_name(function: &Function) -> String {
+    format!("primer_fn_{}_{}", function.name, function.id)
+}
+
+fn emit_instruction(
+    instruction: &Instruction,
+    indent: usize,
+    module: &Module,
+    output: &mut String,
+) {
     let prefix = "  ".repeat(indent);
 
     match instruction {
@@ -113,12 +170,12 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
         } => {
             writeln!(output, "{prefix}if").unwrap();
             for instruction in then_instructions {
-                emit_instruction(instruction, indent + 1, output);
+                emit_instruction(instruction, indent + 1, module, output);
             }
             if !else_instructions.is_empty() {
                 writeln!(output, "{prefix}else").unwrap();
                 for instruction in else_instructions {
-                    emit_instruction(instruction, indent + 1, output);
+                    emit_instruction(instruction, indent + 1, module, output);
                 }
             }
             writeln!(output, "{prefix}end").unwrap();
@@ -135,17 +192,17 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
             writeln!(output, "{prefix}block ${name}_end_{id}").unwrap();
             writeln!(output, "{prefix}  loop ${name}_condition_{id}").unwrap();
             for instruction in condition_instructions {
-                emit_instruction(instruction, indent + 2, output);
+                emit_instruction(instruction, indent + 2, module, output);
             }
             writeln!(output, "{prefix}    i32.eqz").unwrap();
             writeln!(output, "{prefix}    br_if ${name}_end_{id}").unwrap();
             writeln!(output, "{prefix}    block ${name}_continue_{id}").unwrap();
             for instruction in body_instructions {
-                emit_instruction(instruction, indent + 3, output);
+                emit_instruction(instruction, indent + 3, module, output);
             }
             writeln!(output, "{prefix}    end").unwrap();
             for instruction in update_instructions {
-                emit_instruction(instruction, indent + 2, output);
+                emit_instruction(instruction, indent + 2, module, output);
             }
             writeln!(output, "{prefix}    br ${name}_condition_{id}").unwrap();
             writeln!(output, "{prefix}  end").unwrap();
@@ -159,6 +216,17 @@ fn emit_instruction(instruction: &Instruction, indent: usize, output: &mut Strin
         Instruction::Continue { kind, id } => {
             writeln!(output, "{prefix}br ${}_continue_{id}", loop_name(*kind)).unwrap();
         }
+
+        Instruction::Call { function_id } => {
+            writeln!(
+                output,
+                "{prefix}call ${}",
+                function_name(&module.functions[*function_id])
+            )
+            .unwrap();
+        }
+
+        Instruction::Return => emit_simple("return", &prefix, output),
 
         Instruction::I64Add => emit_simple("i64.add", &prefix, output),
         Instruction::I64Sub => emit_simple("i64.sub", &prefix, output),
@@ -257,6 +325,16 @@ fn instruction_uses_bool_print(instruction: &Instruction) -> bool {
         }
         _ => false,
     }
+}
+
+fn module_uses_bool_print(module: &Module) -> bool {
+    module.instructions.iter().any(instruction_uses_bool_print)
+        || module.functions.iter().any(|function| {
+            function
+                .instructions
+                .iter()
+                .any(instruction_uses_bool_print)
+        })
 }
 
 fn loop_name(kind: LoopKind) -> &'static str {
