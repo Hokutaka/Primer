@@ -1,4 +1,5 @@
-; Primer IR v0.1
+; Primer IR v0.2
+; #N identifies one statement or expression in this compilation
 
-%x@0: i64 = add.i64(1i64, 2i64)
-print.i64 %x@0:i64
+#0 %x@0: i64 = #1 add.i64(#2 1i64, #3 2i64)
+#4 print.i64 #5 %x@0:i64

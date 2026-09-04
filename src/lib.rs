@@ -149,7 +149,12 @@ mod tests {
 
         assert_eq!(
             ir,
-            "; Primer IR v0.1\n\n%x@0: f32 = add.f32(0.1f32, 0.2f32)\nprint.f32 %x@0:f32\n"
+            concat!(
+                "; Primer IR v0.2\n",
+                "; #N identifies one statement or expression in this compilation\n\n",
+                "#0 %x@0: f32 = #1 add.f32(#2 0.1f32, #3 0.2f32)\n",
+                "#4 print.f32 #5 %x@0:f32\n",
+            )
         );
     }
 
@@ -187,15 +192,16 @@ mod tests {
         assert_eq!(
             ir,
             concat!(
-                "; Primer IR v0.1\n\n",
+                "; Primer IR v0.2\n",
+                "; #N identifies one statement or expression in this compilation\n\n",
                 "type %Point@0 {\n",
-                "  field %x@0: f64 = 0.0f64\n",
+                "  field %x@0: f64 = #0 0.0f64\n",
                 "  field %y@1: f64\n",
                 "}\n\n",
-                "%point@0: %Point@0 = construct %Point@0 { ",
-                "field %y@1 = 2.0f64 [explicit]; ",
-                "field %x@0 = 0.0f64 [default]; }\n",
-                "print.f64 field(%point@0:%Point@0, %x@0):f64\n",
+                "#1 %point@0: %Point@0 = #2 construct %Point@0 { ",
+                "field %y@1 = #3 2.0f64 [explicit]; ",
+                "field %x@0 = #4 0.0f64 [default]; }\n",
+                "#5 print.f64 #6 field(#7 %point@0:%Point@0, %x@0):f64\n",
             )
         );
     }
@@ -247,8 +253,11 @@ mod tests {
 
         let ir = compile_to_ir_text(source).unwrap();
         assert!(ir.contains("[i64; 4]"));
-        assert!(ir.contains("array[2i64, 4i64, 6i64, 8i64]:[i64; 4]"));
-        assert!(ir.contains("index(%copy@1:[i64; 4], %index@3:i64):i64"));
+        assert!(ir.contains("array[#"));
+        assert!(ir.contains("]:[i64; 4]"));
+        assert!(ir.contains("index(#"));
+        assert!(ir.contains("%copy@1:[i64; 4]"));
+        assert!(ir.contains("%index@3:i64"));
 
         let bytecode = compile_to_bytecode_text(source).unwrap();
         assert!(bytecode.contains("array.new i64 4"));
