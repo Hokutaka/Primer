@@ -1,6 +1,6 @@
 pub mod render;
 
-use crate::bytecode::{BytecodeProgram, InstructionKind, ReturnType, Type};
+use crate::bytecode::{ArrayAccess, BytecodeProgram, InstructionKind, ReturnType, Type};
 
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,6 +325,69 @@ fn execute_frame_inner(
                 }
 
                 *destination = Some(value);
+            }
+
+            InstructionKind::ArrayAssign { slot, path } => {
+                let replacement = at_instruction(pop_value(&mut stack), pc)?;
+                let mut indices = Vec::with_capacity(path.len());
+                for _ in 0..path.len() {
+                    indices.push(at_instruction(pop_i64(&mut stack), pc)?);
+                }
+                indices.reverse();
+
+                let slot_definition = slot_info
+                    .get(*slot)
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
+                if !slot_definition.mutable {
+                    return Err(VmError::new(
+                        VmErrorKind::AssignmentToImmutableSlot { slot: *slot },
+                        pc,
+                    ));
+                }
+
+                let destination = slots
+                    .get_mut(*slot)
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
+                let Some(current) = destination else {
+                    return Err(VmError::new(
+                        VmErrorKind::AssignmentToUninitializedSlot { slot: *slot },
+                        pc,
+                    ));
+                };
+
+                let mut updated = current.clone();
+                at_instruction(
+                    assign_array_path(&mut updated, path, &indices, replacement),
+                    pc,
+                )?;
+                *current = updated;
+            }
+
+            InstructionKind::ArrayCheck { slot, path } => {
+                let slot_definition = slot_info
+                    .get(*slot)
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?;
+                if !slot_definition.mutable {
+                    return Err(VmError::new(
+                        VmErrorKind::AssignmentToImmutableSlot { slot: *slot },
+                        pc,
+                    ));
+                }
+                let current = slots
+                    .get(*slot)
+                    .ok_or_else(|| VmError::new(VmErrorKind::InvalidSlot { slot: *slot }, pc))?
+                    .as_ref()
+                    .ok_or_else(|| {
+                        VmError::new(
+                            VmErrorKind::AssignmentToUninitializedSlot { slot: *slot },
+                            pc,
+                        )
+                    })?;
+                if stack.len() < path.len() {
+                    return Err(VmError::new(VmErrorKind::StackUnderflow, pc));
+                }
+                let indices = &stack[stack.len() - path.len()..];
+                at_instruction(check_array_path(current, path, indices), pc)?;
             }
 
             InstructionKind::Construct { type_id, fields } => {
@@ -852,6 +915,92 @@ fn pop_i64(stack: &mut Vec<Value>) -> VmResult<i64> {
             actual: other.ty(),
         }),
     }
+}
+
+fn assign_array_path(
+    current: &mut Value,
+    path: &[ArrayAccess],
+    indices: &[i64],
+    replacement: Value,
+) -> VmResult<()> {
+    let Some((access, remaining_path)) = path.split_first() else {
+        return Err(VmErrorKind::TypeMismatch {
+            expected: current.ty(),
+            actual: replacement.ty(),
+        });
+    };
+    let Some((&index, remaining_indices)) = indices.split_first() else {
+        return Err(VmErrorKind::StackUnderflow);
+    };
+
+    let expected = Type::Array {
+        element: Box::new(access.element.clone()),
+        length: access.length,
+    };
+    let actual = current.ty();
+    let Value::Array { element, values } = current else {
+        return Err(VmErrorKind::TypeMismatch { expected, actual });
+    };
+    if *element != access.element || values.len() != access.length {
+        return Err(VmErrorKind::TypeMismatch { expected, actual });
+    }
+
+    let index = usize::try_from(index)
+        .ok()
+        .filter(|index| *index < values.len())
+        .ok_or(VmErrorKind::ArrayIndexOutOfBounds {
+            index,
+            length: access.length,
+        })?;
+
+    if remaining_path.is_empty() {
+        if replacement.ty() != access.element {
+            return Err(VmErrorKind::TypeMismatch {
+                expected: access.element.clone(),
+                actual: replacement.ty(),
+            });
+        }
+        values[index] = replacement;
+        Ok(())
+    } else {
+        assign_array_path(
+            &mut values[index],
+            remaining_path,
+            remaining_indices,
+            replacement,
+        )
+    }
+}
+
+fn check_array_path(current: &Value, path: &[ArrayAccess], indices: &[Value]) -> VmResult<()> {
+    let mut current = current;
+    for (access, index) in path.iter().zip(indices) {
+        let Value::I64(index) = index else {
+            return Err(VmErrorKind::TypeMismatch {
+                expected: Type::I64,
+                actual: index.ty(),
+            });
+        };
+        let expected = Type::Array {
+            element: Box::new(access.element.clone()),
+            length: access.length,
+        };
+        let actual = current.ty();
+        let Value::Array { element, values } = current else {
+            return Err(VmErrorKind::TypeMismatch { expected, actual });
+        };
+        if *element != access.element || values.len() != access.length {
+            return Err(VmErrorKind::TypeMismatch { expected, actual });
+        }
+        current = usize::try_from(*index)
+            .ok()
+            .and_then(|index| values.get(index))
+            .ok_or(VmErrorKind::ArrayIndexOutOfBounds {
+                index: *index,
+                length: access.length,
+            })?;
+    }
+    Ok(())
 }
 
 fn pop_bool(stack: &mut Vec<Value>) -> VmResult<bool> {

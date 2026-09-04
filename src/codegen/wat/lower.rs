@@ -293,55 +293,34 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) {
         match &statement.kind {
-            primer_ir::StatementKind::Binding { id, value, .. }
-            | primer_ir::StatementKind::Assignment { id, value, .. } => {
-                let destination = self.locations[id].clone();
-                match destination {
-                    Location::Scalar(name) => {
-                        let Value::Scalar(_) = self.lower_expr(value, instructions) else {
-                            unreachable!("semantic analysis keeps assignment types equal")
-                        };
-                        instructions.push(Instruction::LocalSet(name));
-                    }
-                    Location::Aggregate { type_id, address } => {
-                        let Value::Aggregate {
-                            type_id: source_type,
-                            address: source,
-                        } = self.lower_expr(value, instructions)
-                        else {
-                            unreachable!("semantic analysis keeps assignment types equal")
-                        };
-                        debug_assert_eq!(type_id, source_type);
-                        self.copy_aggregate(
-                            type_id,
-                            source,
-                            Address::Static(address),
-                            instructions,
-                        );
-                    }
-                    Location::Array {
-                        element,
-                        length,
-                        address,
-                    } => {
-                        let Value::Array {
-                            element: source_element,
-                            length: source_length,
-                            address: source,
-                        } = self.lower_expr(value, instructions)
-                        else {
-                            unreachable!("semantic analysis keeps assignment types equal")
-                        };
-                        debug_assert_eq!(element, source_element);
-                        debug_assert_eq!(length, source_length);
-                        self.copy_array(
-                            &element,
+            primer_ir::StatementKind::Binding { id, value, .. } => {
+                self.assign_location(self.locations[id].clone(), value, instructions);
+            }
+
+            primer_ir::StatementKind::Assignment { target, value } => {
+                if target.projections.is_empty() {
+                    self.assign_location(self.locations[&target.id].clone(), value, instructions);
+                } else {
+                    let Location::Array { address, .. } = self.locations[&target.id].clone() else {
+                        unreachable!("indexed assignment requires an array root")
+                    };
+                    let mut destination = Address::Static(address);
+                    for projection in &target.projections {
+                        let primer_ir::AssignmentProjection::Index {
+                            index,
+                            element,
                             length,
-                            source,
-                            Address::Static(address),
+                            ..
+                        } = projection;
+                        destination = self.lower_checked_array_address(
+                            destination,
+                            &array_element_type(element),
+                            *length,
+                            index,
                             instructions,
                         );
                     }
+                    self.assign_address(&target.ty, destination, value, instructions);
                 }
             }
 
@@ -479,6 +458,143 @@ impl LoweringContext<'_> {
                 instructions.push(Instruction::Return);
             }
         }
+    }
+
+    fn assign_location(
+        &mut self,
+        destination: Location,
+        value: &primer_ir::Expr,
+        instructions: &mut Vec<Instruction>,
+    ) {
+        match destination {
+            Location::Scalar(name) => {
+                let Value::Scalar(_) = self.lower_expr(value, instructions) else {
+                    unreachable!("semantic analysis keeps assignment types equal")
+                };
+                instructions.push(Instruction::LocalSet(name));
+            }
+            Location::Aggregate { type_id, address } => {
+                self.assign_address(
+                    &primer_ir::Type::Named(primer_ir::TypeId(type_id)),
+                    Address::Static(address),
+                    value,
+                    instructions,
+                );
+            }
+            Location::Array {
+                element,
+                length,
+                address,
+            } => {
+                let Value::Array {
+                    element: source_element,
+                    length: source_length,
+                    address: source,
+                } = self.lower_expr(value, instructions)
+                else {
+                    unreachable!("semantic analysis keeps assignment types equal")
+                };
+                debug_assert_eq!(element, source_element);
+                debug_assert_eq!(length, source_length);
+                self.copy_array(
+                    &element,
+                    length,
+                    source,
+                    Address::Static(address),
+                    instructions,
+                );
+            }
+        }
+    }
+
+    fn assign_address(
+        &mut self,
+        ty: &primer_ir::Type,
+        destination: Address,
+        value: &primer_ir::Expr,
+        instructions: &mut Vec<Instruction>,
+    ) {
+        match ty {
+            primer_ir::Type::Bool
+            | primer_ir::Type::I64
+            | primer_ir::Type::F32
+            | primer_ir::Type::F64 => {
+                self.emit_address(destination, instructions);
+                let Value::Scalar(actual) = self.lower_expr(value, instructions) else {
+                    unreachable!("semantic analysis keeps assignment types equal")
+                };
+                instructions.push(store_instruction(actual, 0));
+            }
+            primer_ir::Type::Named(type_id) => {
+                let Value::Aggregate {
+                    type_id: source_type,
+                    address: source,
+                } = self.lower_expr(value, instructions)
+                else {
+                    unreachable!("semantic analysis keeps assignment types equal")
+                };
+                debug_assert_eq!(type_id.0, source_type);
+                self.copy_aggregate(type_id.0, source, destination, instructions);
+            }
+            primer_ir::Type::Array { element, length } => {
+                let Value::Array {
+                    element: source_element,
+                    length: source_length,
+                    address: source,
+                } = self.lower_expr(value, instructions)
+                else {
+                    unreachable!("semantic analysis keeps assignment types equal")
+                };
+                let element = array_element_type(element);
+                debug_assert_eq!(element, source_element);
+                debug_assert_eq!(*length, source_length);
+                self.copy_array(&element, *length, source, destination, instructions);
+            }
+        }
+    }
+
+    fn lower_checked_array_address(
+        &mut self,
+        base: Address,
+        element: &ArrayElement,
+        length: usize,
+        index: &primer_ir::Expr,
+        instructions: &mut Vec<Instruction>,
+    ) -> Address {
+        let index_address = self.allocate(8);
+        instructions.push(Instruction::I32Const(index_address as i32));
+        let Value::Scalar(Type::I64) = self.lower_expr(index, instructions) else {
+            unreachable!("array index must be i64")
+        };
+        instructions.push(Instruction::I64Store { offset: 0 });
+
+        instructions.push(Instruction::I32Const(index_address as i32));
+        instructions.push(Instruction::I64Load { offset: 0 });
+        instructions.push(Instruction::I64Const(0));
+        instructions.push(Instruction::I64LtS);
+        instructions.push(Instruction::If {
+            then_instructions: vec![Instruction::Unreachable],
+            else_instructions: Vec::new(),
+        });
+        instructions.push(Instruction::I32Const(index_address as i32));
+        instructions.push(Instruction::I64Load { offset: 0 });
+        instructions.push(Instruction::I64Const(length as i64));
+        instructions.push(Instruction::I64GeS);
+        instructions.push(Instruction::If {
+            then_instructions: vec![Instruction::Unreachable],
+            else_instructions: Vec::new(),
+        });
+
+        let result_address = self.allocate(4);
+        instructions.push(Instruction::I32Const(result_address as i32));
+        self.emit_indexed_address(
+            base,
+            index_address,
+            array_element_size(self.program, element),
+            instructions,
+        );
+        instructions.push(Instruction::I32Store { offset: 0 });
+        Address::Indirect(result_address)
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, instructions: &mut Vec<Instruction>) -> Value {

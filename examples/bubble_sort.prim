@@ -1,0 +1,15 @@
+mut values: [i64; 6] = [5, 1, 4, 2, 8, 3];
+
+for (mut end: i64 = 6; end > 1; end = end - 1) {
+    for (mut index: i64 = 0; index < end - 1; index = index + 1) {
+        if values[index] > values[index + 1] {
+            temporary: i64 = values[index];
+            values[index] = values[index + 1];
+            values[index + 1] = temporary;
+        }
+    }
+}
+
+for (mut index: i64 = 0; index < 6; index = index + 1) {
+    print(values[index]);
+}

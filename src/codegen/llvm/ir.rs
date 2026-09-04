@@ -141,6 +141,14 @@ pub enum Instruction {
         array: Operand,
         index: Operand,
     },
+    ArraySet {
+        dest: Temp,
+        element: Type,
+        length: usize,
+        array: Operand,
+        index: Operand,
+        value: Operand,
+    },
     Call {
         dest: Option<Temp>,
         function_id: usize,

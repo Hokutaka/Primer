@@ -102,6 +102,14 @@ pub enum InstructionKind {
     Load(usize),
     Store(usize),
     Assign(usize),
+    ArrayAssign {
+        slot: usize,
+        path: Vec<ArrayAccess>,
+    },
+    ArrayCheck {
+        slot: usize,
+        path: Vec<ArrayAccess>,
+    },
     Construct {
         type_id: usize,
         fields: Vec<ConstructField>,
@@ -147,6 +155,12 @@ pub enum InstructionKind {
     Jump(usize),
 
     Halt,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayAccess {
+    pub element: Type,
+    pub length: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -362,16 +376,40 @@ impl Compiler {
                 false
             }
 
-            StatementKind::Assignment { id, value, .. } => {
-                self.emit_expr(value);
-
+            StatementKind::Assignment { target, value } => {
                 let slot = self
                     .slot_map
-                    .get(id)
+                    .get(&target.id)
                     .copied()
                     .expect("assignment target must have a bytecode slot");
 
-                self.emit_source(InstructionKind::Assign(slot), statement.span);
+                if target.projections.is_empty() {
+                    self.emit_expr(value);
+                    self.emit_source(InstructionKind::Assign(slot), statement.span);
+                } else {
+                    for (projection_index, projection) in target.projections.iter().enumerate() {
+                        let ir::AssignmentProjection::Index { index, span, .. } = projection;
+                        self.emit_expr(index);
+                        self.emit_source(
+                            InstructionKind::ArrayCheck {
+                                slot,
+                                path: target.projections[..=projection_index]
+                                    .iter()
+                                    .map(array_access)
+                                    .collect(),
+                            },
+                            *span,
+                        );
+                    }
+                    self.emit_expr(value);
+                    self.emit_source(
+                        InstructionKind::ArrayAssign {
+                            slot,
+                            path: target.projections.iter().map(array_access).collect(),
+                        },
+                        statement.span,
+                    );
+                }
                 false
             }
 
@@ -830,6 +868,40 @@ fn format_instruction(
             writeln!(output, "assign {slot}      ; {}", slots[*slot].name).unwrap();
         }
 
+        InstructionKind::ArrayAssign { slot, path } => {
+            write!(output, "array.assign {slot} [").unwrap();
+            for (index, access) in path.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                write!(
+                    output,
+                    "{}; {}",
+                    type_name(&access.element, program),
+                    access.length
+                )
+                .unwrap();
+            }
+            writeln!(output, "] ; {}", slots[*slot].name).unwrap();
+        }
+
+        InstructionKind::ArrayCheck { slot, path } => {
+            write!(output, "array.check {slot} [").unwrap();
+            for (index, access) in path.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                write!(
+                    output,
+                    "{}; {}",
+                    type_name(&access.element, program),
+                    access.length
+                )
+                .unwrap();
+            }
+            writeln!(output, "] ; {}", slots[*slot].name).unwrap();
+        }
+
         InstructionKind::Construct { type_id, fields } => {
             write!(
                 output,
@@ -957,6 +1029,16 @@ fn format_instruction(
         InstructionKind::Halt => {
             writeln!(output, "halt").unwrap();
         }
+    }
+}
+
+fn array_access(projection: &ir::AssignmentProjection) -> ArrayAccess {
+    let ir::AssignmentProjection::Index {
+        element, length, ..
+    } = projection;
+    ArrayAccess {
+        element: element.clone().into(),
+        length: *length,
     }
 }
 

@@ -42,6 +42,7 @@ pub fn emit(module: &Module) -> String {
     }
 
     let array_types = array_types(module);
+    let array_set_types = array_set_types(module);
     if !array_types.is_empty() {
         output.push_str("declare void @llvm.trap()\n");
     }
@@ -51,6 +52,10 @@ pub fn emit(module: &Module) -> String {
     for ty in &array_types {
         emit_array_get(ty, module, &mut output);
         output.push('\n');
+        if array_set_types.contains(ty) {
+            emit_array_set(ty, module, &mut output);
+            output.push('\n');
+        }
     }
 
     for function in &module.functions {
@@ -238,6 +243,33 @@ fn emit_instruction(
                 type_name(&array_ty, module),
                 operand(*array),
                 operand(*index),
+            )
+            .unwrap();
+        }
+
+        Instruction::ArraySet {
+            dest,
+            element,
+            length,
+            array,
+            index,
+            value,
+        } => {
+            let array_ty = Type::Array {
+                element: Box::new(element.clone()),
+                length: *length,
+            };
+            writeln!(
+                output,
+                "  {} = call {} @{}({} {}, i64 {}, {} {})",
+                temp(*dest),
+                type_name(&array_ty, module),
+                array_set_name(element, *length, module),
+                type_name(&array_ty, module),
+                operand(*array),
+                operand(*index),
+                type_name(element, module),
+                operand(*value),
             )
             .unwrap();
         }
@@ -523,17 +555,46 @@ fn array_types(module: &Module) -> Vec<Type> {
             .iter()
             .flat_map(|function| function.instructions.iter()),
     ) {
-        if let Instruction::ArrayGet {
+        match instruction {
+            Instruction::ArrayGet {
+                element, length, ..
+            }
+            | Instruction::ArraySet {
+                element, length, ..
+            } => {
+                add(
+                    &Type::Array {
+                        element: Box::new(element.clone()),
+                        length: *length,
+                    },
+                    &mut result,
+                );
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
+fn array_set_types(module: &Module) -> Vec<Type> {
+    let mut result = Vec::new();
+    for instruction in module.instructions.iter().chain(
+        module
+            .functions
+            .iter()
+            .flat_map(|function| function.instructions.iter()),
+    ) {
+        if let Instruction::ArraySet {
             element, length, ..
         } = instruction
         {
-            add(
-                &Type::Array {
-                    element: Box::new(element.clone()),
-                    length: *length,
-                },
-                &mut result,
-            );
+            let ty = Type::Array {
+                element: Box::new(element.clone()),
+                length: *length,
+            };
+            if !result.contains(&ty) {
+                result.push(ty);
+            }
         }
     }
     result
@@ -572,9 +633,50 @@ fn emit_array_get(ty: &Type, module: &Module, output: &mut String) {
     output.push_str("}\n");
 }
 
+fn emit_array_set(ty: &Type, module: &Module, output: &mut String) {
+    let Type::Array { element, length } = ty else {
+        unreachable!("array setter requires an array type")
+    };
+    let element_ty = type_name(element, module);
+    let array_ty = format!("[{length} x {element_ty}]");
+    writeln!(
+        output,
+        "define internal {array_ty} @{}({array_ty} %value, i64 %index, {element_ty} %replacement) {{",
+        array_set_name(element, *length, module)
+    )
+    .unwrap();
+    output.push_str("entry:\n");
+    output.push_str("  %index.low = icmp slt i64 %index, 0\n");
+    writeln!(output, "  %index.high = icmp sge i64 %index, {length}").unwrap();
+    output.push_str("  %index.outside = or i1 %index.low, %index.high\n");
+    output.push_str("  br i1 %index.outside, label %out_of_bounds, label %in_bounds\n");
+    output.push_str("out_of_bounds:\n");
+    output.push_str("  call void @llvm.trap()\n");
+    output.push_str("  unreachable\n");
+    output.push_str("in_bounds:\n");
+    writeln!(output, "  %array = alloca {array_ty}").unwrap();
+    writeln!(output, "  store {array_ty} %value, ptr %array").unwrap();
+    writeln!(
+        output,
+        "  %element = getelementptr inbounds {array_ty}, ptr %array, i64 0, i64 %index"
+    )
+    .unwrap();
+    writeln!(output, "  store {element_ty} %replacement, ptr %element").unwrap();
+    writeln!(output, "  %result = load {array_ty}, ptr %array").unwrap();
+    writeln!(output, "  ret {array_ty} %result").unwrap();
+    output.push_str("}\n");
+}
+
 fn array_get_name(element: &Type, length: usize, module: &Module) -> String {
     format!(
         "primer.array.get.{}.{length}",
+        array_element_name(element, module)
+    )
+}
+
+fn array_set_name(element: &Type, length: usize, module: &Module) -> String {
+    format!(
+        "primer.array.set.{}.{length}",
         array_element_name(element, module)
     )
 }

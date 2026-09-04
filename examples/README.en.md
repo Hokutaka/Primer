@@ -28,6 +28,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
 | [function_values.prim](function_values.prim) | passing product types and nested fixed arrays through functions as values |
 | [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
+| [bubble_sort.prim](bubble_sort.prim) | element updates in a `mut` fixed array |
 | [product_arrays.prim](product_arrays.prim) | point arrays, indexed product values, and array value copies |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | nested fixed arrays and two-dimensional indexing |
 | [matrix_composition.prim](matrix_composition.prim) | numerical computation passing a product type with nested arrays through functions |
@@ -53,6 +54,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | exponentiation by squaring |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
 | [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
+| [bubble_sort.prim](bubble_sort.prim) | in-place bubble sort by swapping elements |
 | [product_arrays.prim](product_arrays.prim) | linear search for the nearest point in a point array |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | multiplication of a 3-by-3 matrix and a three-element vector |
 | [matrix_composition.prim](matrix_composition.prim) | composition of 2-by-2 matrices followed by a vector transformation |
@@ -62,6 +64,6 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 
 These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, named product types, and fixed arrays.
 
-Array elements can be read but not assigned directly yet. Search and aggregation are therefore natural, while in-place sorting and array-updating dynamic programming still require element assignment. Strings, recursion, and dynamically sized collections are also not available yet.
+Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Strings, recursion, and dynamically sized collections are not available yet.
 
 `xor_neural_network.prim` demonstrates inference with predetermined weights. It does not yet train those weights from examples.

@@ -81,7 +81,7 @@ Primer currently supports:
 - static typing;
 - `bool`, `i64`, `f32`, and `f64`;
 - named product types, default field values, and field access;
-- nestable fixed arrays of fixed-size values that may also be product-type fields, indexing, value copies, and runtime bounds checks;
+- nestable fixed arrays of fixed-size values that may also be product-type fields, indexing, element updates, value copies, and runtime bounds checks;
 - typed functions accepting scalars, product types, and fixed arrays, plus `void` and explicit `return`;
 - top-level executable statements or an explicit `fn main() -> void`;
 - explicit type declarations;
@@ -98,7 +98,7 @@ Primer currently supports:
 - `print(expr);`;
 - `//` line comments;
 - mutable bindings with `mut`;
-- type-preserving reassignment;
+- type-preserving reassignment and array-element updates;
 - Primer IR emission;
 - C code generation;
 - LLVM IR generation;

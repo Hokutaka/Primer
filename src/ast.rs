@@ -118,8 +118,7 @@ pub enum StmtKind {
         value: Expr,
     },
     Assignment {
-        name: String,
-        name_span: Span,
+        target: AssignmentTarget,
         value: Expr,
     },
     Print {
@@ -148,6 +147,19 @@ pub enum StmtKind {
     },
     Break,
     Continue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignmentTarget {
+    pub name: String,
+    pub name_span: Span,
+    pub projections: Vec<AssignmentProjection>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssignmentProjection {
+    Index { index: Expr, span: Span },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

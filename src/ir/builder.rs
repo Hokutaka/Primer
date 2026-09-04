@@ -7,9 +7,9 @@ use crate::{
 };
 
 use super::{
-    BinaryOp, BindingId, Expr, ExprKind, FieldDefinition, FieldId, FieldValue, FieldValueOrigin,
-    FunctionDefinition, FunctionId, Parameter, Program, ReturnType, Statement, StatementKind, Type,
-    TypeDefinition, TypeId, UnaryOp,
+    AssignmentProjection, AssignmentTarget, BinaryOp, BindingId, Expr, ExprKind, FieldDefinition,
+    FieldId, FieldValue, FieldValueOrigin, FunctionDefinition, FunctionId, Parameter, Program,
+    ReturnType, Statement, StatementKind, Type, TypeDefinition, TypeId, UnaryOp,
 };
 
 pub fn build(program: &ast::Program) -> Result<Program, Diagnostic> {
@@ -198,16 +198,38 @@ impl Builder<'_> {
                     value,
                 }
             }
-            ast::StmtKind::Assignment { name, value, .. } => {
-                let binding = self.resolve(name).ok_or_else(|| {
-                    Diagnostic::without_span(format!("missing resolved binding `{name}`"))
+            ast::StmtKind::Assignment { target, value } => {
+                let binding = self.resolve(&target.name).ok_or_else(|| {
+                    Diagnostic::without_span(format!("missing resolved binding `{}`", target.name))
                 })?;
 
+                let root_ty = binding.info.ty.clone();
+                let mut target_ty = root_ty.clone();
+                let mut projections = Vec::with_capacity(target.projections.len());
+                for projection in &target.projections {
+                    let ast::AssignmentProjection::Index { index, span } = projection;
+                    let semantic::Type::Array { element, length } = target_ty else {
+                        unreachable!("semantic analysis requires an array assignment target")
+                    };
+                    let element_ty = *element;
+                    projections.push(AssignmentProjection::Index {
+                        index: self.build_expr(index, Some(semantic::Type::I64), &bindings)?,
+                        element: ir_type(element_ty.clone()),
+                        length,
+                        span: *span,
+                    });
+                    target_ty = element_ty;
+                }
+
                 StatementKind::Assignment {
-                    id: binding.id,
-                    name: name.clone(),
-                    ty: ir_type(binding.info.ty.clone()),
-                    value: self.build_expr(value, Some(binding.info.ty), &bindings)?,
+                    target: AssignmentTarget {
+                        id: binding.id,
+                        name: target.name.clone(),
+                        root_ty: ir_type(root_ty),
+                        projections,
+                        ty: ir_type(target_ty.clone()),
+                    },
+                    value: self.build_expr(value, Some(target_ty), &bindings)?,
                 }
             }
             ast::StmtKind::Print { value } => {

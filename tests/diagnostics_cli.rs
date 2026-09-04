@@ -67,11 +67,6 @@ fn parser_product_field_assignment_matches_expected_diagnostic() {
 }
 
 #[test]
-fn parser_array_element_assignment_matches_expected_diagnostic() {
-    assert_diagnostic("parser-array-element-assignment", "check", "check.stderr");
-}
-
-#[test]
 fn parser_for_missing_left_parenthesis_matches_expected_diagnostic() {
     assert_diagnostic(
         "parser-for-missing-left-parenthesis",
@@ -137,6 +132,29 @@ fn semantic_array_element_type_matches_expected_diagnostic() {
 #[test]
 fn semantic_array_index_type_matches_expected_diagnostic() {
     assert_diagnostic("semantic-array-index-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_immutable_array_assignment_matches_expected_diagnostic() {
+    assert_diagnostic(
+        "semantic-immutable-array-assignment",
+        "check",
+        "check.stderr",
+    );
+}
+
+#[test]
+fn semantic_array_assignment_type_matches_expected_diagnostic() {
+    assert_diagnostic("semantic-array-assignment-type", "check", "check.stderr");
+}
+
+#[test]
+fn semantic_array_assignment_non_array_matches_expected_diagnostic() {
+    assert_diagnostic(
+        "semantic-array-assignment-non-array",
+        "check",
+        "check.stderr",
+    );
 }
 
 #[test]

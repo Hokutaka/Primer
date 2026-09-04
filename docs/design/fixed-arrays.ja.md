@@ -23,10 +23,11 @@ print(values[2]);
 - `i64`の添字で一つの要素を読む
 - 配列全体を別の束縛へコピーする
 - `mut`な束縛へ、同じ型の配列全体を再代入する
+- `mut`な束縛を通して、一つの要素または入れ子の要素を更新する
 - 関数のparameterと戻り値に使う
 - ループと組み合わせて集計や線形探索を書く
 
-要素一つだけの代入と動的な長さは現在の範囲に含めません。
+動的な長さは現在の範囲に含めません。
 
 ## 設計判断
 
@@ -39,6 +40,8 @@ print(values[2]);
 配列を別の束縛へ入れると、配列全体がコピーされます。二つの束縛が、外から見えない同じ可変領域を共有することはありません。
 
 この規則は名前付きproduct typeと同じです。内部でどのような命令やmemory copyになるかはbackendごとに違いますが、Primerの意味は変わりません。
+
+`mut`な配列の要素を更新した場合も、変更されるのはその束縛が持つ値だけです。更新前に別の束縛へコピーした配列は変わりません。共有された可変領域を作る機能ではありません。
 
 ### 固定サイズの値は組み合わせられる
 
@@ -72,15 +75,17 @@ print(matrix[1][2]);
 
 Primer VMだけでなく、C、LLVM IR、QBE IR、WebAssembly Text、Windows x86-64 assemblyの各経路も境界検査を生成します。最適化のためにこの検査を黙って消すことは、現在の言語の意味を変えるため認めません。
 
+要素代入では、添字を左から一つずつ評価し、評価した直後にその段の境界を検査します。すべての添字が有効だと確認してから右辺を評価し、最後に一度だけ書き込みます。検査に失敗した場合、右辺は評価せず、配列も変更しません。
+
 ## 観測できるもの
 
 | 段階 | 残る情報 |
 | --- | --- |
-| AST | 要素型の構文、長さ、各要素、添字式、span |
-| Primer IR | 解決済みの`[element; length]`、`array[...]`、`index(...)` |
-| Bytecode | `array.new element length`、`array.get element length`、命令の出自 |
+| AST | 要素型の構文、長さ、各要素、添字式、代入先のrootと添字列、span |
+| Primer IR | 解決済みの`[element; length]`、`array[...]`、`index(...)`、型付きの代入先 |
+| Bytecode | `array.new`、`array.get`、`array.check`、`array.assign`、命令の出自 |
 | Primer VM | 配列値、要素型、長さ、範囲外になった添字、失敗した命令位置 |
-| Backend IR | 再帰的な型、配置、コピー、各添字の検査、要素addressの計算、loadまたはaggregate copy |
+| Backend IR | 再帰的な型、配置、コピー、各添字の検査、要素addressの計算、load、storeまたはaggregate copy |
 | 生成物 | backend固有の配列表現と、実際に実行される境界検査 |
 
 配列の長さは型情報として残し、実行時に別の隠れたmetadataから推測しません。これにより、どの段階でも「何個の配列を扱っているか」を追えます。
@@ -89,12 +94,12 @@ Primer VMだけでなく、C、LLVM IR、QBE IR、WebAssembly Text、Windows x86
 
 | Backend | 配列 | 境界検査 |
 | --- | --- | --- |
-| C | 要素のC配列を持つ専用`struct` | 型と長さごとの`primer_array_get_*` |
-| LLVM IR | `[N x element]` | 型と長さごとの内部関数、違反時は`llvm.trap` |
+| C | 要素のC配列を持つ専用`struct` | 型と長さごとの`primer_array_get_*` / `primer_array_at_*` |
+| LLVM IR | `[N x element]` | 型と長さごとのget/set内部関数、違反時は`llvm.trap` |
 | QBE IR | scalarは8 byte単位、product typeはfieldから求めたstrideのstack領域 | 比較と分岐、違反時は`abort` |
 | WebAssembly Text | scalarは8 byte単位、product typeはfieldから求めたstrideのlinear memory | `i64.lt_s` / `i64.ge_s`、違反時は`unreachable` |
 | Windows x86-64 | scalarは1 slot、product typeはfieldから求めた複数のstack slot | 負数と上限の比較、違反時は`ud2` |
-| Primer bytecode | 型付きの配列値 | `array.get`をVMが検査 |
+| Primer bytecode | 型付きの配列値 | `array.get`と`array.check`をVMが検査 |
 
 scalarの大きさが4 byteでも、QBE、WebAssembly、Windows x86-64では現在8 byte単位の場所を使います。product typeや配列の要素は、その値全体が必要とする場所をstrideにします。これは単純で観測しやすい現在のlayoutであり、Primerの型の意味ではなくbackend loweringの判断です。
 
@@ -109,7 +114,6 @@ scalarの大きさが4 byteでも、QBE、WebAssembly、Windows x86-64では現�
 - 要素型は`bool`、`i64`、`f32`、`f64`、名前付きproduct typeまたは固定長配列
 - 長さは0より大きい整数
 - 空の配列リテラルは未対応
-- 要素への直接代入は未対応
 - 配列全体の比較と`print`は未対応
 
 未対応の形は、backendごとに違う動作へ落とさず、フロントエンドで診断します。

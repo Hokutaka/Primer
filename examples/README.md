@@ -28,6 +28,7 @@
 | [functions.prim](functions.prim) | 型付き関数、parameter、戻り値、`void`関数 |
 | [function_values.prim](function_values.prim) | product typeと入れ子の固定長配列を関数へ値として渡す |
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列、添字参照、配列の値コピー |
+| [bubble_sort.prim](bubble_sort.prim) | `mut`な固定長配列の要素更新 |
 | [product_arrays.prim](product_arrays.prim) | 点の配列、product typeの添字参照、配列の値コピー |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | 入れ子の固定長配列と二段の添字参照 |
 | [matrix_composition.prim](matrix_composition.prim) | product typeと入れ子配列を関数で受け渡す数値計算 |
@@ -53,6 +54,7 @@
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | 繰り返し二乗法による累乗 |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | 入れ子の`for`によるピタゴラス数の探索 |
 | [fixed_arrays.prim](fixed_arrays.prim) | 配列の合計と線形探索 |
+| [bubble_sort.prim](bubble_sort.prim) | 要素を入れ替えるin-placeのバブルソート |
 | [product_arrays.prim](product_arrays.prim) | 点の配列から最も近い点を探す線形探索 |
 | [matrix_vector_product.prim](matrix_vector_product.prim) | 3×3行列と3要素vectorの積 |
 | [matrix_composition.prim](matrix_composition.prim) | 2×2行列の合成と、合成した行列によるvector変換 |
@@ -62,6 +64,6 @@
 
 これらは、数値、真偽値、束縛、関数、条件分岐、ループ、名前付きproduct type、固定長配列で表現できるプログラムです。
 
-配列の要素は読み取れますが、まだ直接書き換えられません。そのため、探索や集計は自然に書けますが、in-place sortや配列を更新する動的計画法には要素の更新機能が必要です。文字列、再帰、動的な長さのcollectionもまだありません。
+`mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。文字列、再帰、動的な長さのcollectionはまだありません。
 
 `xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。重みを変えて答えを学ぶ処理はまだ含みません。

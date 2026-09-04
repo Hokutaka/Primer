@@ -199,6 +199,60 @@ fn emit_instruction(
             output.push_str(&format!("{done}:\n"));
         }
 
+        Instruction::CheckedArrayAddress {
+            base_offset,
+            base_is_pointer,
+            length,
+            element_slots,
+            destination_offset,
+            label,
+        } => {
+            let trap = format!(".Lprimer_{label_prefix}_array_oob_{label}");
+            let done = format!(".Lprimer_{label_prefix}_array_done_{label}");
+            output.push_str("  testq %rax, %rax\n");
+            output.push_str(&format!("  js {trap}\n"));
+            output.push_str(&format!("  cmpq ${length}, %rax\n"));
+            output.push_str(&format!("  jge {trap}\n"));
+            output.push_str(&format!("  imulq $-{}, %rax\n", element_slots));
+            if *base_is_pointer {
+                output.push_str(&format!("  movq {base_offset}(%rbp), %rcx\n"));
+                output.push_str("  leaq (%rcx,%rax,8), %rcx\n");
+            } else {
+                output.push_str(&format!("  leaq {base_offset}(%rbp,%rax,8), %rcx\n"));
+            }
+            output.push_str(&format!("  movq %rcx, {destination_offset}(%rbp)\n"));
+            output.push_str(&format!("  jmp {done}\n"));
+            output.push_str(&format!("{trap}:\n"));
+            output.push_str("  ud2\n");
+            output.push_str(&format!("{done}:\n"));
+        }
+
+        Instruction::StoreI64ToPointer(pointer_offset) => {
+            output.push_str(&format!("  movq {pointer_offset}(%rbp), %rcx\n"));
+            output.push_str("  movq %rax, (%rcx)\n");
+        }
+        Instruction::StoreF32ToPointer(pointer_offset) => {
+            output.push_str(&format!("  movq {pointer_offset}(%rbp), %rcx\n"));
+            output.push_str("  movss %xmm0, (%rcx)\n");
+        }
+        Instruction::StoreF64ToPointer(pointer_offset) => {
+            output.push_str(&format!("  movq {pointer_offset}(%rbp), %rcx\n"));
+            output.push_str("  movsd %xmm0, (%rcx)\n");
+        }
+        Instruction::CopyToPointer {
+            source_offset,
+            slots,
+            pointer_offset,
+        } => {
+            output.push_str(&format!("  movq {pointer_offset}(%rbp), %r11\n"));
+            for slot in 0..*slots {
+                let source = source_offset - 8 * slot as isize;
+                let destination = -8 * slot as isize;
+                output.push_str(&format!("  movq {source}(%rbp), %r10\n"));
+                output.push_str(&format!("  movq %r10, {destination}(%r11)\n"));
+            }
+        }
+
         Instruction::StoreParameter { index, ty, offset } => {
             emit_store_parameter(*index, *ty, *offset, output);
         }

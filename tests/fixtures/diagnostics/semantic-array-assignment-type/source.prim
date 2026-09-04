@@ -1,2 +1,2 @@
 mut values: [i64; 2] = [1, 2];
-values[0] = 3;
+values[0] = 0.5;
