@@ -1,8 +1,8 @@
 use crate::ir as primer_ir;
 
 use super::ir::{
-    ArrayElementType, BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module,
-    Parameter, PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
+    BinaryOp, Expr, ExprKind, FieldDefinition, FieldValue, Function, Module, Parameter,
+    PrintFormat, Statement, Type, TypeDefinition, UnaryOp,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -243,29 +243,17 @@ impl From<primer_ir::Type> for Type {
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
             primer_ir::Type::Array { element, length } => Self::Array {
-                element: array_element_type(&element),
+                element: Box::new((*element).into()),
                 length,
             },
         }
     }
 }
 
-fn array_element_type(element: &primer_ir::Type) -> ArrayElementType {
-    match element {
-        primer_ir::Type::Bool => ArrayElementType::Bool,
-        primer_ir::Type::I64 => ArrayElementType::I64,
-        primer_ir::Type::F32 => ArrayElementType::Float,
-        primer_ir::Type::F64 => ArrayElementType::Double,
-        primer_ir::Type::Named(id) => ArrayElementType::Named(id.0),
-        primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
-        }
-    }
-}
-
 fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     fn add(ty: &primer_ir::Type, types: &mut Vec<Type>) {
-        if matches!(ty, primer_ir::Type::Array { .. }) {
+        if let primer_ir::Type::Array { element, .. } = ty {
+            add(element, types);
             let ty = ty.clone().into();
             if !types.contains(&ty) {
                 types.push(ty);

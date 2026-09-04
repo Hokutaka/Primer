@@ -14,7 +14,7 @@ use bytecode::InstructionOrigin;
 use diagnostic::Diagnostic;
 
 /// VM実行エラーと、失敗したbytecode命令の出自を保持します。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionError {
     vm_error: vm::VmError,
     origin: Option<InstructionOrigin>,
@@ -22,14 +22,14 @@ pub struct ExecutionError {
 
 impl ExecutionError {
     /// VMが報告した構造化エラーを返します。
-    pub const fn vm_error(self) -> vm::VmError {
-        self.vm_error
+    pub const fn vm_error(&self) -> &vm::VmError {
+        &self.vm_error
     }
 
     /// 失敗した命令の出自を返します。
     ///
     /// 命令番号がbytecodeの範囲外で、対応する命令自体が存在しない場合は`None`です。
-    pub const fn origin(self) -> Option<InstructionOrigin> {
+    pub const fn origin(&self) -> Option<InstructionOrigin> {
         self.origin
     }
 }
@@ -313,6 +313,50 @@ mod tests {
         assert!(bytecode.contains("array.new %Point@0 2"));
         assert!(bytecode.contains("array.new %Path@1 2"));
         assert!(bytecode.contains("array.get %Path@1 2"));
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn fixed_arrays_can_be_nested() {
+        let source = "
+            mut matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
+            copy: [[i64; 3]; 2] = matrix;
+            matrix = [[7, 8, 9], [10, 11, 12]];
+            print(copy[1][2]);
+            print(matrix[0][1]);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "6\n8\n");
+        let bytecode = compile_to_bytecode_text(source).unwrap();
+        assert!(bytecode.contains("array.new [i64; 3] 2"));
+        assert!(bytecode.contains("array.get [i64; 3] 2"));
+        assert!(compile_to_c(source).is_ok());
+        assert!(compile_to_llvm(source).is_ok());
+        assert!(compile_to_qbe(source).is_ok());
+        assert!(compile_to_wat(source).is_ok());
+        assert!(compile_to_x86_64_win_asm(source).is_ok());
+    }
+
+    #[test]
+    fn nested_fixed_arrays_can_hold_product_values() {
+        let source = "
+            type Point { x: i64, y: i64, }
+            grid: [[Point; 2]; 2] = [
+                [Point { x: 1, y: 2, }, Point { x: 3, y: 4, }],
+                [Point { x: 5, y: 6, }, Point { x: 7, y: 8, }],
+            ];
+            print(grid[1][0].x);
+            print(grid[0][1].y);
+        ";
+
+        assert_eq!(run_vm(source).unwrap(), "5\n4\n");
+        let bytecode = compile_to_bytecode_text(source).unwrap();
+        assert!(bytecode.contains("array.new [%Point@0; 2] 2"));
+        assert!(bytecode.contains("array.get [%Point@0; 2] 2"));
         assert!(compile_to_c(source).is_ok());
         assert!(compile_to_llvm(source).is_ok());
         assert!(compile_to_qbe(source).is_ok());

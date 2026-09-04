@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use super::ir::{
-    ArrayElementType, BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand,
-    PrintFormat, Slot, SlotId, Temp, Type,
+    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId,
+    Temp, Type,
 };
 
 pub fn emit(module: &Module) -> String {
@@ -23,7 +23,7 @@ pub fn emit(module: &Module) -> String {
             if index > 0 {
                 output.push_str(", ");
             }
-            output.push_str(&type_name(*field, module));
+            output.push_str(&type_name(field, module));
         }
         output.push_str(" }\n");
     }
@@ -48,8 +48,8 @@ pub fn emit(module: &Module) -> String {
 
     output.push('\n');
 
-    for (element, length) in array_types {
-        emit_array_get(element, length, module, &mut output);
+    for ty in &array_types {
+        emit_array_get(ty, module, &mut output);
         output.push('\n');
     }
 
@@ -65,7 +65,7 @@ pub fn emit(module: &Module) -> String {
             output,
             "  %primer_{} = alloca {}",
             slot.name,
-            type_name(slot.ty, module),
+            type_name(&slot.ty, module),
         )
         .unwrap();
     }
@@ -91,6 +91,7 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         "define {} @{}(",
         function
             .return_type
+            .as_ref()
             .map_or_else(|| "void".into(), |ty| type_name(ty, module)),
         function_name(function)
     )
@@ -99,7 +100,7 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         if index > 0 {
             output.push_str(", ");
         }
-        write!(output, "{} %arg{index}", type_name(parameter.ty, module)).unwrap();
+        write!(output, "{} %arg{index}", type_name(&parameter.ty, module)).unwrap();
     }
     output.push_str(") {\nentry:\n");
 
@@ -108,7 +109,7 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
             output,
             "  %primer_{} = alloca {}",
             slot.name,
-            type_name(slot.ty, module),
+            type_name(&slot.ty, module),
         )
         .unwrap();
     }
@@ -116,7 +117,7 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         writeln!(
             output,
             "  store {} %arg{index}, ptr %primer_{}",
-            type_name(parameter.ty, module),
+            type_name(&parameter.ty, module),
             slot_by_id(&function.slots, parameter.slot).name,
         )
         .unwrap();
@@ -161,7 +162,7 @@ fn emit_instruction(
             writeln!(
                 output,
                 "  store {} {}, ptr %primer_{}",
-                type_name(*ty, module),
+                type_name(ty, module),
                 operand(*value),
                 slot_by_id(slots, *slot).name,
             )
@@ -173,7 +174,7 @@ fn emit_instruction(
                 output,
                 "  {} = load {}, ptr %primer_{}",
                 temp(*dest),
-                type_name(*ty, module),
+                type_name(ty, module),
                 slot_by_id(slots, *slot).name,
             )
             .unwrap();
@@ -191,9 +192,9 @@ fn emit_instruction(
                 output,
                 "  {} = insertvalue {} {}, {} {}, {}",
                 temp(*dest),
-                type_name(*ty, module),
+                type_name(ty, module),
                 operand(*aggregate),
-                type_name(*value_ty, module),
+                type_name(value_ty, module),
                 operand(*value),
                 field,
             )
@@ -210,7 +211,7 @@ fn emit_instruction(
                 output,
                 "  {} = extractvalue {} {}, {}",
                 temp(*dest),
-                type_name(*ty, module),
+                type_name(ty, module),
                 operand(*aggregate),
                 field,
             )
@@ -225,16 +226,16 @@ fn emit_instruction(
             index,
         } => {
             let array_ty = Type::Array {
-                element: *element,
+                element: Box::new(element.clone()),
                 length: *length,
             };
             writeln!(
                 output,
                 "  {} = call {} @{}({} {}, i64 {})",
                 temp(*dest),
-                array_element_type_name(*element, module),
-                array_get_name(*element, *length, module),
-                type_name(array_ty, module),
+                type_name(element, module),
+                array_get_name(element, *length, module),
+                type_name(&array_ty, module),
                 operand(*array),
                 operand(*index),
             )
@@ -255,7 +256,9 @@ fn emit_instruction(
             write!(
                 output,
                 "call {} @{}(",
-                return_type.map_or_else(|| "void".into(), |ty| type_name(ty, module)),
+                return_type
+                    .as_ref()
+                    .map_or_else(|| "void".into(), |ty| type_name(ty, module)),
                 function_name(function)
             )
             .unwrap();
@@ -263,7 +266,7 @@ fn emit_instruction(
                 if index > 0 {
                     output.push_str(", ");
                 }
-                write!(output, "{} {}", type_name(*ty, module), operand(*argument)).unwrap();
+                write!(output, "{} {}", type_name(ty, module), operand(*argument)).unwrap();
             }
             output.push_str(")\n");
         }
@@ -273,7 +276,7 @@ fn emit_instruction(
                 writeln!(
                     output,
                     "  ret {} {}",
-                    type_name(*ty, module),
+                    type_name(ty, module),
                     operand(*value)
                 )
                 .unwrap();
@@ -293,7 +296,7 @@ fn emit_instruction(
                 "  {} = {} {} {}, {}",
                 temp(*dest),
                 binary_name(*op),
-                type_name(*ty, module),
+                type_name(ty, module),
                 operand(*left),
                 operand(*right),
             )
@@ -311,8 +314,8 @@ fn emit_instruction(
                 output,
                 "  {} = {} {} {}, {}",
                 temp(*dest),
-                compare_name(*op, *operand_ty),
-                type_name(*operand_ty, module),
+                compare_name(*op, operand_ty),
+                type_name(operand_ty, module),
                 operand(*left),
                 operand(*right),
             )
@@ -324,7 +327,7 @@ fn emit_instruction(
                 output,
                 "  {} = fneg {} {}",
                 temp(*dest),
-                type_name(*ty, module),
+                type_name(ty, module),
                 operand(*value),
             )
             .unwrap();
@@ -349,7 +352,7 @@ fn emit_instruction(
                 output,
                 "  call i32 (ptr, ...) @printf(ptr {}, {} {})",
                 format_name(*format),
-                type_name(*arg_ty, module),
+                type_name(arg_ty, module),
                 operand(*value),
             )
             .unwrap();
@@ -387,18 +390,18 @@ fn label(label: Label) -> String {
     format!("block{}", label.0)
 }
 
-fn type_name(ty: Type, module: &Module) -> String {
+fn type_name(ty: &Type, module: &Module) -> String {
     match ty {
         Type::Bool => "i1".into(),
         Type::I64 => "i64".into(),
         Type::Float => "float".into(),
         Type::Double => "double".into(),
         Type::Named(id) => {
-            let definition = &module.type_definitions[id];
+            let definition = &module.type_definitions[*id];
             format!("%primer.type.{}.{}", definition.name, id)
         }
         Type::Array { element, length } => {
-            format!("[{length} x {}]", array_element_type_name(element, module))
+            format!("[{length} x {}]", type_name(element, module))
         }
     }
 }
@@ -417,7 +420,7 @@ fn binary_name(op: BinaryOp) -> &'static str {
     }
 }
 
-fn compare_name(op: CompareOp, ty: Type) -> &'static str {
+fn compare_name(op: CompareOp, ty: &Type) -> &'static str {
     match (op, ty) {
         (CompareOp::Equal, Type::Bool | Type::I64) => "icmp eq",
         (CompareOp::NotEqual, Type::Bool | Type::I64) => "icmp ne",
@@ -488,25 +491,31 @@ fn uses_bool_print(module: &Module) -> bool {
         .any(|instruction| matches!(instruction, Instruction::CallPuts { .. }))
 }
 
-fn array_types(module: &Module) -> Vec<(ArrayElementType, usize)> {
+fn array_types(module: &Module) -> Vec<Type> {
+    fn add(ty: &Type, result: &mut Vec<Type>) {
+        let Type::Array { element, .. } = ty else {
+            return;
+        };
+        add(element, result);
+        if !result.contains(ty) {
+            result.push(ty.clone());
+        }
+    }
+
     let mut result = Vec::new();
     for ty in module
         .slots
         .iter()
-        .map(|slot| slot.ty)
+        .map(|slot| &slot.ty)
         .chain(module.functions.iter().flat_map(|function| {
             function
                 .slots
                 .iter()
-                .map(|slot| slot.ty)
-                .chain(function.return_type)
+                .map(|slot| &slot.ty)
+                .chain(function.return_type.iter())
         }))
     {
-        if let Type::Array { element, length } = ty
-            && !result.contains(&(element, length))
-        {
-            result.push((element, length));
-        }
+        add(ty, &mut result);
     }
     for instruction in module.instructions.iter().chain(
         module
@@ -517,21 +526,29 @@ fn array_types(module: &Module) -> Vec<(ArrayElementType, usize)> {
         if let Instruction::ArrayGet {
             element, length, ..
         } = instruction
-            && !result.contains(&(*element, *length))
         {
-            result.push((*element, *length));
+            add(
+                &Type::Array {
+                    element: Box::new(element.clone()),
+                    length: *length,
+                },
+                &mut result,
+            );
         }
     }
     result
 }
 
-fn emit_array_get(element: ArrayElementType, length: usize, module: &Module, output: &mut String) {
-    let element_ty = array_element_type_name(element, module);
+fn emit_array_get(ty: &Type, module: &Module, output: &mut String) {
+    let Type::Array { element, length } = ty else {
+        unreachable!("array getter requires an array type")
+    };
+    let element_ty = type_name(element, module);
     let array_ty = format!("[{length} x {element_ty}]");
     writeln!(
         output,
         "define internal {element_ty} @{}({array_ty} %value, i64 %index) {{",
-        array_get_name(element, length, module)
+        array_get_name(element, *length, module)
     )
     .unwrap();
     output.push_str("entry:\n");
@@ -555,32 +572,25 @@ fn emit_array_get(element: ArrayElementType, length: usize, module: &Module, out
     output.push_str("}\n");
 }
 
-fn array_element_type_name(element: ArrayElementType, module: &Module) -> String {
-    match element {
-        ArrayElementType::Bool => "i1".into(),
-        ArrayElementType::I64 => "i64".into(),
-        ArrayElementType::Float => "float".into(),
-        ArrayElementType::Double => "double".into(),
-        ArrayElementType::Named(id) => type_name(Type::Named(id), module),
-    }
-}
-
-fn array_get_name(element: ArrayElementType, length: usize, module: &Module) -> String {
+fn array_get_name(element: &Type, length: usize, module: &Module) -> String {
     format!(
         "primer.array.get.{}.{length}",
         array_element_name(element, module)
     )
 }
 
-fn array_element_name(element: ArrayElementType, module: &Module) -> String {
+fn array_element_name(element: &Type, module: &Module) -> String {
     match element {
-        ArrayElementType::Bool => "bool".into(),
-        ArrayElementType::I64 => "i64".into(),
-        ArrayElementType::Float => "f32".into(),
-        ArrayElementType::Double => "f64".into(),
-        ArrayElementType::Named(id) => {
-            let definition = &module.type_definitions[id];
+        Type::Bool => "bool".into(),
+        Type::I64 => "i64".into(),
+        Type::Float => "f32".into(),
+        Type::Double => "f64".into(),
+        Type::Named(id) => {
+            let definition = &module.type_definitions[*id];
             format!("type.{}.{}", definition.name, id)
+        }
+        Type::Array { element, length } => {
+            format!("array.{}.{length}", array_element_name(element, module))
         }
     }
 }

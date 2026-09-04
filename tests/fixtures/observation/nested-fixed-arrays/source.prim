@@ -1,0 +1,6 @@
+mut matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
+copy: [[i64; 3]; 2] = matrix;
+matrix = [[7, 8, 9], [10, 11, 12]];
+
+print(copy[1][2]);
+print(matrix[0][1]);

@@ -127,7 +127,7 @@ enum Location {
     },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Value {
     Scalar(Type),
     Aggregate {
@@ -141,10 +141,14 @@ enum Value {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ArrayElement {
     Scalar(Type),
     Named(usize),
+    Array {
+        element: Box<ArrayElement>,
+        length: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -232,7 +236,7 @@ impl LoweringContext<'_> {
                         debug_assert_eq!(element, source_element);
                         debug_assert_eq!(length, source_length);
                         self.copy_array(
-                            element,
+                            &element,
                             length,
                             source,
                             Address::Static(address),
@@ -412,7 +416,7 @@ impl LoweringContext<'_> {
                     length,
                     address,
                 } => Value::Array {
-                    element: *element,
+                    element: element.clone(),
                     length: *length,
                     address: Address::Static(*address),
                 },
@@ -455,7 +459,7 @@ impl LoweringContext<'_> {
                             debug_assert_eq!(element, actual_element);
                             debug_assert_eq!(*length, actual_length);
                             self.copy_array(
-                                element,
+                                &element,
                                 *length,
                                 source,
                                 Address::Static(destination),
@@ -516,16 +520,16 @@ impl LoweringContext<'_> {
                 };
                 let address = self.allocate(type_size(self.program, &expr.ty));
                 let element = array_element_type(element);
-                let stride = array_element_size(self.program, element);
+                let stride = array_element_size(self.program, &element);
                 for (index, value) in values.iter().enumerate() {
                     let destination = Address::Static(address + index * stride);
-                    match element {
+                    match &element {
                         ArrayElement::Scalar(expected) => {
                             self.emit_address(destination, instructions);
                             let Value::Scalar(actual) = self.lower_expr(value, instructions) else {
                                 unreachable!("semantic analysis keeps array element types equal")
                             };
-                            debug_assert_eq!(expected, actual);
+                            debug_assert_eq!(*expected, actual);
                             instructions.push(store_instruction(actual, 0));
                         }
                         ArrayElement::Named(expected) => {
@@ -536,8 +540,30 @@ impl LoweringContext<'_> {
                             else {
                                 unreachable!("semantic analysis keeps array element types equal")
                             };
-                            debug_assert_eq!(expected, type_id);
+                            debug_assert_eq!(*expected, type_id);
                             self.copy_aggregate(type_id, source, destination, instructions);
+                        }
+                        ArrayElement::Array {
+                            element: expected_element,
+                            length: expected_length,
+                        } => {
+                            let Value::Array {
+                                element,
+                                length,
+                                address: source,
+                            } = self.lower_expr(value, instructions)
+                            else {
+                                unreachable!("semantic analysis keeps array element types equal")
+                            };
+                            debug_assert_eq!(**expected_element, element);
+                            debug_assert_eq!(*expected_length, length);
+                            self.copy_array(
+                                expected_element,
+                                *expected_length,
+                                source,
+                                destination,
+                                instructions,
+                            );
                         }
                     }
                 }
@@ -583,16 +609,16 @@ impl LoweringContext<'_> {
                     else_instructions: Vec::new(),
                 });
 
-                match element {
+                match &element {
                     ArrayElement::Scalar(ty) => {
                         self.emit_indexed_address(
                             address,
                             index_address,
-                            array_element_size(self.program, element),
+                            array_element_size(self.program, &element),
                             instructions,
                         );
-                        instructions.push(load_instruction(ty, 0));
-                        Value::Scalar(ty)
+                        instructions.push(load_instruction(*ty, 0));
+                        Value::Scalar(*ty)
                     }
                     ArrayElement::Named(type_id) => {
                         let result_address = self.allocate(4);
@@ -600,12 +626,31 @@ impl LoweringContext<'_> {
                         self.emit_indexed_address(
                             address,
                             index_address,
-                            array_element_size(self.program, element),
+                            array_element_size(self.program, &element),
                             instructions,
                         );
                         instructions.push(Instruction::I32Store { offset: 0 });
                         Value::Aggregate {
-                            type_id,
+                            type_id: *type_id,
+                            address: Address::Indirect(result_address),
+                        }
+                    }
+                    ArrayElement::Array {
+                        element: nested_element,
+                        length: nested_length,
+                    } => {
+                        let result_address = self.allocate(4);
+                        instructions.push(Instruction::I32Const(result_address as i32));
+                        self.emit_indexed_address(
+                            address,
+                            index_address,
+                            array_element_size(self.program, &element),
+                            instructions,
+                        );
+                        instructions.push(Instruction::I32Store { offset: 0 });
+                        Value::Array {
+                            element: (**nested_element).clone(),
+                            length: *nested_length,
                             address: Address::Indirect(result_address),
                         }
                     }
@@ -684,7 +729,7 @@ impl LoweringContext<'_> {
                     self.copy_aggregate(nested.0, source, destination, instructions)
                 }
                 primer_ir::Type::Array { element, length } => self.copy_array(
-                    array_element_type(element),
+                    &array_element_type(element),
                     *length,
                     source,
                     destination,
@@ -703,7 +748,7 @@ impl LoweringContext<'_> {
 
     fn copy_array(
         &mut self,
-        element: ArrayElement,
+        element: &ArrayElement,
         length: usize,
         source: Address,
         destination: Address,
@@ -718,11 +763,14 @@ impl LoweringContext<'_> {
                 ArrayElement::Scalar(ty) => {
                     self.emit_address(destination, instructions);
                     self.emit_address(source, instructions);
-                    instructions.push(load_instruction(ty, 0));
-                    instructions.push(store_instruction(ty, 0));
+                    instructions.push(load_instruction(*ty, 0));
+                    instructions.push(store_instruction(*ty, 0));
                 }
                 ArrayElement::Named(type_id) => {
-                    self.copy_aggregate(type_id, source, destination, instructions)
+                    self.copy_aggregate(*type_id, source, destination, instructions)
+                }
+                ArrayElement::Array { element, length } => {
+                    self.copy_array(element, *length, source, destination, instructions)
                 }
             }
         }
@@ -933,18 +981,20 @@ fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
-        primer_ir::Type::Array { .. } => {
-            unreachable!("semantic analysis currently rejects nested arrays")
-        }
+        primer_ir::Type::Array { element, length } => ArrayElement::Array {
+            element: Box::new(array_element_type(element)),
+            length: *length,
+        },
     }
 }
 
-fn array_element_size(program: &primer_ir::Program, element: ArrayElement) -> usize {
+fn array_element_size(program: &primer_ir::Program, element: &ArrayElement) -> usize {
     match element {
         ArrayElement::Scalar(_) => 8,
         ArrayElement::Named(id) => {
-            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(id)))
+            type_size(program, &primer_ir::Type::Named(primer_ir::TypeId(*id)))
         }
+        ArrayElement::Array { element, length } => array_element_size(program, element) * length,
     }
 }
 

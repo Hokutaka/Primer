@@ -1,6 +1,4 @@
-use super::ir::{
-    ArrayElementType, BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp,
-};
+use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -17,29 +15,18 @@ pub fn emit(module: &Module) -> String {
     output.push('\n');
 
     let mut emitted_array_types = Vec::new();
-    for &ty in &module.array_types {
+    for ty in &module.array_types {
         let Type::Array { element, .. } = ty else {
             unreachable!("array type collection only contains arrays")
         };
-        if !matches!(element, ArrayElementType::Named(_)) {
-            emit_array_support(ty, module, &mut output);
-            emitted_array_types.push(ty);
+        if !type_uses_named(element) {
+            emit_array_support_recursive(ty, module, &mut emitted_array_types, &mut output);
         }
     }
 
     for definition in &module.type_definitions {
         for field in &definition.fields {
-            if matches!(
-                field.ty,
-                Type::Array {
-                    element: ArrayElementType::Named(_),
-                    ..
-                }
-            ) && !emitted_array_types.contains(&field.ty)
-            {
-                emit_array_support(field.ty, module, &mut output);
-                emitted_array_types.push(field.ty);
-            }
+            emit_array_support_recursive(&field.ty, module, &mut emitted_array_types, &mut output);
         }
         output.push_str("typedef struct primer_type_");
         output.push_str(&definition.name);
@@ -48,7 +35,7 @@ pub fn emit(module: &Module) -> String {
         output.push_str(" {\n");
         for field in &definition.fields {
             output.push_str("    ");
-            output.push_str(&c_type(field.ty, module));
+            output.push_str(&c_type(&field.ty, module));
             output.push(' ');
             output.push_str(&field.name);
             output.push_str(";\n");
@@ -60,11 +47,8 @@ pub fn emit(module: &Module) -> String {
         output.push_str(";\n\n");
     }
 
-    for &ty in &module.array_types {
-        if !emitted_array_types.contains(&ty) {
-            emit_array_support(ty, module, &mut output);
-            emitted_array_types.push(ty);
-        }
+    for ty in &module.array_types {
+        emit_array_support_recursive(ty, module, &mut emitted_array_types, &mut output);
     }
 
     for function in &module.functions {
@@ -107,6 +91,7 @@ fn emit_function_signature(function: &super::ir::Function, module: &Module, outp
     output.push_str(
         &function
             .return_type
+            .as_ref()
             .map_or_else(|| "void".into(), |ty| c_type(ty, module)),
     );
     output.push(' ');
@@ -119,7 +104,7 @@ fn emit_function_signature(function: &super::ir::Function, module: &Module, outp
             if index > 0 {
                 output.push_str(", ");
             }
-            output.push_str(&c_type(parameter.ty, module));
+            output.push_str(&c_type(&parameter.ty, module));
             output.push_str(" primer_");
             output.push_str(&parameter.name);
         }
@@ -137,7 +122,7 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
     match statement {
         Statement::Binding { name, ty, value } => {
             output.push_str(&prefix);
-            output.push_str(&c_type(*ty, module));
+            output.push_str(&c_type(ty, module));
             output.push_str(" primer_");
             output.push_str(name);
             output.push_str(" = ");
@@ -263,7 +248,7 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
 fn emit_for_clause(statement: &Statement, module: &Module, output: &mut String) {
     match statement {
         Statement::Binding { name, ty, value } => {
-            output.push_str(&c_type(*ty, module));
+            output.push_str(&c_type(ty, module));
             output.push_str(" primer_");
             output.push_str(name);
             output.push_str(" = ");
@@ -279,7 +264,7 @@ fn emit_for_clause(statement: &Statement, module: &Module, output: &mut String) 
     }
 }
 
-fn c_type(ty: Type, module: &Module) -> String {
+fn c_type(ty: &Type, module: &Module) -> String {
     match ty {
         Type::Bool => "bool".into(),
         Type::I64 => "int64_t".into(),
@@ -289,11 +274,11 @@ fn c_type(ty: Type, module: &Module) -> String {
             let definition = module
                 .type_definitions
                 .iter()
-                .find(|definition| definition.id == id)
+                .find(|definition| definition.id == *id)
                 .expect("named C type must have a definition");
             format!("primer_type_{}_{}", definition.name, id)
         }
-        Type::Array { element, length } => array_type_name(element, length, module),
+        Type::Array { element, length } => array_type_name(element, *length, module),
     }
 }
 
@@ -368,7 +353,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 
         ExprKind::Construct { type_id, fields } => {
             output.push('(');
-            output.push_str(&c_type(Type::Named(*type_id), module));
+            output.push_str(&c_type(&Type::Named(*type_id), module));
             output.push_str("){ ");
             for (index, field) in fields.iter().enumerate() {
                 if index > 0 {
@@ -391,7 +376,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 
         ExprKind::Array(values) => {
             output.push('(');
-            output.push_str(&c_type(expr.ty, module));
+            output.push_str(&c_type(&expr.ty, module));
             output.push_str("){ .items = { ");
             for (index, value) in values.iter().enumerate() {
                 if index > 0 {
@@ -403,10 +388,10 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
         }
 
         ExprKind::Index { base, index } => {
-            let Type::Array { element, length } = base.ty else {
+            let Type::Array { element, length } = &base.ty else {
                 unreachable!("indexed expression must have an array base")
             };
-            output.push_str(&array_get_name(element, length, module));
+            output.push_str(&array_get_name(element, *length, module));
             output.push('(');
             emit_expr(base, module, output);
             output.push_str(", ");
@@ -499,39 +484,61 @@ fn module_uses_bool(module: &Module) -> bool {
         .type_definitions
         .iter()
         .flat_map(|definition| &definition.fields)
-        .any(|field| type_uses_bool(field.ty))
-        || module.array_types.iter().copied().any(type_uses_bool)
+        .any(|field| type_uses_bool(&field.ty))
+        || module.array_types.iter().any(type_uses_bool)
         || module.statements.iter().any(statement_uses_bool)
         || module.functions.iter().any(|function| {
-            function.return_type.is_some_and(type_uses_bool)
+            function.return_type.as_ref().is_some_and(type_uses_bool)
                 || function
                     .parameters
                     .iter()
-                    .any(|parameter| type_uses_bool(parameter.ty))
+                    .any(|parameter| type_uses_bool(&parameter.ty))
                 || function.body.iter().any(statement_uses_bool)
         })
 }
 
-fn type_uses_bool(ty: Type) -> bool {
-    ty == Type::Bool
-        || matches!(
-            ty,
-            Type::Array {
-                element: ArrayElementType::Bool,
-                ..
-            }
-        )
+fn type_uses_bool(ty: &Type) -> bool {
+    match ty {
+        Type::Bool => true,
+        Type::Array { element, .. } => type_uses_bool(element),
+        Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
+    }
 }
 
-fn emit_array_support(ty: Type, module: &Module, output: &mut String) {
+fn type_uses_named(ty: &Type) -> bool {
+    match ty {
+        Type::Named(_) => true,
+        Type::Array { element, .. } => type_uses_named(element),
+        Type::Bool | Type::I64 | Type::Float | Type::Double => false,
+    }
+}
+
+fn emit_array_support_recursive(
+    ty: &Type,
+    module: &Module,
+    emitted: &mut Vec<Type>,
+    output: &mut String,
+) {
+    let Type::Array { element, .. } = ty else {
+        return;
+    };
+
+    emit_array_support_recursive(element, module, emitted, output);
+    if !emitted.contains(ty) {
+        emit_array_support(ty, module, output);
+        emitted.push(ty.clone());
+    }
+}
+
+fn emit_array_support(ty: &Type, module: &Module, output: &mut String) {
     let Type::Array { element, length } = ty else {
         unreachable!("array support requires an array type")
     };
-    let name = array_type_name(element, length, module);
+    let name = array_type_name(element, *length, module);
     output.push_str("typedef struct ");
     output.push_str(&name);
     output.push_str(" {\n    ");
-    output.push_str(&array_element_c_type(element, module));
+    output.push_str(&c_type(element, module));
     output.push_str(" items[");
     output.push_str(&length.to_string());
     output.push_str("];\n} ");
@@ -539,9 +546,9 @@ fn emit_array_support(ty: Type, module: &Module, output: &mut String) {
     output.push_str(";\n\n");
 
     output.push_str("static ");
-    output.push_str(&array_element_c_type(element, module));
+    output.push_str(&c_type(element, module));
     output.push(' ');
-    output.push_str(&array_get_name(element, length, module));
+    output.push_str(&array_get_name(element, *length, module));
     output.push('(');
     output.push_str(&name);
     output.push_str(" value, int64_t index) {\n");
@@ -553,17 +560,7 @@ fn emit_array_support(ty: Type, module: &Module, output: &mut String) {
     output.push_str("    return value.items[index];\n}\n\n");
 }
 
-fn array_element_c_type(element: ArrayElementType, module: &Module) -> String {
-    match element {
-        ArrayElementType::Bool => "bool".into(),
-        ArrayElementType::I64 => "int64_t".into(),
-        ArrayElementType::Float => "float".into(),
-        ArrayElementType::Double => "double".into(),
-        ArrayElementType::Named(id) => c_type(Type::Named(id), module),
-    }
-}
-
-fn array_type_name(element: ArrayElementType, length: usize, module: &Module) -> String {
+fn array_type_name(element: &Type, length: usize, module: &Module) -> String {
     format!(
         "primer_array_{}_{}",
         array_element_name(element, module),
@@ -571,7 +568,7 @@ fn array_type_name(element: ArrayElementType, length: usize, module: &Module) ->
     )
 }
 
-fn array_get_name(element: ArrayElementType, length: usize, module: &Module) -> String {
+fn array_get_name(element: &Type, length: usize, module: &Module) -> String {
     format!(
         "primer_array_get_{}_{}",
         array_element_name(element, module),
@@ -579,19 +576,22 @@ fn array_get_name(element: ArrayElementType, length: usize, module: &Module) -> 
     )
 }
 
-fn array_element_name(element: ArrayElementType, module: &Module) -> String {
+fn array_element_name(element: &Type, module: &Module) -> String {
     match element {
-        ArrayElementType::Bool => "bool".into(),
-        ArrayElementType::I64 => "i64".into(),
-        ArrayElementType::Float => "f32".into(),
-        ArrayElementType::Double => "f64".into(),
-        ArrayElementType::Named(id) => {
+        Type::Bool => "bool".into(),
+        Type::I64 => "i64".into(),
+        Type::Float => "f32".into(),
+        Type::Double => "f64".into(),
+        Type::Named(id) => {
             let definition = module
                 .type_definitions
                 .iter()
-                .find(|definition| definition.id == id)
+                .find(|definition| definition.id == *id)
                 .expect("C IR should contain the referenced product type");
             format!("type_{}_{}", definition.name, id)
+        }
+        Type::Array { element, length } => {
+            format!("array_{}_{}", array_element_name(element, module), length)
         }
     }
 }

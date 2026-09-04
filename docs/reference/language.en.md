@@ -177,7 +177,7 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-An element type may be `bool`, `i64`, `f32`, `f64`, or a named product type. A fixed array may also be used as a field of a product type.
+An element type may be `bool`, `i64`, `f32`, `f64`, a named product type, or another fixed array. A fixed array may also be used as a field of a product type.
 
 ```primer
 type Point {
@@ -201,7 +201,14 @@ path: Path = Path {
 print(path.points[2].y);
 ```
 
-Directly nested fixed arrays such as `[[i64; 2]; 2]`, array parameters and results, and direct element assignment such as `values[0] = 1;` are not yet supported. Primer diagnoses these forms instead of silently assigning them another meaning.
+Fixed arrays may be nested directly. In `matrix[row][column]`, the two indices are checked in sequence.
+
+```primer
+matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
+print(matrix[1][2]); // 6
+```
+
+Array parameters and results and direct element assignment such as `values[0] = 1;` are not yet supported. Primer diagnoses these forms instead of silently assigning them another meaning.
 
 See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
 

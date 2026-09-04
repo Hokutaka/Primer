@@ -17,14 +17,15 @@ print(values[2]);
 
 The current fixed-array feature supports:
 
-- grouping a known number of values of one scalar or named product type;
+- grouping a known number of values of one type;
 - using a fixed array as a product-type field;
+- nesting fixed arrays directly;
 - reading one element with an `i64` index;
 - copying a complete array into another binding;
 - reassigning a complete array to a compatible `mut` binding;
 - aggregation and linear search with loops.
 
-Direct element assignment, dynamic lengths, directly nested fixed arrays, and arrays crossing function boundaries are outside the current scope.
+Direct element assignment, dynamic lengths, and arrays crossing function boundaries are outside the current scope.
 
 ## Design decisions
 
@@ -55,6 +56,15 @@ type Path {
 
 Arrays and product types still copy as independent values when combined. The frontend rejects a type such as `type Node { children: [Node; 1], }` because its size would be infinite even though the cycle passes through an array.
 
+Fixed arrays may also be nested directly.
+
+```primer
+matrix: [[i64; 3]; 2] = [[1, 2, 3], [4, 5, 6]];
+print(matrix[1][2]);
+```
+
+An inner array is also one value. Copying or reassigning the complete array copies every level. In `matrix[row][column]`, the outer and inner indices are checked separately.
+
 ### Every index is checked
 
 Valid indices range from `0` through `length - 1`. Negative indices and indices greater than or equal to `length` are out of bounds.
@@ -69,7 +79,7 @@ The Primer VM and every generated route perform the check: C, LLVM IR, QBE IR, W
 | Primer IR | Resolved `[element; length]`, `array[...]`, and `index(...)` |
 | Bytecode | `array.new element length`, `array.get element length`, and instruction origin |
 | Primer VM | Array value, element type, length, failing index, and instruction position |
-| Backend IR | Placement, copies, bounds checks, element-address calculation, and load or aggregate copy |
+| Backend IR | Recursive types, placement, copies, each bounds check, element-address calculation, and load or aggregate copy |
 | Artifact | Backend-specific array representation and executable bounds checks |
 
 Length remains explicit type information instead of being inferred from hidden runtime metadata. Every stage can therefore answer how many elements it is handling.
@@ -85,7 +95,7 @@ Length remains explicit type information instead of being inferred from hidden r
 | Windows x86-64 | One stack slot per scalar and multiple field-derived slots per product value | Negative and upper-bound comparisons; failure executes `ud2` |
 | Primer bytecode | A typed array value | The VM checks `array.get` |
 
-QBE, WebAssembly, and Windows x86-64 currently reserve 8-byte units even for 4-byte scalar values. A product element uses the combined storage required by its fields as its stride. This simple, observable layout is a backend-lowering choice, not part of the Primer type meaning.
+QBE, WebAssembly, and Windows x86-64 currently reserve 8-byte units even for 4-byte scalar values. A product or array element uses the storage required by the complete value as its stride. This simple, observable layout is a backend-lowering choice, not part of the Primer type meaning.
 
 ## Security boundary
 
@@ -95,11 +105,10 @@ Bounds checks stop execution before an invalid memory access. Arrays do not, how
 
 ## Current limits
 
-- Element types are `bool`, `i64`, `f32`, `f64`, or named product types.
+- Element types are `bool`, `i64`, `f32`, `f64`, named product types, or fixed arrays.
 - Length is a positive integer.
 - Empty array literals are unavailable.
 - Direct element assignment is unavailable.
-- Directly nested fixed arrays are unavailable.
 - Array parameters and results are unavailable.
 - Whole-array comparison and `print` are unavailable.
 

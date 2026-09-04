@@ -174,6 +174,13 @@ fn product_arrays_example_runs() {
 }
 
 #[test]
+fn matrix_vector_product_example_runs() {
+    let output = run_vm(include_str!("../examples/matrix_vector_product.prim")).unwrap();
+
+    assert_eq!(output, "14\n32\n50\n");
+}
+
+#[test]
 fn xor_neural_network_example_runs() {
     let output = run_vm(include_str!("../examples/xor_neural_network.prim")).unwrap();
 

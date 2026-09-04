@@ -81,7 +81,7 @@ Primerは現在、次の機能を備えています。
 - 静的型付け
 - `bool`、`i64`、`f32`、`f64`
 - 名前付きproduct type、既定field値、field access
-- scalar型または名前付きproduct typeを要素にでき、product typeのfieldにもできる固定長配列、添字参照、値コピー、実行時の境界検査
+- 任意の固定サイズ値を要素にでき、直接入れ子にもできる固定長配列、添字参照、値コピー、実行時の境界検査
 - 型付き関数、`void`、明示的な`return`
 - トップレベル実行文または明示的な`fn main() -> void`
 - 明示的な型宣言

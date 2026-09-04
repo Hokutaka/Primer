@@ -18,6 +18,7 @@ This directory contains programs that can be read and executed with the current 
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
 | [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
 | [product_arrays.prim](product_arrays.prim) | point arrays, indexed product values, and array value copies |
+| [matrix_vector_product.prim](matrix_vector_product.prim) | nested fixed arrays and two-dimensional indexing |
 
 ## Numerical computation
 
@@ -41,6 +42,7 @@ This directory contains programs that can be read and executed with the current 
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
 | [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
 | [product_arrays.prim](product_arrays.prim) | linear search for the nearest point in a point array |
+| [matrix_vector_product.prim](matrix_vector_product.prim) | multiplication of a 3-by-3 matrix and a three-element vector |
 | [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
 
 ## Current scope

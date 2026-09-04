@@ -108,19 +108,7 @@ fn type_name(ty: Type) -> String {
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("product type {id}"),
-        Type::Array { element, length } => {
-            format!("[{}; {length}]", array_element_name(element))
-        }
-    }
-}
-
-fn array_element_name(element: crate::bytecode::ArrayElementType) -> String {
-    match element {
-        crate::bytecode::ArrayElementType::Bool => "bool".into(),
-        crate::bytecode::ArrayElementType::I64 => "i64".into(),
-        crate::bytecode::ArrayElementType::F32 => "f32".into(),
-        crate::bytecode::ArrayElementType::F64 => "f64".into(),
-        crate::bytecode::ArrayElementType::Named(id) => format!("product type {id}"),
+        Type::Array { element, length } => format!("[{}; {length}]", type_name(*element)),
     }
 }
 

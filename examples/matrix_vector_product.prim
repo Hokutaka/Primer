@@ -1,0 +1,14 @@
+matrix: [[i64; 3]; 3] = [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9],
+];
+vector: [i64; 3] = [1, 2, 3];
+
+for (mut row: i64 = 0; row < 3; row = row + 1) {
+    mut total: i64 = 0;
+    for (mut column: i64 = 0; column < 3; column = column + 1) {
+        total = total + matrix[row][column] * vector[column];
+    }
+    print(total);
+}
