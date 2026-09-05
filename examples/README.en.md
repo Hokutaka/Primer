@@ -118,7 +118,7 @@ These examples are programs expressible with numbers, booleans, strings, binding
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
 
-The two string examples support VM execution and C emission, with transformations also visible through `emit-ir` and `emit-bytecode`. LLVM, QBE, WAT, and assembly emission do not support them yet.
+The two string examples support VM execution, C emission, and explicitly targeted LLVM emission, with transformations also visible through `emit-ir` and `emit-bytecode`. QBE, WAT, and assembly emission do not support them yet.
 
 For example, emit and compile the string-key lookup:
 
@@ -128,6 +128,8 @@ clang -std=c11 target/string_lookup.c -o target/string_lookup
 ```
 
 Run the executable with `./target/string_lookup` in Bash or `.\target\string_lookup.exe` on Windows. An external C compiler is required.
+
+For LLVM, use the Windows/Linux command examples in the [CLI reference](../docs/reference/cli.en.md#llvm-target-selection). `cargo test --test llvm_strings` compares VM, generated C, and generated LLVM output byte-for-byte. Setting `PRIMER_TEST_LLVM_CLANG` and `PRIMER_TEST_CC` makes unavailable selected compilers a test failure.
 
 `cargo test --test c_strings` runs generated C with and without optimization and compares it with the VM. Execution comparisons skip when the default C compiler is unavailable; setting `PRIMER_TEST_CC` makes the selected compiler mandatory. CI requires Clang and also checks with AddressSanitizer and UndefinedBehaviorSanitizer.
 

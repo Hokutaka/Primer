@@ -47,9 +47,12 @@ fn expected_output(case_name: &str, file_name: &str) -> String {
 }
 
 fn assert_observation(case_name: &str, command: &str, expected_file: &str) {
-    let output = Command::new(env!("CARGO_BIN_EXE_primer"))
-        .arg(command)
-        .arg(source_path(case_name))
+    let mut process = Command::new(env!("CARGO_BIN_EXE_primer"));
+    process.arg(command).arg(source_path(case_name));
+    if command == "emit-llvm" && case_name == "string-values" {
+        process.args(["--target", "x86_64-unknown-linux-gnu"]);
+    }
+    let output = process
         .output()
         .unwrap_or_else(|error| panic!("failed to run primer {command}: {error}"));
 
@@ -91,6 +94,7 @@ fn string_observations_match_ir_bytecode_and_vm_output() {
     for (command, file) in [
         ("emit-ir", "ir.pir"),
         ("emit-c", "c.c"),
+        ("emit-llvm", "llvm.ll"),
         ("emit-bytecode", "bytecode.pbc"),
         ("run", "run.stdout"),
     ] {
@@ -116,7 +120,7 @@ fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
     use std::io::Write;
     file.write_all(b"existing artifact").unwrap();
     drop(file);
-    for command in ["emit-llvm", "emit-qbe", "emit-wat", "emit-asm"] {
+    for command in ["emit-qbe", "emit-wat", "emit-asm"] {
         let output = Command::new(env!("CARGO_BIN_EXE_primer"))
             .arg(command)
             .arg(source_path("string-values"))

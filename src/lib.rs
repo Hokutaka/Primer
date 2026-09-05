@@ -81,6 +81,15 @@ pub fn compile_to_llvm(source: &str) -> Result<String, Diagnostic> {
     codegen::emit_llvm(&program)
 }
 
+/// LLVMの実行環境を明示して生成します。Noneでは文字列にターゲット指定を求めます。
+pub fn compile_to_llvm_with_target(
+    source: &str,
+    target: Option<codegen::llvm::Target>,
+) -> Result<String, Diagnostic> {
+    let program = compile_to_ir(source)?;
+    codegen::llvm::emit_llvm_with_target(&program, target)
+}
+
 // Wasm コンパイラ
 pub fn compile_to_wat(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;

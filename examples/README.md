@@ -118,7 +118,7 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
 
-文字列を使う2例はVM実行とC生成に対応し、`emit-ir`と`emit-bytecode`でも変換を読めます。LLVM・QBE・WAT・アセンブリへの出力にはまだ対応していません。
+文字列を使う2例はVM実行、C生成、明示的なターゲット付きLLVM生成に対応し、`emit-ir`と`emit-bytecode`でも変換を読めます。QBE・WAT・アセンブリへの出力にはまだ対応していません。
 
 例えば、文字列をキーにした検索をCへ変換できます。
 
@@ -128,6 +128,8 @@ clang -std=c11 target/string_lookup.c -o target/string_lookup
 ```
 
 生成した実行ファイルをBashでは`./target/string_lookup`、Windowsでは`.\target\string_lookup.exe`で実行します。外部のCコンパイラが必要です。
+
+LLVMの場合は、[CLIリファレンス](../docs/reference/cli.ja.md#llvmのターゲット指定)にあるWindows/Linuxのコマンド例を使ってください。`cargo test --test llvm_strings`で、文字列のVM・生成C・生成LLVMの出力をバイト単位で比較できます。`PRIMER_TEST_LLVM_CLANG`と`PRIMER_TEST_CC`を設定すると、指定したコンパイラがない場合もテスト失敗になります。
 
 `cargo test --test c_strings`はC生成物を最適化あり・なしで実行し、VMの結果と比較します。既定のCコンパイラがない環境では実行比較をスキップしますが、`PRIMER_TEST_CC`にコンパイラを指定すると検証を必須にできます。CIではClangを必須とし、AddressSanitizerとUndefinedBehaviorSanitizerでも検査します。
 

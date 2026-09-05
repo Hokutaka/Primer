@@ -76,11 +76,14 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let output = parse_output_option(&rest, "primer emit-llvm <file> [-o <output.ll>]")?;
+            let (output, target) = parse_llvm_options(&rest)?;
 
             let source = read_source(&input)?;
 
-            let llvm = render_compilation_result(primer_lang::compile_to_llvm(&source), &source)?;
+            let llvm = render_compilation_result(
+                primer_lang::compile_to_llvm_with_target(&source, target),
+                &source,
+            )?;
 
             write_or_print(output, llvm)
         }
@@ -223,6 +226,32 @@ fn parse_output_option(args: &[String], usage: &str) -> Result<Option<PathBuf>, 
     }
 }
 
+fn parse_llvm_options(
+    args: &[String],
+) -> Result<(Option<PathBuf>, Option<primer_lang::codegen::llvm::Target>), String> {
+    let mut output = None;
+    let mut target = None;
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        match (flag.as_str(), args.next()) {
+            ("-o" | "--output", Some(path)) if output.is_none() => {
+                output = Some(PathBuf::from(path));
+            }
+            ("--target", Some(value)) if target.is_none() => {
+                target = Some(primer_lang::codegen::llvm::Target::parse(value).ok_or_else(|| {
+                    format!("unsupported LLVM target `{value}`; expected x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc")
+                })?);
+            }
+            _ => {
+                return Err(
+                    "usage: primer emit-llvm <file> [--target <triple>] [-o <output.ll>]".into(),
+                );
+            }
+        }
+    }
+    Ok((output, target))
+}
+
 fn write_or_print(output: Option<PathBuf>, content: String) -> Result<(), String> {
     match output {
         Some(path) => fs::write(&path, content)
@@ -243,7 +272,7 @@ fn print_help() {
            primer check <file>\n\
            primer emit-ir <file> [-o <output.pir>]\n\
            primer emit-c <file> [-o <output.c>]\n\
-           primer emit-llvm <file> [-o <output.ll>]\n\
+           primer emit-llvm <file> [--target <triple>] [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [-o <output.ssa>]\n\
            primer emit-asm <file> [-o <output.s>]\n\
