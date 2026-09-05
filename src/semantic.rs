@@ -7,6 +7,7 @@ use crate::{
     },
     diagnostic::Diagnostic,
     source::Span,
+    types::IntegerType,
 };
 
 pub type Bindings = HashMap<String, BindingInfo>;
@@ -24,7 +25,7 @@ pub struct FunctionId(pub usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
     Named(TypeId),
@@ -133,7 +134,7 @@ impl SemanticModel {
     pub fn type_name(&self, ty: Type) -> String {
         match ty {
             Type::Bool => "bool".into(),
-            Type::I64 => "i64".into(),
+            Type::Integer(integer) => integer.name().into(),
             Type::F32 => "f32".into(),
             Type::F64 => "f64".into(),
             Type::Named(id) => self.type_definition(id).name.clone(),
@@ -206,6 +207,15 @@ fn register_function_names(program: &Program) -> SemanticResult<HashMap<String, 
         let Item::FunctionDefinition(definition) = item else {
             continue;
         };
+        if ast::Type::from_name(&definition.name).is_some() {
+            return Err(Diagnostic::new(
+                format!(
+                    "function name `{}` is reserved for a built-in type",
+                    definition.name
+                ),
+                definition.name_span,
+            ));
+        }
         let id = FunctionId(names.len());
         if names.insert(definition.name.clone(), id).is_some() {
             return Err(Diagnostic::new(
@@ -436,10 +446,12 @@ fn collect_calls_in_expr(expr: &Expr, model: &SemanticModel, calls: &mut Vec<(Fu
             collect_calls_in_expr(base, model, calls);
             collect_calls_in_expr(index, model, calls);
         }
-        ExprKind::FieldAccess { base, .. } | ExprKind::Unary { value: base, .. } => {
+        ExprKind::FieldAccess { base, .. }
+        | ExprKind::Unary { value: base, .. }
+        | ExprKind::Convert { value: base, .. } => {
             collect_calls_in_expr(base, model, calls);
         }
-        ExprKind::Binary { left, right, .. } => {
+        ExprKind::Binary { left, right, .. } | ExprKind::Logical { left, right, .. } => {
             collect_calls_in_expr(left, model, calls);
             collect_calls_in_expr(right, model, calls);
         }
@@ -473,6 +485,15 @@ fn register_type_names(program: &Program) -> SemanticResult<HashMap<String, Type
         let Item::TypeDefinition(definition) = item else {
             continue;
         };
+        if ast::Type::from_name(&definition.name).is_some() {
+            return Err(Diagnostic::new(
+                format!(
+                    "type name `{}` is reserved for a built-in type",
+                    definition.name
+                ),
+                definition.name_span,
+            ));
+        }
         let id = TypeId(names.len());
 
         if names.insert(definition.name.clone(), id).is_some() {
@@ -543,16 +564,14 @@ fn resolve_type_name(
     span: Span,
     type_names: &HashMap<String, TypeId>,
 ) -> SemanticResult<Type> {
-    match name {
-        "bool" => Ok(Type::Bool),
-        "i64" => Ok(Type::I64),
-        "f32" => Ok(Type::F32),
-        "f64" => Ok(Type::F64),
-        _ => type_names
+    if let Some(ty) = ast::Type::from_name(name) {
+        Ok(scalar_type(ty))
+    } else {
+        type_names
             .get(name)
             .copied()
             .map(Type::Named)
-            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span)),
+            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span))
     }
 }
 
@@ -613,7 +632,7 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
         match ty {
             Type::Named(id) => Some(*id),
             Type::Array { element, .. } => named_type_dependency(element),
-            Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
+            Type::Bool | Type::Integer(_) | Type::F32 | Type::F64 => None,
         }
     }
 
@@ -746,9 +765,12 @@ fn check_statements(
                         ));
                     };
 
-                    let index_ty =
-                        model.type_of_expr_expected(index, &bindings, Some(Type::I64))?;
-                    if index_ty != Type::I64 {
+                    let index_ty = model.type_of_expr_expected(
+                        index,
+                        &bindings,
+                        Some(Type::Integer(IntegerType::I64)),
+                    )?;
+                    if index_ty != Type::Integer(IntegerType::I64) {
                         return Err(Diagnostic::new(
                             format!(
                                 "array index must be i64, found {}",
@@ -985,11 +1007,39 @@ fn type_of_expr_expected(
     model: &SemanticModel,
 ) -> SemanticResult<Type> {
     match &expr.kind {
+        ExprKind::Convert { target, value, .. } => {
+            let target_ty = model.resolve_type_ref(target)?;
+            if !matches!(target_ty, Type::Integer(_)) {
+                return Err(Diagnostic::new(
+                    "conversion target must be an integer type",
+                    target.span,
+                ));
+            }
+            // 変換先の期待型を入力へ伝えると、変換前の計算の意味が変わってしまいます。
+            let input_ty = model.type_of_expr(value, bindings)?;
+            if !matches!(input_ty, Type::Integer(_)) {
+                return Err(Diagnostic::new(
+                    format!(
+                        "integer conversion requires an integer value, found {}",
+                        model.type_name(input_ty)
+                    ),
+                    value.span,
+                ));
+            }
+            Ok(target_ty)
+        }
         ExprKind::Boolean(_) => Ok(Type::Bool),
 
         ExprKind::Integer(literal) => {
-            resolve_i64_literal(literal, expr.span)?;
-            Ok(Type::I64)
+            let ty = literal
+                .explicit_type()
+                .or(match expected {
+                    Some(Type::Integer(ty)) => Some(ty),
+                    _ => None,
+                })
+                .unwrap_or(IntegerType::I64);
+            resolve_integer_literal(literal, ty, false, expr.span)?;
+            Ok(Type::Integer(ty))
         }
 
         ExprKind::Float { explicit_type, .. } => {
@@ -1062,8 +1112,12 @@ fn type_of_expr_expected(
                     base.span,
                 ));
             };
-            let index_ty = model.type_of_expr_expected(index, bindings, Some(Type::I64))?;
-            if index_ty != Type::I64 {
+            let index_ty = model.type_of_expr_expected(
+                index,
+                bindings,
+                Some(Type::Integer(IntegerType::I64)),
+            )?;
+            if index_ty != Type::Integer(IntegerType::I64) {
                 return Err(Diagnostic::new(
                     format!(
                         "array index must be i64, found {}",
@@ -1178,13 +1232,21 @@ fn type_of_expr_expected(
         ExprKind::Unary { op, value } => match op {
             crate::ast::UnaryOp::Negate => {
                 if let ExprKind::Integer(literal) = &value.kind {
-                    resolve_negated_i64_literal(literal, expr.span)?;
-                    return Ok(Type::I64);
+                    let ty = literal
+                        .explicit_type()
+                        .or(match expected {
+                            Some(Type::Integer(ty)) => Some(ty),
+                            _ => None,
+                        })
+                        .unwrap_or(IntegerType::I64);
+                    resolve_integer_literal(literal, ty, true, expr.span)?;
+                    return Ok(Type::Integer(ty));
                 }
 
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
 
-                if !is_numeric(&ty) {
+                if !is_numeric(&ty) || matches!(ty, Type::Integer(integer) if !integer.is_signed())
+                {
                     return Err(Diagnostic::new(
                         format!("cannot apply `-` to {}", model.type_name(ty)),
                         expr.span,
@@ -1208,11 +1270,33 @@ fn type_of_expr_expected(
             }
         },
 
+        ExprKind::Logical { op, left, right } => {
+            // 実行時に省略される右辺にも、通常どおり名前解決と型検査を行います。
+            for operand in [left, right] {
+                let ty = type_of_expr_expected(operand, bindings, Some(Type::Bool), model)?;
+                if ty != Type::Bool {
+                    let operator = match op {
+                        crate::ast::LogicalOp::And => "&&",
+                        crate::ast::LogicalOp::Or => "||",
+                    };
+                    return Err(Diagnostic::new(
+                        format!(
+                            "`{operator}` requires bool operands, found {}",
+                            model.type_name(ty)
+                        ),
+                        operand.span,
+                    ));
+                }
+            }
+            Ok(Type::Bool)
+        }
         ExprKind::Binary { op, left, right } => {
             let (left_type, right_type) = if is_comparison(*op) {
                 comparison_operand_types(left, right, bindings, model)?
             } else {
-                // 親から来た期待型を左右両方へ伝える
+                // 既定型へ確定する前に、式全体から整数型の手掛かりを集めます。
+                let expected =
+                    expected.or_else(|| integer_hint(expr, bindings, model).map(Type::Integer));
                 (
                     type_of_expr_expected(left, bindings, expected.clone(), model)?,
                     type_of_expr_expected(right, bindings, expected, model)?,
@@ -1275,43 +1359,53 @@ fn type_of_expr_expected(
     }
 }
 
-pub(crate) fn resolve_i64_literal(
-    literal: &ast::IntegerLiteral,
-    span: Span,
-) -> SemanticResult<i64> {
-    resolve_i64_magnitude(literal, false, span)
+fn integer_hint(expr: &Expr, bindings: &Bindings, model: &SemanticModel) -> Option<IntegerType> {
+    match &expr.kind {
+        ExprKind::Integer(literal) => literal.explicit_type(),
+        ExprKind::Binary { op, left, right } if is_arithmetic(*op) => {
+            integer_hint(left, bindings, model).or_else(|| integer_hint(right, bindings, model))
+        }
+        ExprKind::Unary { value, .. } => integer_hint(value, bindings, model),
+        ExprKind::Variable(_)
+        | ExprKind::Call { .. }
+        | ExprKind::Index { .. }
+        | ExprKind::FieldAccess { .. }
+        | ExprKind::Convert { .. } => match model.type_of_expr(expr, bindings).ok()? {
+            Type::Integer(ty) => Some(ty),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
-pub(crate) fn resolve_negated_i64_literal(
+pub(crate) fn resolve_integer_literal(
     literal: &ast::IntegerLiteral,
-    span: Span,
-) -> SemanticResult<i64> {
-    resolve_i64_magnitude(literal, true, span)
-}
-
-fn resolve_i64_magnitude(
-    literal: &ast::IntegerLiteral,
+    ty: IntegerType,
     negative: bool,
     span: Span,
 ) -> SemanticResult<i64> {
-    let magnitude = literal
-        .digits()
-        .parse::<u64>()
-        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))?;
-    let minimum_magnitude = i64::MAX as u64 + 1;
-
-    if negative {
-        if magnitude > minimum_magnitude {
-            return Err(Diagnostic::new("integer literal does not fit in i64", span));
-        }
-        if magnitude == minimum_magnitude {
-            return Ok(i64::MIN);
-        }
-        return Ok(-(magnitude as i64));
+    if negative && !ty.is_signed() {
+        return Err(Diagnostic::new(
+            format!("cannot apply `-` to {}", ty.name()),
+            span,
+        ));
     }
-
-    i64::try_from(magnitude)
-        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))
+    let range_error = || {
+        Diagnostic::new(
+            format!("integer literal does not fit in {}", ty.name()),
+            span,
+        )
+    };
+    let magnitude = literal.digits().parse::<u64>().map_err(|_| range_error())?;
+    let value = if negative {
+        -(magnitude as i128)
+    } else {
+        magnitude as i128
+    };
+    if value < ty.minimum() as i128 || value > ty.maximum() as i128 {
+        return Err(range_error());
+    }
+    Ok(value as i64)
 }
 
 fn check_call(
@@ -1353,7 +1447,7 @@ fn check_call(
 const fn scalar_type(ty: ast::Type) -> Type {
     match ty {
         ast::Type::Bool => Type::Bool,
-        ast::Type::I64 => Type::I64,
+        ast::Type::Integer(integer) => Type::Integer(integer),
         ast::Type::F32 => Type::F32,
         ast::Type::F64 => Type::F64,
     }
@@ -1399,7 +1493,7 @@ fn operator_name(op: BinaryOp) -> &'static str {
 }
 
 const fn is_numeric(ty: &Type) -> bool {
-    matches!(ty, Type::I64 | Type::F32 | Type::F64)
+    matches!(ty, Type::Integer(_) | Type::F32 | Type::F64)
 }
 
 const fn is_arithmetic(op: BinaryOp) -> bool {
@@ -1422,7 +1516,7 @@ const fn is_comparison(op: BinaryOp) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex, parser::parse, source::Span};
+    use crate::{lexer::lex, parser::parse, source::Span, types::IntegerType};
 
     use super::{Type, analyze, check};
 
@@ -1502,7 +1596,7 @@ mod tests {
 
         assert_eq!(
             bindings.get("x").map(|binding| binding.ty.clone()),
-            Some(Type::I64)
+            Some(Type::Integer(IntegerType::I64))
         );
     }
 
@@ -1557,7 +1651,7 @@ mod tests {
 
         assert_eq!(
             bindings.get("x").map(|binding| binding.ty.clone()),
-            Some(Type::I64)
+            Some(Type::Integer(IntegerType::I64))
         );
         assert_eq!(bindings.get("x").map(|binding| binding.mutable), Some(true));
     }

@@ -374,6 +374,11 @@ fn emit_print(
 
 fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     match &expr.kind {
+        ExprKind::CheckIntegerRange { value, ty } => {
+            output.push_str(&format!("primer_check_{}(", ty.name()));
+            emit_expr(value, module, output);
+            output.push(')');
+        }
         ExprKind::Boolean(value) => {
             output.push_str(if *value { "true" } else { "false" });
         }
@@ -470,6 +475,16 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             }
         }
 
+        ExprKind::Logical { op, left, right } => {
+            output.push('(');
+            emit_expr(left, module, output);
+            output.push_str(match op {
+                super::ir::LogicalOp::And => " && ",
+                super::ir::LogicalOp::Or => " || ",
+            });
+            emit_expr(right, module, output);
+            output.push(')');
+        }
         ExprKind::Binary { op, left, right } => {
             let helper = match op {
                 BinaryOp::CheckedI64Add => Some("primer_i64_add"),
@@ -531,6 +546,8 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 
 #[derive(Clone, Copy, Default)]
 struct I64Operations {
+    check_i32: bool,
+    check_u32: bool,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -540,11 +557,25 @@ struct I64Operations {
 
 impl I64Operations {
     const fn any(self) -> bool {
-        self.add || self.subtract || self.multiply || self.divide || self.negate
+        self.check_i32
+            || self.check_u32
+            || self.add
+            || self.subtract
+            || self.multiply
+            || self.divide
+            || self.negate
     }
 
     fn include_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::CheckIntegerRange { value, ty } => {
+                self.include_expr(value);
+                match ty {
+                    crate::types::IntegerType::I32 => self.check_i32 = true,
+                    crate::types::IntegerType::U32 => self.check_u32 = true,
+                    crate::types::IntegerType::I64 => {}
+                }
+            }
             ExprKind::Unary { op, value } => {
                 self.include_expr(value);
                 if *op == UnaryOp::CheckedI64Negate {
@@ -582,7 +613,12 @@ impl I64Operations {
                     self.include_expr(value);
                 }
             }
-            ExprKind::Index { base, index } => {
+            ExprKind::Logical {
+                left: base,
+                right: index,
+                ..
+            }
+            | ExprKind::Index { base, index } => {
                 self.include_expr(base);
                 self.include_expr(index);
             }
@@ -600,9 +636,15 @@ impl I64Operations {
 
     fn include_statement(&mut self, statement: &Statement) {
         match statement {
-            Statement::Binding { value, .. }
-            | Statement::Assignment { value, .. }
-            | Statement::Print { value, .. } => self.include_expr(value),
+            Statement::Binding { value, .. } | Statement::Print { value, .. } => {
+                self.include_expr(value)
+            }
+            Statement::Assignment { target, value } => {
+                self.include_expr(value);
+                for projection in &target.projections {
+                    self.include_expr(&projection.index);
+                }
+            }
             Statement::Call { arguments, .. } => {
                 for argument in arguments {
                     self.include_expr(argument);
@@ -661,6 +703,15 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for (enabled, ty) in [
+        (operations.check_i32, crate::types::IntegerType::I32),
+        (operations.check_u32, crate::types::IntegerType::U32),
+    ] {
+        if enabled {
+            output.push_str(&format!("static int64_t primer_check_{}(int64_t value) {{\n    if (value < {}LL || value > {}LL) abort();\n    return value;\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        }
+    }
+
     if !operations.any() {
         return;
     }

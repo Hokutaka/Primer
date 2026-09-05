@@ -1,0 +1,118 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+function l $primer_check_i32(l %value) {
+@start
+  %below =w csltl %value, -2147483648
+  %above =w csgtl %value, 2147483647
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_check_u32(l %value) {
+@start
+  %below =w csltl %value, 0
+  %above =w csgtl %value, 4294967295
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_i64_add(l %left, l %right) {
+@start
+  %result =l add %left, %right
+  %left_changed =l xor %result, %left
+  %right_changed =l xor %result, %right
+  %sign_changed =l and %left_changed, %right_changed
+  %overflow =w csltl %sign_changed, 0
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function l $primer_i64_div(l %left, l %right) {
+@start
+  %is_zero =w ceql %right, 0
+  %is_min =w ceql %left, -9223372036854775808
+  %is_negative_one =w ceql %right, -1
+  %overflows =w and %is_min, %is_negative_one
+  %invalid =w or %is_zero, %overflows
+  jnz %invalid, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l div %left, %right
+  ret %result
+}
+
+function l $primer_i64_neg(l %value) {
+@start
+  %overflow =w ceql %value, -9223372036854775808
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l neg %value
+  ret %result
+}
+
+function l $primer_fn_add_0(l %arg0, l %arg1) {
+@start
+  %slot_left =l alloc8 8
+  %slot_right =l alloc8 8
+  storel %arg0, %slot_left
+  storel %arg1, %slot_right
+  %tmp0 =l loadl %slot_left
+  %tmp1 =l loadl %slot_right
+  %tmp2 =l call $primer_i64_add(l %tmp0, l %tmp1)
+  %tmp3 =l call $primer_check_i32(l %tmp2)
+  ret %tmp3
+}
+
+export function w $main() {
+@start
+  %slot_small =l alloc8 8
+  %slot_large =l alloc8 8
+  %tmp0 =l call $primer_i64_neg(l 3)
+  %tmp1 =l call $primer_check_i32(l %tmp0)
+  %tmp2 =l call $primer_fn_add_0(l %tmp1, l 5)
+  storel %tmp2, %slot_small
+  storel 4294967295, %slot_large
+  %tmp3 =l loadl %slot_small
+  %tmp4 =w call $printf(l $fmt_i64, ..., l %tmp3)
+  %tmp5 =l loadl %slot_large
+  %tmp6 =l call $primer_i64_div(l %tmp5, l 2)
+  %tmp7 =l call $primer_check_u32(l %tmp6)
+  %tmp8 =w call $printf(l $fmt_i64, ..., l %tmp7)
+  %tmp9 =l loadl %slot_large
+  %tmp10 =w call $printf(l $fmt_i64, ..., l %tmp9)
+  %tmp11 =l loadl %slot_large
+  %tmp12 =w csgtl %tmp11, 2147483648
+  %tmp13 =l extsw %tmp12
+  %tmp14 =l mul %tmp13, 8
+  %tmp15 =l add $bool_texts, %tmp14
+  %tmp16 =l loadl %tmp15
+  %tmp17 =w call $puts(l %tmp16)
+  %tmp18 =l loadl %slot_small
+  %tmp19 =l call $primer_check_u32(l %tmp18)
+  %tmp20 =w call $printf(l $fmt_i64, ..., l %tmp19)
+  ret 0
+}

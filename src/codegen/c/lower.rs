@@ -139,7 +139,7 @@ fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
         primer_ir::Type::Named(id) => Some(*id),
         primer_ir::Type::Array { element, .. } => named_type_dependency(element),
         primer_ir::Type::Bool
-        | primer_ir::Type::I64
+        | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => None,
     }
@@ -232,7 +232,31 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
 }
 
 fn lower_expr(expr: &primer_ir::Expr) -> Expr {
+    let value = lower_expr_unchecked(expr);
+    if let Some(ty) = super::super::integer_range_check(expr) {
+        Expr {
+            ty: value.ty.clone(),
+            kind: ExprKind::CheckIntegerRange {
+                value: Box::new(value),
+                ty,
+            },
+        }
+    } else {
+        value
+    }
+}
+
+fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
+        primer_ir::ExprKind::Logical { op, left, right } => ExprKind::Logical {
+            op: match op {
+                primer_ir::LogicalOp::And => super::ir::LogicalOp::And,
+                primer_ir::LogicalOp::Or => super::ir::LogicalOp::Or,
+            },
+            left: Box::new(lower_expr(left)),
+            right: Box::new(lower_expr(right)),
+        },
+        primer_ir::ExprKind::ConvertInteger { value, .. } => return lower_expr(value),
         primer_ir::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
 
         primer_ir::ExprKind::Integer(value) => ExprKind::Integer(*value),
@@ -301,7 +325,7 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 fn print_format(ty: &primer_ir::Type) -> PrintFormat {
     match ty {
         primer_ir::Type::Bool => PrintFormat::Bool,
-        primer_ir::Type::I64 => PrintFormat::I64,
+        primer_ir::Type::Integer(_) => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -314,7 +338,7 @@ impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
             primer_ir::Type::Bool => Self::Bool,
-            primer_ir::Type::I64 => Self::I64,
+            primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),
@@ -346,6 +370,11 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
                 }
             }
             primer_ir::ExprKind::Index { base, index }
+            | primer_ir::ExprKind::Logical {
+                left: base,
+                right: index,
+                ..
+            }
             | primer_ir::ExprKind::Binary {
                 left: base,
                 right: index,
@@ -360,6 +389,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
                 }
             }
             primer_ir::ExprKind::FieldAccess { base, .. }
+            | primer_ir::ExprKind::ConvertInteger { value: base, .. }
             | primer_ir::ExprKind::Unary { value: base, .. } => visit_expr(base, types),
             primer_ir::ExprKind::Call { arguments, .. } => {
                 for argument in arguments {
@@ -448,7 +478,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
 
 fn lower_unary_op(op: primer_ir::UnaryOp, ty: &primer_ir::Type) -> UnaryOp {
     match (op, ty) {
-        (primer_ir::UnaryOp::Negate, primer_ir::Type::I64) => UnaryOp::CheckedI64Negate,
+        (primer_ir::UnaryOp::Negate, primer_ir::Type::Integer(_)) => UnaryOp::CheckedI64Negate,
         (primer_ir::UnaryOp::Negate, _) => UnaryOp::Negate,
         (primer_ir::UnaryOp::Not, _) => UnaryOp::Not,
     }
@@ -456,10 +486,14 @@ fn lower_unary_op(op: primer_ir::UnaryOp, ty: &primer_ir::Type) -> UnaryOp {
 
 fn lower_binary_op(op: primer_ir::BinaryOp, operand_ty: &primer_ir::Type) -> BinaryOp {
     match (op, operand_ty) {
-        (primer_ir::BinaryOp::Add, primer_ir::Type::I64) => BinaryOp::CheckedI64Add,
-        (primer_ir::BinaryOp::Subtract, primer_ir::Type::I64) => BinaryOp::CheckedI64Subtract,
-        (primer_ir::BinaryOp::Multiply, primer_ir::Type::I64) => BinaryOp::CheckedI64Multiply,
-        (primer_ir::BinaryOp::Divide, primer_ir::Type::I64) => BinaryOp::CheckedI64Divide,
+        (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(_)) => BinaryOp::CheckedI64Add,
+        (primer_ir::BinaryOp::Subtract, primer_ir::Type::Integer(_)) => {
+            BinaryOp::CheckedI64Subtract
+        }
+        (primer_ir::BinaryOp::Multiply, primer_ir::Type::Integer(_)) => {
+            BinaryOp::CheckedI64Multiply
+        }
+        (primer_ir::BinaryOp::Divide, primer_ir::Type::Integer(_)) => BinaryOp::CheckedI64Divide,
         (primer_ir::BinaryOp::Add, _) => BinaryOp::Add,
         (primer_ir::BinaryOp::Subtract, _) => BinaryOp::Subtract,
         (primer_ir::BinaryOp::Multiply, _) => BinaryOp::Multiply,

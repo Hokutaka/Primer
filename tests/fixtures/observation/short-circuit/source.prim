@@ -1,0 +1,10 @@
+fn report(value: bool) -> bool {
+    print(value);
+    return value;
+}
+
+values: [i64; 2] = [4, 9];
+index: i64 = 2;
+print(index < 2 && values[index] > 0);
+print(index == 2 || report(false));
+print(false || report(true) && (index > 0 || report(false)));

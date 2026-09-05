@@ -1,0 +1,38 @@
+; Primer bytecode v0.1
+
+.function 0 add(0:left:i32, 1:right:i32) -> i32
+.slot 0 left i32
+.slot 1 right i32
+0000  load 0        ; left
+0001  load 1        ; right
+0002  add.i32
+0003  return.value
+.end
+
+.slot 0 small i32
+.slot 1 large u32
+
+0000  push.i32 3
+0001  neg.i32
+0002  push.i32 5
+0003  call 0 2  ; add
+0004  store 0       ; small
+0005  push.u32 4294967295
+0006  store 1       ; large
+0007  load 0        ; small
+0008  print.i32
+0009  load 1        ; large
+0010  push.u32 2
+0011  div.u32
+0012  print.u32
+0013  load 1        ; large
+0014  convert.checked u32 -> i64
+0015  print.i64
+0016  load 1        ; large
+0017  push.u32 2147483648
+0018  gt.u32
+0019  print.bool
+0020  load 0        ; small
+0021  convert.checked i32 -> u32
+0022  print.u32
+0023  halt

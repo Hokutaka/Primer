@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
-use crate::source::Span;
+use crate::source::{ConversionSyntax, Span};
 
 type ParseResult<T> = Result<T, Diagnostic>;
 
@@ -381,7 +381,43 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> ParseResult<Expr> {
-        self.parse_equality()
+        self.parse_logical_or()
+    }
+
+    fn parse_logical_or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_logical_and()?;
+        while matches!(self.peek().kind, TokenKind::OrOr) {
+            self.advance();
+            let right = self.parse_logical_and()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Logical {
+                    op: crate::ast::LogicalOp::Or,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_logical_and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_equality()?;
+        while matches!(self.peek().kind, TokenKind::AndAnd) {
+            self.advance();
+            let right = self.parse_equality()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Logical {
+                    op: crate::ast::LogicalOp::And,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
     }
 
     fn parse_block_condition(&mut self) -> ParseResult<Expr> {
@@ -694,15 +730,41 @@ impl Parser {
                 span,
             }),
 
-            TokenKind::Integer(digits) => Ok(Expr {
-                kind: ExprKind::Integer(crate::ast::IntegerLiteral::decimal(digits)),
-                span,
-            }),
+            TokenKind::Integer(text) => {
+                let literal = [
+                    crate::types::IntegerType::I32,
+                    crate::types::IntegerType::U32,
+                    crate::types::IntegerType::I64,
+                ]
+                .into_iter()
+                .find_map(|ty| {
+                    text.strip_suffix(ty.name())
+                        .map(|digits| crate::ast::IntegerLiteral::with_type(digits, ty))
+                })
+                .unwrap_or_else(|| crate::ast::IntegerLiteral::decimal(text));
+                Ok(Expr {
+                    kind: ExprKind::Integer(literal),
+                    span,
+                })
+            }
 
             TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 
             TokenKind::Identifier(name) => {
-                if matches!(&self.peek().kind, TokenKind::LeftParen) {
+                if name == "convert" && self.starts_explicit_conversion() {
+                    self.expect_simple(TokenKind::Less)?;
+                    let target = self.parse_type_ref()?;
+                    self.expect_simple(TokenKind::Greater)?;
+                    self.parse_conversion(target, ConversionSyntax::Explicit, span.start())
+                } else if Type::from_name(&name).is_some()
+                    && matches!(&self.peek().kind, TokenKind::LeftParen)
+                {
+                    let target = TypeRef {
+                        kind: TypeRefKind::Named(name),
+                        span,
+                    };
+                    self.parse_conversion(target, ConversionSyntax::Compact, span.start())
+                } else if matches!(&self.peek().kind, TokenKind::LeftParen) {
                     self.parse_call(name, span)
                 } else if self.starts_construct() {
                     self.parse_construct(name, span)
@@ -733,6 +795,54 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn starts_explicit_conversion(&mut self) -> bool {
+        if !matches!(&self.peek().kind, TokenKind::Less) {
+            return false;
+        }
+        // 通常の`convert < limit`を比較として残すため、型引数の形を先読みします。
+        let saved = self.current;
+        self.advance();
+        let is_conversion = self.parse_type_ref().is_ok()
+            && matches!(&self.peek().kind, TokenKind::Greater)
+            && matches!(&self.peek_next().kind, TokenKind::LeftParen);
+        self.current = saved;
+        is_conversion
+    }
+
+    fn parse_conversion(
+        &mut self,
+        target: TypeRef,
+        syntax: ConversionSyntax,
+        start: usize,
+    ) -> ParseResult<Expr> {
+        self.expect_simple(TokenKind::LeftParen)?;
+        if matches!(&self.peek().kind, TokenKind::RightParen) {
+            return Err(Diagnostic::new(
+                "conversion requires exactly one value",
+                self.peek().span,
+            ));
+        }
+        let value = self.parse_expression()?;
+        if matches!(&self.peek().kind, TokenKind::Comma) {
+            self.advance();
+            if !matches!(&self.peek().kind, TokenKind::RightParen) {
+                return Err(Diagnostic::new(
+                    "conversion requires exactly one value",
+                    self.peek().span,
+                ));
+            }
+        }
+        let end = self.expect_simple(TokenKind::RightParen)?.end();
+        Ok(Expr {
+            kind: ExprKind::Convert {
+                target,
+                value: Box::new(value),
+                syntax,
+            },
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_call(&mut self, name: String, name_span: Span) -> ParseResult<Expr> {

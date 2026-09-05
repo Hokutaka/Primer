@@ -1,0 +1,111 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+function w $primer_fn_report_0(w %arg0) {
+@start
+  %slot_value =l alloc8 8
+  storew %arg0, %slot_value
+  %tmp0 =w loadw %slot_value
+  %tmp1 =l extsw %tmp0
+  %tmp2 =l mul %tmp1, 8
+  %tmp3 =l add $bool_texts, %tmp2
+  %tmp4 =l loadl %tmp3
+  %tmp5 =w call $puts(l %tmp4)
+  %tmp6 =w loadw %slot_value
+  ret %tmp6
+}
+
+export function w $main() {
+@start
+  %slot_values =l alloc8 16
+  %slot_index =l alloc8 8
+  %slot_aggregate_tmp0 =l alloc8 16
+  %slot_logical_result3 =l alloc8 8
+  %slot_logical_result4 =l alloc8 8
+  %slot_logical_result5 =l alloc8 8
+  %slot_logical_result6 =l alloc8 8
+  %slot_logical_result7 =l alloc8 8
+  storel 4, %slot_aggregate_tmp0
+  %tmp0 =l add %slot_aggregate_tmp0, 8
+  storel 9, %tmp0
+  blit %slot_aggregate_tmp0, %slot_values, 16
+  storel 2, %slot_index
+  %tmp1 =l loadl %slot_index
+  %tmp2 =w csltl %tmp1, 2
+  storew %tmp2, %slot_logical_result3
+  jnz %tmp2, @block0, @block1
+@block0 # logical_rhs
+  %tmp3 =l loadl %slot_index
+  %tmp4 =w csltl %tmp3, 0
+  jnz %tmp4, @block4, @block2
+@block2 # array_index_non_negative
+  %tmp5 =w csgel %tmp3, 2
+  jnz %tmp5, @block4, @block3
+@block4 # array_index_out_of_bounds
+  call $abort()
+  hlt
+@block3 # array_index_in_bounds
+  %tmp6 =l mul %tmp3, 8
+  %tmp7 =l add %slot_values, %tmp6
+  %tmp8 =l loadl %tmp7
+  %tmp9 =w csgtl %tmp8, 0
+  storew %tmp9, %slot_logical_result3
+  jmp @block1
+@block1 # logical_end
+  %tmp10 =w loadw %slot_logical_result3
+  %tmp11 =l extsw %tmp10
+  %tmp12 =l mul %tmp11, 8
+  %tmp13 =l add $bool_texts, %tmp12
+  %tmp14 =l loadl %tmp13
+  %tmp15 =w call $puts(l %tmp14)
+  %tmp16 =l loadl %slot_index
+  %tmp17 =w ceql %tmp16, 2
+  storew %tmp17, %slot_logical_result4
+  jnz %tmp17, @block6, @block5
+@block5 # logical_rhs
+  %tmp18 =w call $primer_fn_report_0(w 0)
+  storew %tmp18, %slot_logical_result4
+  jmp @block6
+@block6 # logical_end
+  %tmp19 =w loadw %slot_logical_result4
+  %tmp20 =l extsw %tmp19
+  %tmp21 =l mul %tmp20, 8
+  %tmp22 =l add $bool_texts, %tmp21
+  %tmp23 =l loadl %tmp22
+  %tmp24 =w call $puts(l %tmp23)
+  storew 0, %slot_logical_result5
+  jnz 0, @block8, @block7
+@block7 # logical_rhs
+  %tmp25 =w call $primer_fn_report_0(w 1)
+  storew %tmp25, %slot_logical_result6
+  jnz %tmp25, @block9, @block10
+@block9 # logical_rhs
+  %tmp26 =l loadl %slot_index
+  %tmp27 =w csgtl %tmp26, 0
+  storew %tmp27, %slot_logical_result7
+  jnz %tmp27, @block12, @block11
+@block11 # logical_rhs
+  %tmp28 =w call $primer_fn_report_0(w 0)
+  storew %tmp28, %slot_logical_result7
+  jmp @block12
+@block12 # logical_end
+  %tmp29 =w loadw %slot_logical_result7
+  storew %tmp29, %slot_logical_result6
+  jmp @block10
+@block10 # logical_end
+  %tmp30 =w loadw %slot_logical_result6
+  storew %tmp30, %slot_logical_result5
+  jmp @block8
+@block8 # logical_end
+  %tmp31 =w loadw %slot_logical_result5
+  %tmp32 =l extsw %tmp31
+  %tmp33 =l mul %tmp32, 8
+  %tmp34 =l add $bool_texts, %tmp33
+  %tmp35 =l loadl %tmp34
+  %tmp36 =w call $puts(l %tmp35)
+  ret 0
+}

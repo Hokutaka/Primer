@@ -1,6 +1,37 @@
 use primer_lang::run_vm;
 
 #[test]
+fn short_circuit_guards_division_and_array_access() {
+    assert_eq!(
+        run_vm(include_str!("../examples/short_circuit.prim")).unwrap(),
+        "false\n1\n3\ntrue\ntrue\n99\ntrue\n"
+    );
+}
+
+#[test]
+fn maximum_subarray_tracks_the_best_contiguous_sum() {
+    assert_eq!(
+        run_vm(include_str!("../examples/maximum_subarray.prim")).unwrap(),
+        "1\n-2\n4\n3\n5\n6\n1\n5\n6\n"
+    );
+}
+
+#[test]
+fn population_statistics_widens_the_sum_and_preserves_unsigned_ordering() {
+    assert_eq!(
+        run_vm(include_str!("../examples/population_statistics.prim")).unwrap(),
+        "3100000000\n3400000000\n"
+    );
+}
+
+#[test]
+fn integer_conversions_example_preserves_both_results_and_the_original() {
+    let output = run_vm(include_str!("../examples/integer_conversions.prim")).unwrap();
+
+    assert_eq!(output, "42\n21\n");
+}
+
+#[test]
 fn hello_example_adds_two_named_integers() {
     let output = run_vm(include_str!("../examples/hello.prim")).unwrap();
 

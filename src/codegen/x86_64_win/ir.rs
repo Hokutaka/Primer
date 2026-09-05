@@ -61,6 +61,10 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CheckIntegerRange {
+        ty: crate::types::IntegerType,
+        label: usize,
+    },
     Label {
         id: usize,
         name: &'static str,

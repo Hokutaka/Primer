@@ -1,3 +1,12 @@
+/// 変換の意味とは別に、ソース上で選ばれた書式を保持します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionSyntax {
+    /// `i64(value)`という簡潔な書式です。
+    Compact,
+    /// `convert<i64>(value)`という操作名を明示した書式です。
+    Explicit,
+}
+
 /// ソースコード上のUTF-8バイト範囲を表します。
 ///
 /// `start` は範囲に含み、`end` は含みません。

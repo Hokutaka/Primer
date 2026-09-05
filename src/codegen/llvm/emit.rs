@@ -153,6 +153,16 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::CheckIntegerRange { dest, value, ty } => {
+            writeln!(
+                output,
+                "  {} = call i64 @primer_check_{}(i64 {})",
+                temp(*dest),
+                ty.name(),
+                operand(*value)
+            )
+            .unwrap();
+        }
         Instruction::Label { id, name } => {
             writeln!(output, "{}: ; {name}", label(*id)).unwrap();
         }
@@ -490,6 +500,8 @@ fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
 
 #[derive(Clone, Copy, Default)]
 struct I64Operations {
+    check_i32: bool,
+    check_u32: bool,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -498,10 +510,22 @@ struct I64Operations {
 
 impl I64Operations {
     const fn any(self) -> bool {
-        self.add || self.subtract || self.multiply || self.divide
+        self.check_i32
+            || self.check_u32
+            || self.add
+            || self.subtract
+            || self.multiply
+            || self.divide
     }
 
     fn include(&mut self, instruction: &Instruction) {
+        if let Instruction::CheckIntegerRange { ty, .. } = instruction {
+            match ty {
+                crate::types::IntegerType::I32 => self.check_i32 = true,
+                crate::types::IntegerType::U32 => self.check_u32 = true,
+                crate::types::IntegerType::I64 => {}
+            }
+        }
         let Instruction::Binary { op, .. } = instruction else {
             return;
         };
@@ -529,6 +553,15 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for (enabled, ty) in [
+        (operations.check_i32, crate::types::IntegerType::I32),
+        (operations.check_u32, crate::types::IntegerType::U32),
+    ] {
+        if enabled {
+            output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @llvm.trap()\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        }
+    }
+
     for (enabled, name, intrinsic) in [
         (operations.add, "add", "sadd"),
         (operations.subtract, "sub", "ssub"),

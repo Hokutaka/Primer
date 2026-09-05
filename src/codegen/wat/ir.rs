@@ -41,6 +41,7 @@ pub enum LoopKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CheckIntegerRange(crate::types::IntegerType),
     I32Const(i32),
     I64Const(i64),
     F32Const(String),
@@ -80,6 +81,11 @@ pub enum Instruction {
     Unreachable,
 
     If {
+        then_instructions: Vec<Instruction>,
+        else_instructions: Vec<Instruction>,
+    },
+    /// 選んだ分岐からboolを一つスタックへ残します。
+    IfBool {
         then_instructions: Vec<Instruction>,
         else_instructions: Vec<Instruction>,
     },

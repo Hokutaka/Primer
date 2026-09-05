@@ -102,6 +102,11 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::CheckIntegerRange { ty, label } => {
+            let bad = format!(".Lprimer_{label_prefix}_range_bad_{label}");
+            let done = format!(".Lprimer_{label_prefix}_range_ok_{label}");
+            output.push_str(&format!("  # semantic {}, storage i64\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jl {bad}\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jle {done}\n{bad}:\n  ud2\n{done}:\n", ty.name(), ty.minimum(), ty.maximum()));
+        }
         Instruction::Label { id, name } => {
             output.push_str(&format!("{}: # {name}\n", block_label(label_prefix, *id)));
         }

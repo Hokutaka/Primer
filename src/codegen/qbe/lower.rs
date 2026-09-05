@@ -71,7 +71,7 @@ fn lower_function(
                 name: parameter.name.clone(),
                 passing: match &parameter.ty {
                     primer_ir::Type::Bool
-                    | primer_ir::Type::I64
+                    | primer_ir::Type::Integer(_)
                     | primer_ir::Type::F32
                     | primer_ir::Type::F64 => ParameterPassing::Scalar(scalar_type(&parameter.ty)),
                     primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -117,7 +117,7 @@ fn lower_function(
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
             ) => Some(scalar_type(ty)),
@@ -132,7 +132,7 @@ fn lower_function(
             primer_ir::ReturnType::Void
             | primer_ir::ReturnType::Value(
                 primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64,
             ) => None,
@@ -420,7 +420,28 @@ impl Lowerer<'_> {
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr) -> Value {
+        let value = self.lower_expr_unchecked(expr);
+        if let Some(ty) = super::super::integer_range_check(expr) {
+            let Value::Scalar { operand, .. } = value else {
+                unreachable!()
+            };
+            let dest = self.next_temp();
+            self.instructions.push(Instruction::CheckIntegerRange {
+                dest,
+                value: operand,
+                ty,
+            });
+            return Value::Scalar {
+                ty: Type::I64,
+                operand: Operand::Temp(dest),
+            };
+        }
+        value
+    }
+
+    fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value),
             primer_ir::ExprKind::Boolean(value) => Value::Scalar {
                 ty: Type::Bool,
                 operand: Operand::Boolean(*value),
@@ -485,6 +506,56 @@ impl Lowerer<'_> {
                 }
                 Value::Scalar {
                     ty,
+                    operand: Operand::Temp(dest),
+                }
+            }
+            primer_ir::ExprKind::Logical { op, left, right } => {
+                let (_, left) = self.lower_scalar_expr(left);
+                let rhs_label = self.next_label();
+                let end_label = self.next_label();
+                let slot = self.slots.len();
+                let mut name = format!("logical_result{slot}");
+                while self.slots.iter().any(|slot| slot.name == name) {
+                    name.push('_');
+                }
+                self.slots.push(Slot { name, size: 8 });
+                self.instructions.push(Instruction::Store {
+                    ty: Type::Bool,
+                    value: left.clone(),
+                    address: Operand::Slot(slot),
+                });
+                let (then_label, else_label) = match op {
+                    primer_ir::LogicalOp::And => (rhs_label, end_label),
+                    primer_ir::LogicalOp::Or => (end_label, rhs_label),
+                };
+                self.instructions.push(Instruction::Branch {
+                    condition: left,
+                    then_label,
+                    else_label,
+                });
+                self.instructions.push(Instruction::Label {
+                    id: rhs_label,
+                    name: "logical_rhs",
+                });
+                let (_, right) = self.lower_scalar_expr(right);
+                self.instructions.push(Instruction::Store {
+                    ty: Type::Bool,
+                    value: right,
+                    address: Operand::Slot(slot),
+                });
+                self.instructions.push(Instruction::Jump(end_label));
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "logical_end",
+                });
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::Load {
+                    dest,
+                    ty: Type::Bool,
+                    address: Operand::Slot(slot),
+                });
+                Value::Scalar {
+                    ty: Type::Bool,
                     operand: Operand::Temp(dest),
                 }
             }
@@ -856,7 +927,7 @@ impl Lowerer<'_> {
                 Some((ty, slot))
             }
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
@@ -873,7 +944,7 @@ impl Lowerer<'_> {
         let (dest, return_type, scalar_result) = match result_type {
             Some(
                 ty @ (primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
             ) => {
@@ -911,7 +982,7 @@ impl Lowerer<'_> {
                 address: Operand::Slot(slot),
             },
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
         })
@@ -1087,7 +1158,7 @@ fn collect_slots(
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
-        | primer_ir::Type::I64
+        | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 8,
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
@@ -1109,7 +1180,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::I64 => Type::I64,
+        primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::Single,
         primer_ir::Type::F64 => Type::Double,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -1121,7 +1192,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
-        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::Double),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),

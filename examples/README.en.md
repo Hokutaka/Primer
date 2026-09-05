@@ -21,18 +21,24 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
+| [integer_conversions.prim](integer_conversions.prim) | widening `i32` to `i64` with two equivalent conversion spellings |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
+| [short_circuit.prim](short_circuit.prim) | combining conditions with `&&`/`\|\|` to skip unnecessary division, indexing, and function calls |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |
 | [loop_control.prim](loop_control.prim) | `while`, `break`, and `continue` |
 | [for_sum.prim](for_sum.prim) | `for` and assignment as its start statement |
-| [product-point.prim](product-point.prim) | named product types, defaults, and field access |
 | [functions.prim](functions.prim) | typed functions, parameters, results, and `void` functions |
-| [function_values.prim](function_values.prim) | passing product types and nested fixed arrays through functions as values |
-| [fixed_arrays.prim](fixed_arrays.prim) | fixed arrays, indexing, and array value copies |
-| [bubble_sort.prim](bubble_sort.prim) | element updates in a `mut` fixed array |
-| [product_arrays.prim](product_arrays.prim) | point arrays, indexed product values, and array value copies |
-| [matrix_vector_product.prim](matrix_vector_product.prim) | nested fixed arrays and two-dimensional indexing |
-| [matrix_composition.prim](matrix_composition.prim) | numerical computation passing a product type with nested arrays through functions |
+
+## Data structures
+
+These examples show how to group, access, and pass multiple values. They use structs (named product types) and fixed arrays, which are currently supported.
+
+| Example | Demonstrates |
+| --- | --- |
+| [product-point.prim](product-point.prim) | grouping point coordinates in a struct, with field defaults and access |
+| [fixed_arrays.prim](fixed_arrays.prim) | indexing, summation, and linear search in fixed arrays, and independent values after copying |
+| [product_arrays.prim](product_arrays.prim) | arrays of structs, nearest-point search, and array value copies |
+| [function_values.prim](function_values.prim) | passing and returning structs and nested fixed arrays as values |
 
 ## Numerical computation
 
@@ -41,6 +47,9 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [square_root.prim](square_root.prim) | unrolled square-root approximation steps |
 | [while_square_root.prim](while_square_root.prim) | repeated square-root approximation with `while` |
 | [logistic_map.prim](logistic_map.prim) | result differences between `f32` and `f64` computation |
+| [matrix_vector_product.prim](matrix_vector_product.prim) | multiplying a 3-by-3 matrix by a three-element vector using nested fixed arrays |
+| [matrix_composition.prim](matrix_composition.prim) | passing structs and nested arrays through functions to compose 2-by-2 matrices and transform a vector |
+| [population_statistics.prim](population_statistics.prim) | widening large `u32` values to `i64` for aggregation, returning average and maximum in a struct |
 | [heat_diffusion.prim](heat_diffusion.prim) | four steps of heat diffusion along a rod, computing new temperatures from the previous array |
 | [linear_regression.prim](linear_regression.prim) | learning a line from five points while observing slope, intercept, and loss |
 
@@ -48,6 +57,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 
 | Example | Demonstrates |
 | --- | --- |
+| [maximum_subarray.prim](maximum_subarray.prim) | maximum sum of a contiguous `i32` subarray, converting a `u32` position to an index |
 | [euclidean_gcd.prim](euclidean_gcd.prim) | greatest common divisor with the Euclidean algorithm |
 | [fibonacci.prim](fibonacci.prim) | the Fibonacci sequence and update order for multiple values |
 | [factorial.prim](factorial.prim) | factorial with `for` |
@@ -56,11 +66,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [integer_square_root.prim](integer_square_root.prim) | integer square root with binary search |
 | [exponentiation_by_squaring.prim](exponentiation_by_squaring.prim) | exponentiation by squaring |
 | [pythagorean_triples.prim](pythagorean_triples.prim) | Pythagorean triples with nested `for` loops |
-| [fixed_arrays.prim](fixed_arrays.prim) | array summation and linear search |
-| [bubble_sort.prim](bubble_sort.prim) | in-place bubble sort by swapping elements |
-| [product_arrays.prim](product_arrays.prim) | linear search for the nearest point in a point array |
-| [matrix_vector_product.prim](matrix_vector_product.prim) | multiplication of a 3-by-3 matrix and a three-element vector |
-| [matrix_composition.prim](matrix_composition.prim) | composition of 2-by-2 matrices followed by a vector transformation |
+| [bubble_sort.prim](bubble_sort.prim) | in-place bubble sort by swapping elements in a `mut` fixed array |
 | [xor_neural_network.prim](xor_neural_network.prim) | XOR inference with a tiny neural network and fixed-array weights |
 | [coin_change.prim](coin_change.prim) | dynamic programming for minimum coin counts, followed by reconstruction of the chosen coins |
 | [shortest_paths.prim](shortest_paths.prim) | all-pairs shortest paths by gradually allowing more intermediate towns |

@@ -227,11 +227,31 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
     write!(output, "#{} ", expr.id.0).unwrap();
 
     match &expr.kind {
+        ExprKind::ConvertInteger {
+            value,
+            from,
+            to,
+            syntax,
+        } => {
+            let spelling = match syntax {
+                crate::source::ConversionSyntax::Compact => "compact",
+                crate::source::ConversionSyntax::Explicit => "explicit",
+            };
+            write!(
+                output,
+                "convert.checked.{}->{}[{spelling}](",
+                from.name(),
+                to.name()
+            )
+            .unwrap();
+            emit_expr(value, program, output);
+            output.push(')');
+        }
         ExprKind::Boolean(value) => {
             write!(output, "{value}:bool").unwrap();
         }
         ExprKind::Integer(value) => {
-            write!(output, "{value}i64").unwrap();
+            write!(output, "{value}{}", type_name(&expr.ty, program)).unwrap();
         }
         ExprKind::Float { text } => {
             write!(output, "{text}{}", type_name(&expr.ty, program)).unwrap();
@@ -309,6 +329,16 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
             emit_expr(value, program, output);
             output.push(')');
         }
+        ExprKind::Logical { op, left, right } => {
+            output.push_str(match op {
+                super::LogicalOp::And => "and.short_circuit.bool(",
+                super::LogicalOp::Or => "or.short_circuit.bool(",
+            });
+            emit_expr(left, program, output);
+            output.push_str(", ");
+            emit_expr(right, program, output);
+            output.push(')');
+        }
         ExprKind::Binary { op, left, right } => {
             let operation_type = if is_comparison(*op) {
                 &left.ty
@@ -343,7 +373,7 @@ fn emit_arguments(arguments: &[Expr], program: &Program, output: &mut String) {
 fn type_name(ty: &Type, program: &Program) -> String {
     match ty {
         Type::Bool => "bool".into(),
-        Type::I64 => "i64".into(),
+        Type::Integer(integer) => integer.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => {

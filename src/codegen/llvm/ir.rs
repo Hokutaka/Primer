@@ -98,6 +98,11 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CheckIntegerRange {
+        dest: Temp,
+        value: Operand,
+        ty: crate::types::IntegerType,
+    },
     Label {
         id: Label,
         name: &'static str,

@@ -1,11 +1,29 @@
-use crate::source::Span;
+use crate::{
+    source::{ConversionSyntax, Span},
+    types::IntegerType,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
+}
+
+impl Type {
+    /// 組み込み型の名前を解決します。関数やユーザー定義型で上書きできません。
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "bool" => Some(Self::Bool),
+            "i64" => Some(Self::Integer(IntegerType::I64)),
+            "i32" => Some(Self::Integer(IntegerType::I32)),
+            "u32" => Some(Self::Integer(IntegerType::U32)),
+            "f32" => Some(Self::F32),
+            "f64" => Some(Self::F64),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,6 +190,7 @@ pub struct Expr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegerLiteral {
     digits: String,
+    explicit_type: Option<IntegerType>,
 }
 
 impl IntegerLiteral {
@@ -179,7 +198,19 @@ impl IntegerLiteral {
     pub fn decimal(digits: impl Into<String>) -> Self {
         Self {
             digits: digits.into(),
+            explicit_type: None,
         }
+    }
+
+    pub fn with_type(digits: impl Into<String>, ty: IntegerType) -> Self {
+        Self {
+            digits: digits.into(),
+            explicit_type: Some(ty),
+        }
+    }
+
+    pub const fn explicit_type(&self) -> Option<IntegerType> {
+        self.explicit_type
     }
 
     /// 符号や型接尾辞を含まない10進数字を返します。
@@ -190,6 +221,16 @@ impl IntegerLiteral {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    Logical {
+        op: LogicalOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    Convert {
+        target: TypeRef,
+        value: Box<Expr>,
+        syntax: ConversionSyntax,
+    },
     Boolean(bool),
     Integer(IntegerLiteral),
     Float {
@@ -254,4 +295,10 @@ pub enum BinaryOp {
     LessEqual,
     Greater,
     GreaterEqual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalOp {
+    And,
+    Or,
 }

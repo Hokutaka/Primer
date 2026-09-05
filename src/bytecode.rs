@@ -7,12 +7,13 @@ use crate::{
         UnaryOp,
     },
     source::Span,
+    types::IntegerType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
     Named(usize),
@@ -103,8 +104,12 @@ pub enum InstructionOrigin {
 
 #[derive(Debug, Clone)]
 pub enum InstructionKind {
+    ConvertInteger {
+        from: IntegerType,
+        to: IntegerType,
+    },
     PushBool(bool),
-    PushI64(i64),
+    PushInteger(i64, IntegerType),
     PushF32(f32),
     PushF64(f64),
 
@@ -627,12 +632,35 @@ impl Compiler {
 
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::ConvertInteger {
+                value, from, to, ..
+            } => {
+                self.emit_expr(value);
+                self.emit_source(
+                    InstructionKind::ConvertInteger {
+                        from: *from,
+                        to: *to,
+                    },
+                    expr.id,
+                    expr.span,
+                );
+            }
             ExprKind::Boolean(value) => {
                 self.emit_source(InstructionKind::PushBool(*value), expr.id, expr.span);
             }
 
             ExprKind::Integer(value) => {
-                self.emit_source(InstructionKind::PushI64(*value), expr.id, expr.span);
+                self.emit_source(
+                    InstructionKind::PushInteger(
+                        *value,
+                        match expr.ty {
+                            ir::Type::Integer(ty) => ty,
+                            _ => unreachable!(),
+                        },
+                    ),
+                    expr.id,
+                    expr.span,
+                );
             }
 
             ExprKind::Float { text } => match expr.ty {
@@ -652,7 +680,7 @@ impl Compiler {
                     self.emit_source(InstructionKind::PushF64(value), expr.id, expr.span);
                 }
 
-                ir::Type::I64 => {
+                ir::Type::Integer(_) => {
                     unreachable!("integer cannot be emitted as float");
                 }
 
@@ -784,6 +812,27 @@ impl Compiler {
                 }
             }
 
+            ExprKind::Logical { op, left, right } => {
+                self.emit_expr(left);
+                let false_jump = self.instructions.len();
+                self.emit_source(InstructionKind::JumpIfFalse(usize::MAX), expr.id, left.span);
+                match op {
+                    crate::ir::LogicalOp::And => self.emit_expr(right),
+                    crate::ir::LogicalOp::Or => {
+                        self.emit_source(InstructionKind::PushBool(true), expr.id, expr.span)
+                    }
+                }
+                let end_jump = self.instructions.len();
+                self.emit_source(InstructionKind::Jump(usize::MAX), expr.id, expr.span);
+                self.patch_jump(false_jump, self.instructions.len());
+                match op {
+                    crate::ir::LogicalOp::And => {
+                        self.emit_source(InstructionKind::PushBool(false), expr.id, expr.span)
+                    }
+                    crate::ir::LogicalOp::Or => self.emit_expr(right),
+                }
+                self.patch_jump(end_jump, self.instructions.len());
+            }
             ExprKind::Binary { op, left, right } => {
                 self.emit_expr(left);
                 self.emit_expr(right);
@@ -874,7 +923,7 @@ impl From<ir::Type> for Type {
     fn from(value: ir::Type) -> Self {
         match value {
             ir::Type::Bool => Self::Bool,
-            ir::Type::I64 => Self::I64,
+            ir::Type::Integer(ty) => Self::Integer(ty),
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),
@@ -897,8 +946,8 @@ fn format_instruction(
             writeln!(output, "push.bool {value}").unwrap();
         }
 
-        InstructionKind::PushI64(value) => {
-            writeln!(output, "push.i64 {value}").unwrap();
+        InstructionKind::PushInteger(value, integer) => {
+            writeln!(output, "push.{} {value}", integer.name()).unwrap();
         }
 
         InstructionKind::PushF32(value) => {
@@ -1059,6 +1108,9 @@ fn format_instruction(
             writeln!(output, "ge.{}", type_name(ty, program),).unwrap();
         }
 
+        InstructionKind::ConvertInteger { from, to } => {
+            writeln!(output, "convert.checked {} -> {}", from.name(), to.name()).unwrap();
+        }
         InstructionKind::Negate(ty) => {
             writeln!(output, "neg.{}", type_name(ty, program),).unwrap();
         }
@@ -1098,7 +1150,7 @@ fn array_access(projection: &ir::AssignmentProjection) -> ArrayAccess {
 fn type_name(ty: &Type, program: &BytecodeProgram) -> String {
     match ty {
         Type::Bool => "bool".into(),
-        Type::I64 => "i64".into(),
+        Type::Integer(ty) => ty.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("%{}@{id}", program.type_definitions[*id].name),
@@ -1110,6 +1162,7 @@ fn type_name(ty: &Type, program: &BytecodeProgram) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::IntegerType;
     use crate::{
         compile_to_bytecode, compile_to_ir,
         ir::{NodeId, StatementKind},
@@ -1139,19 +1192,19 @@ mod tests {
 
         assert!(matches!(
             bytecode.instructions[0].kind,
-            InstructionKind::PushI64(1)
+            InstructionKind::PushInteger(1, IntegerType::I64)
         ));
         assert!(matches!(
             bytecode.instructions[1].kind,
-            InstructionKind::PushI64(0)
+            InstructionKind::PushInteger(0, IntegerType::I64)
         ));
         assert!(matches!(
             bytecode.instructions[2].kind,
-            InstructionKind::Divide(Type::I64)
+            InstructionKind::Divide(Type::Integer(IntegerType::I64))
         ));
         assert!(matches!(
             bytecode.instructions[3].kind,
-            InstructionKind::Print(Type::I64)
+            InstructionKind::Print(Type::Integer(IntegerType::I64))
         ));
         assert!(matches!(
             bytecode.instructions[4].kind,
