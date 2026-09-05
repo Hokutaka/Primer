@@ -1,0 +1,26 @@
+// 左側だけで答えが決まれば、右側は実行しません。
+count: i64 = 0;
+print(count != 0 && 12 / count > 2); // false。0で割る計算は行いません。
+
+values: [i64; 3] = [4, 9, 16];
+mut index: i64 = 0;
+// 範囲内にいることを確認してから、配列の値を読みます。
+while index < 3 && values[index] != 9 {
+    index = index + 1;
+}
+print(index); // 9は位置1にあります。
+
+index = 0;
+while index < 3 && values[index] != 25 {
+    index = index + 1;
+}
+print(index); // 25は見つからず、位置は配列の末尾の次の3になります。
+print(index == 3 || values[index] == 25); // true。範囲外の要素は読みません。
+
+fn announce() -> bool {
+    print(99);
+    return true;
+}
+
+print(true || announce()); // trueだけを表示します。
+print(false || announce()); // 関数を一度呼び、99、trueの順に表示します。

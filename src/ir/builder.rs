@@ -351,7 +351,12 @@ impl Builder<'_> {
             }
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
             ast::ExprKind::Integer(literal) => {
-                ExprKind::Integer(semantic::resolve_i64_literal(literal, expr.span)?)
+                let semantic::Type::Integer(integer) = ty else {
+                    unreachable!()
+                };
+                ExprKind::Integer(semantic::resolve_integer_literal(
+                    literal, integer, false, expr.span,
+                )?)
             }
             ast::ExprKind::Float { text, .. } => ExprKind::Float { text: text.clone() },
             ast::ExprKind::Variable(name) => {
@@ -484,7 +489,11 @@ impl Builder<'_> {
             ast::ExprKind::Unary { op, value } => {
                 let is_minimum_literal = if *op == ast::UnaryOp::Negate {
                     if let ast::ExprKind::Integer(literal) = &value.kind {
-                        semantic::resolve_negated_i64_literal(literal, expr.span)? == i64::MIN
+                        let semantic::Type::Integer(integer) = ty else {
+                            unreachable!()
+                        };
+                        semantic::resolve_integer_literal(literal, integer, true, expr.span)?
+                            == integer.minimum()
                     } else {
                         false
                     }
@@ -493,7 +502,10 @@ impl Builder<'_> {
                 };
 
                 if is_minimum_literal {
-                    ExprKind::Integer(i64::MIN)
+                    let semantic::Type::Integer(integer) = ty else {
+                        unreachable!()
+                    };
+                    ExprKind::Integer(integer.minimum())
                 } else {
                     ExprKind::Unary {
                         op: (*op).into(),
@@ -501,6 +513,14 @@ impl Builder<'_> {
                     }
                 }
             }
+            ast::ExprKind::Logical { op, left, right } => ExprKind::Logical {
+                op: match op {
+                    ast::LogicalOp::And => super::LogicalOp::And,
+                    ast::LogicalOp::Or => super::LogicalOp::Or,
+                },
+                left: Box::new(self.build_expr(left, Some(semantic::Type::Bool), bindings)?),
+                right: Box::new(self.build_expr(right, Some(semantic::Type::Bool), bindings)?),
+            },
             ast::ExprKind::Binary { op, left, right } => {
                 let (left_expected, right_expected) = if is_comparison(*op) {
                     semantic::comparison_operand_types(left, right, bindings, self.model)?

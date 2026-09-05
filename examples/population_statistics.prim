@@ -1,0 +1,22 @@
+// 負にならない大きな数をu32で保存し、合計はi64へ広げて計算します。
+type Summary { average: u32, largest: u32, }
+
+fn summarize(samples: [u32; 4]) -> Summary {
+    mut total: i64 = 0;
+    mut largest: u32 = 0;
+    mut index: u32 = 0;
+    while index < 4 {
+        sample: u32 = samples[convert<i64>(index)];
+        total = total + i64(sample);
+        if sample > largest { largest = sample; }
+        index = index + 1;
+    }
+    // 平均がu32の範囲に収まることを確かめてから返します。
+    return Summary { average: convert<u32>(total / 4), largest: largest, };
+}
+
+samples: [u32; 4] = [3000000000, 3200000000, 2800000000, 3400000000];
+summary: Summary = summarize(samples);
+// 整数の平均3100000000と、最大値3400000000を表示します。
+print(summary.average);
+print(summary.largest);

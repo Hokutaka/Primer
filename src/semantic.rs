@@ -451,7 +451,7 @@ fn collect_calls_in_expr(expr: &Expr, model: &SemanticModel, calls: &mut Vec<(Fu
         | ExprKind::Convert { value: base, .. } => {
             collect_calls_in_expr(base, model, calls);
         }
-        ExprKind::Binary { left, right, .. } => {
+        ExprKind::Binary { left, right, .. } | ExprKind::Logical { left, right, .. } => {
             collect_calls_in_expr(left, model, calls);
             collect_calls_in_expr(right, model, calls);
         }
@@ -632,7 +632,7 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
         match ty {
             Type::Named(id) => Some(*id),
             Type::Array { element, .. } => named_type_dependency(element),
-            Type::Bool | Type::Integer(IntegerType::I64) | Type::F32 | Type::F64 => None,
+            Type::Bool | Type::Integer(_) | Type::F32 | Type::F64 => None,
         }
     }
 
@@ -1031,8 +1031,15 @@ fn type_of_expr_expected(
         ExprKind::Boolean(_) => Ok(Type::Bool),
 
         ExprKind::Integer(literal) => {
-            resolve_i64_literal(literal, expr.span)?;
-            Ok(Type::Integer(IntegerType::I64))
+            let ty = literal
+                .explicit_type()
+                .or(match expected {
+                    Some(Type::Integer(ty)) => Some(ty),
+                    _ => None,
+                })
+                .unwrap_or(IntegerType::I64);
+            resolve_integer_literal(literal, ty, false, expr.span)?;
+            Ok(Type::Integer(ty))
         }
 
         ExprKind::Float { explicit_type, .. } => {
@@ -1225,13 +1232,21 @@ fn type_of_expr_expected(
         ExprKind::Unary { op, value } => match op {
             crate::ast::UnaryOp::Negate => {
                 if let ExprKind::Integer(literal) = &value.kind {
-                    resolve_negated_i64_literal(literal, expr.span)?;
-                    return Ok(Type::Integer(IntegerType::I64));
+                    let ty = literal
+                        .explicit_type()
+                        .or(match expected {
+                            Some(Type::Integer(ty)) => Some(ty),
+                            _ => None,
+                        })
+                        .unwrap_or(IntegerType::I64);
+                    resolve_integer_literal(literal, ty, true, expr.span)?;
+                    return Ok(Type::Integer(ty));
                 }
 
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
 
-                if !is_numeric(&ty) {
+                if !is_numeric(&ty) || matches!(ty, Type::Integer(integer) if !integer.is_signed())
+                {
                     return Err(Diagnostic::new(
                         format!("cannot apply `-` to {}", model.type_name(ty)),
                         expr.span,
@@ -1255,11 +1270,33 @@ fn type_of_expr_expected(
             }
         },
 
+        ExprKind::Logical { op, left, right } => {
+            // 実行時に省略される右辺にも、通常どおり名前解決と型検査を行います。
+            for operand in [left, right] {
+                let ty = type_of_expr_expected(operand, bindings, Some(Type::Bool), model)?;
+                if ty != Type::Bool {
+                    let operator = match op {
+                        crate::ast::LogicalOp::And => "&&",
+                        crate::ast::LogicalOp::Or => "||",
+                    };
+                    return Err(Diagnostic::new(
+                        format!(
+                            "`{operator}` requires bool operands, found {}",
+                            model.type_name(ty)
+                        ),
+                        operand.span,
+                    ));
+                }
+            }
+            Ok(Type::Bool)
+        }
         ExprKind::Binary { op, left, right } => {
             let (left_type, right_type) = if is_comparison(*op) {
                 comparison_operand_types(left, right, bindings, model)?
             } else {
-                // 親から来た期待型を左右両方へ伝える
+                // 既定型へ確定する前に、式全体から整数型の手掛かりを集めます。
+                let expected =
+                    expected.or_else(|| integer_hint(expr, bindings, model).map(Type::Integer));
                 (
                     type_of_expr_expected(left, bindings, expected.clone(), model)?,
                     type_of_expr_expected(right, bindings, expected, model)?,
@@ -1322,43 +1359,53 @@ fn type_of_expr_expected(
     }
 }
 
-pub(crate) fn resolve_i64_literal(
-    literal: &ast::IntegerLiteral,
-    span: Span,
-) -> SemanticResult<i64> {
-    resolve_i64_magnitude(literal, false, span)
+fn integer_hint(expr: &Expr, bindings: &Bindings, model: &SemanticModel) -> Option<IntegerType> {
+    match &expr.kind {
+        ExprKind::Integer(literal) => literal.explicit_type(),
+        ExprKind::Binary { op, left, right } if is_arithmetic(*op) => {
+            integer_hint(left, bindings, model).or_else(|| integer_hint(right, bindings, model))
+        }
+        ExprKind::Unary { value, .. } => integer_hint(value, bindings, model),
+        ExprKind::Variable(_)
+        | ExprKind::Call { .. }
+        | ExprKind::Index { .. }
+        | ExprKind::FieldAccess { .. }
+        | ExprKind::Convert { .. } => match model.type_of_expr(expr, bindings).ok()? {
+            Type::Integer(ty) => Some(ty),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
-pub(crate) fn resolve_negated_i64_literal(
+pub(crate) fn resolve_integer_literal(
     literal: &ast::IntegerLiteral,
-    span: Span,
-) -> SemanticResult<i64> {
-    resolve_i64_magnitude(literal, true, span)
-}
-
-fn resolve_i64_magnitude(
-    literal: &ast::IntegerLiteral,
+    ty: IntegerType,
     negative: bool,
     span: Span,
 ) -> SemanticResult<i64> {
-    let magnitude = literal
-        .digits()
-        .parse::<u64>()
-        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))?;
-    let minimum_magnitude = i64::MAX as u64 + 1;
-
-    if negative {
-        if magnitude > minimum_magnitude {
-            return Err(Diagnostic::new("integer literal does not fit in i64", span));
-        }
-        if magnitude == minimum_magnitude {
-            return Ok(i64::MIN);
-        }
-        return Ok(-(magnitude as i64));
+    if negative && !ty.is_signed() {
+        return Err(Diagnostic::new(
+            format!("cannot apply `-` to {}", ty.name()),
+            span,
+        ));
     }
-
-    i64::try_from(magnitude)
-        .map_err(|_| Diagnostic::new("integer literal does not fit in i64", span))
+    let range_error = || {
+        Diagnostic::new(
+            format!("integer literal does not fit in {}", ty.name()),
+            span,
+        )
+    };
+    let magnitude = literal.digits().parse::<u64>().map_err(|_| range_error())?;
+    let value = if negative {
+        -(magnitude as i128)
+    } else {
+        magnitude as i128
+    };
+    if value < ty.minimum() as i128 || value > ty.maximum() as i128 {
+        return Err(range_error());
+    }
+    Ok(value as i64)
 }
 
 fn check_call(

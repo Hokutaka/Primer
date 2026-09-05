@@ -1,0 +1,10 @@
+fn add(left: i32, right: i32) -> i32 {
+    return left + right;
+}
+small: i32 = add(-3, 5);
+large: u32 = 4294967295;
+print(small);
+print(large / 2);
+print(i64(large));
+print(large > 2147483648);
+print(convert<u32>(small));

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ir as primer_ir, types::IntegerType};
+use crate::ir as primer_ir;
 
 use super::ir::{
     BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
@@ -24,6 +24,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     );
 
     let mut lowerer = Lowerer {
+        slots,
         slot_map,
         instructions: Vec::new(),
         temp: 0,
@@ -53,7 +54,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .iter()
             .find(|function| function.name == "main")
             .map(|function| function.id.0),
-        slots,
+        slots: lowerer.slots,
         instructions: lowerer.instructions,
     }
 }
@@ -83,6 +84,7 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
     collect_slots(&function.body, &mut slots, &mut slot_map, &mut name_counts);
 
     let mut lowerer = Lowerer {
+        slots,
         slot_map,
         instructions: Vec::new(),
         temp: 0,
@@ -105,12 +107,13 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
         name: function.name.clone(),
         parameters,
         return_type,
-        slots,
+        slots: lowerer.slots,
         instructions: lowerer.instructions,
     }
 }
 
 struct Lowerer {
+    slots: Vec<Slot>,
     slot_map: HashMap<primer_ir::BindingId, SlotId>,
     instructions: Vec<Instruction>,
     temp: usize,
@@ -442,12 +445,25 @@ impl Lowerer {
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr) -> Value {
+        let value = self.lower_expr_unchecked(expr);
+        if let Some(ty) = super::super::integer_range_check(expr) {
+            let dest = self.next_temp();
+            self.instructions.push(Instruction::CheckIntegerRange {
+                dest,
+                value: value.operand,
+                ty,
+            });
+            return Value {
+                ty: Type::I64,
+                operand: Operand::Temp(dest),
+            };
+        }
+        value
+    }
+
+    fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::ConvertInteger {
-                value, from, to, ..
-            } => match (from, to) {
-                (IntegerType::I64, IntegerType::I64) => self.lower_expr(value),
-            },
+            primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value),
             primer_ir::ExprKind::Boolean(value) => Value {
                 ty: Type::Bool,
                 operand: Operand::Boolean(*value),
@@ -481,7 +497,7 @@ impl Lowerer {
                     }
                 }
 
-                primer_ir::Type::Integer(IntegerType::I64) => {
+                primer_ir::Type::Integer(_) => {
                     unreachable!("integer cannot be lowered as float")
                 }
 
@@ -556,6 +572,61 @@ impl Lowerer {
                 }
             }
 
+            primer_ir::ExprKind::Logical { op, left, right } => {
+                let left = self.lower_expr(left);
+                let rhs_label = self.next_label();
+                let end_label = self.next_label();
+                let slot = SlotId(self.slots.len());
+                let mut name = format!("logical_result{}", slot.0);
+                while self.slots.iter().any(|slot| slot.name == name) {
+                    name.push('_');
+                }
+                self.slots.push(Slot {
+                    name,
+                    ty: Type::Bool,
+                });
+                // 分岐前の結果を保存し、右辺を評価した場合だけ置き換えます。
+                self.instructions.push(Instruction::Store {
+                    ty: Type::Bool,
+                    value: left.operand,
+                    slot,
+                });
+                let (then_label, else_label) = match op {
+                    primer_ir::LogicalOp::And => (rhs_label, end_label),
+                    primer_ir::LogicalOp::Or => (end_label, rhs_label),
+                };
+                self.instructions.push(Instruction::Branch {
+                    condition: left.operand,
+                    then_label,
+                    else_label,
+                });
+                self.instructions.push(Instruction::Label {
+                    id: rhs_label,
+                    name: "logical_rhs",
+                });
+                let right = self.lower_expr(right);
+                self.instructions.push(Instruction::Store {
+                    ty: Type::Bool,
+                    value: right.operand,
+                    slot,
+                });
+                self.instructions
+                    .push(Instruction::Jump { label: end_label });
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "logical_end",
+                });
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::Load {
+                    dest,
+                    ty: Type::Bool,
+                    slot,
+                });
+                Value {
+                    ty: Type::Bool,
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::Binary { op, left, right } => {
                 let left = self.lower_expr(left);
                 let right = self.lower_expr(right);
@@ -828,7 +899,7 @@ impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
             primer_ir::Type::Bool => Self::Bool,
-            primer_ir::Type::Integer(IntegerType::I64) => Self::I64,
+            primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),

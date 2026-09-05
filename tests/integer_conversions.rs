@@ -206,8 +206,8 @@ fn conversions_reject_noninteger_inputs_without_contextual_retyping() {
         );
     }
     assert_eq!(
-        compile("print(convert<i32>(1));").unwrap_err().message(),
-        "unknown type `i32`"
+        compile("print(convert<u64>(1));").unwrap_err().message(),
+        "unknown type `u64`"
     );
 }
 
@@ -231,7 +231,7 @@ fn conversions_require_one_argument_and_do_not_hide_recursive_calls() {
 
 #[test]
 fn builtin_type_names_cannot_be_redefined_as_functions_or_types() {
-    for name in ["i64", "bool", "f32", "f64"] {
+    for name in ["i32", "u32", "i64", "bool", "f32", "f64"] {
         let source = format!("fn {name}(value: i64) -> i64 {{ return value; }}");
         let error = compile(&source).unwrap_err();
         assert_eq!(
@@ -273,7 +273,7 @@ fn vm_conversion_checks_the_input_type_and_stack() {
     assert_eq!(
         error.kind(),
         VmErrorKind::TypeMismatch {
-            expected: bytecode::Type::I64,
+            expected: bytecode::Type::Integer(IntegerType::I64),
             actual: bytecode::Type::Bool
         }
     );

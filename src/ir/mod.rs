@@ -162,6 +162,12 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    /// 左辺で結果が決まらない場合だけ右辺を評価します。
+    Logical {
+        op: LogicalOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
     /// 数値を変えずに整数型を変換します。範囲外なら失敗します。
     ConvertInteger {
         value: Box<Expr>,
@@ -242,4 +248,10 @@ pub enum BinaryOp {
     LessEqual,
     Greater,
     GreaterEqual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalOp {
+    And,
+    Or,
 }

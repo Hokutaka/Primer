@@ -1,0 +1,59 @@
+; Primer bytecode v0.1
+
+.function 0 report(0:value:bool) -> bool
+.slot 0 value bool
+0000  load 0        ; value
+0001  print.bool
+0002  load 0        ; value
+0003  return.value
+.end
+
+.slot 0 values [i64; 2]
+.slot 1 index i64
+
+0000  push.i64 4
+0001  push.i64 9
+0002  array.new i64 2
+0003  store 0       ; values
+0004  push.i64 2
+0005  store 1       ; index
+0006  load 1        ; index
+0007  push.i64 2
+0008  lt.i64
+0009  jump-if-false 0016
+0010  load 0        ; values
+0011  load 1        ; index
+0012  array.get i64 2
+0013  push.i64 0
+0014  gt.i64
+0015  jump 0017
+0016  push.bool false
+0017  print.bool
+0018  load 1        ; index
+0019  push.i64 2
+0020  eq.i64
+0021  jump-if-false 0024
+0022  push.bool true
+0023  jump 0026
+0024  push.bool false
+0025  call 0 1  ; report
+0026  print.bool
+0027  push.bool false
+0028  jump-if-false 0031
+0029  push.bool true
+0030  jump 0044
+0031  push.bool true
+0032  call 0 1  ; report
+0033  jump-if-false 0043
+0034  load 1        ; index
+0035  push.i64 0
+0036  gt.i64
+0037  jump-if-false 0040
+0038  push.bool true
+0039  jump 0042
+0040  push.bool false
+0041  call 0 1  ; report
+0042  jump 0044
+0043  push.bool false
+0044  print.bool
+0045  halt

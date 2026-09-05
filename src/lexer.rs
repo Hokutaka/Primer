@@ -26,6 +26,8 @@ pub enum TokenKind {
     EqualEqual,
     Bang,
     BangEqual,
+    AndAnd,
+    OrOr,
     Less,
     LessEqual,
     Greater,
@@ -85,6 +87,14 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
         let offset = i;
 
         let kind = match b {
+            b'&' if bytes.get(i + 1) == Some(&b'&') => {
+                i += 2;
+                TokenKind::AndAnd
+            }
+            b'|' if bytes.get(i + 1) == Some(&b'|') => {
+                i += 2;
+                TokenKind::OrOr
+            }
             b':' => {
                 i += 1;
                 TokenKind::Colon
@@ -252,6 +262,13 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                 // Explicit floating-point suffix
                 if bytes[i..].starts_with(b"f32") || bytes[i..].starts_with(b"f64") {
                     is_float = true;
+                    i += 3;
+                }
+                if !is_float
+                    && [b"i32", b"u32", b"i64"]
+                        .iter()
+                        .any(|suffix| bytes[i..].starts_with(*suffix))
+                {
                     i += 3;
                 }
 

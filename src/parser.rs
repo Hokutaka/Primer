@@ -381,7 +381,43 @@ impl Parser {
     }
 
     fn parse_expression(&mut self) -> ParseResult<Expr> {
-        self.parse_equality()
+        self.parse_logical_or()
+    }
+
+    fn parse_logical_or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_logical_and()?;
+        while matches!(self.peek().kind, TokenKind::OrOr) {
+            self.advance();
+            let right = self.parse_logical_and()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Logical {
+                    op: crate::ast::LogicalOp::Or,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_logical_and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_equality()?;
+        while matches!(self.peek().kind, TokenKind::AndAnd) {
+            self.advance();
+            let right = self.parse_equality()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Logical {
+                    op: crate::ast::LogicalOp::And,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
     }
 
     fn parse_block_condition(&mut self) -> ParseResult<Expr> {
@@ -694,10 +730,23 @@ impl Parser {
                 span,
             }),
 
-            TokenKind::Integer(digits) => Ok(Expr {
-                kind: ExprKind::Integer(crate::ast::IntegerLiteral::decimal(digits)),
-                span,
-            }),
+            TokenKind::Integer(text) => {
+                let literal = [
+                    crate::types::IntegerType::I32,
+                    crate::types::IntegerType::U32,
+                    crate::types::IntegerType::I64,
+                ]
+                .into_iter()
+                .find_map(|ty| {
+                    text.strip_suffix(ty.name())
+                        .map(|digits| crate::ast::IntegerLiteral::with_type(digits, ty))
+                })
+                .unwrap_or_else(|| crate::ast::IntegerLiteral::decimal(text));
+                Ok(Expr {
+                    kind: ExprKind::Integer(literal),
+                    span,
+                })
+            }
 
             TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 

@@ -40,6 +40,15 @@ pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> 
 
 fn render_message(error: &VmError) -> String {
     match error.kind() {
+        VmErrorKind::IntegerConversionOutOfRange { from, to } => format!(
+            "cannot convert {} to {}: the value is outside the supported range",
+            from.name(),
+            to.name()
+        ),
+        VmErrorKind::InvalidIntegerValue { ty } => {
+            format!("Primer VM found a value outside the {} range", ty.name())
+        }
+        VmErrorKind::InvalidNegationType { ty } => format!("cannot apply `-` to {}", ty.name()),
         VmErrorKind::InstructionOutOfBounds => {
             "Primer VM reached an instruction outside the bytecode program".to_owned()
         }
@@ -118,7 +127,7 @@ fn integer_operation_name(operation: IntegerOperation) -> &'static str {
 fn type_name(ty: Type) -> String {
     match ty {
         Type::Bool => "bool".into(),
-        Type::I64 => "i64".into(),
+        Type::Integer(ty) => ty.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => format!("product type {id}"),
@@ -149,7 +158,7 @@ mod tests {
         let error = VmError::new(
             VmErrorKind::IntegerOverflow {
                 operation: crate::vm::IntegerOperation::Add,
-                ty: crate::bytecode::Type::I64,
+                ty: crate::bytecode::Type::Integer(crate::types::IntegerType::I64),
             },
             2,
         );

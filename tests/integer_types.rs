@@ -89,7 +89,7 @@ fn integer_kinds_survive_nested_arrays_fields_and_function_signatures() {
 
 #[test]
 fn unimplemented_integer_types_are_not_implicitly_treated_as_i64() {
-    for name in ["i8", "i16", "i32", "u8", "u16", "u32", "u64"] {
+    for name in ["i8", "i16", "u8", "u16", "u64"] {
         let source = format!("value: {name} = 1;");
         let error = compile_to_ir(&source).unwrap_err();
 

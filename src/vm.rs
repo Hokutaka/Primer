@@ -15,52 +15,89 @@ pub enum IntegerOperation {
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
+    /// 明示変換の入力を変換先の範囲で表せませんでした。
+    IntegerConversionOutOfRange {
+        from: IntegerType,
+        to: IntegerType,
+    },
+    /// bytecodeが整数型の範囲外の値を持っていました。
+    InvalidIntegerValue {
+        ty: IntegerType,
+    },
+    InvalidNegationType {
+        ty: IntegerType,
+    },
     /// 実行位置がbytecodeの範囲外へ到達しました。
     InstructionOutOfBounds,
 
     /// 存在しないスロットへアクセスしました。
-    InvalidSlot { slot: usize },
+    InvalidSlot {
+        slot: usize,
+    },
 
     /// 存在しないproduct typeを使おうとしました。
-    InvalidType { type_id: usize },
+    InvalidType {
+        type_id: usize,
+    },
 
     /// product typeに存在しないfieldを使おうとしました。
-    InvalidField { type_id: usize, field_id: usize },
+    InvalidField {
+        type_id: usize,
+        field_id: usize,
+    },
 
     /// 存在しない関数を呼び出そうとしました。
-    InvalidFunction { function_id: usize },
+    InvalidFunction {
+        function_id: usize,
+    },
 
     /// 関数へ渡された引数の数が定義と一致しませんでした。
-    InvalidArgumentCount { expected: usize, actual: usize },
+    InvalidArgumentCount {
+        expected: usize,
+        actual: usize,
+    },
 
     /// 関数の定義と一致しない方法で値を返そうとしました。
     InvalidReturn,
 
     /// 初期化前のスロットを読み取りました。
-    UninitializedSlot { slot: usize },
+    UninitializedSlot {
+        slot: usize,
+    },
 
     /// 別の初期化命令が初期化済みのスロットへ書き込みました。
-    SlotAlreadyInitialized { slot: usize },
+    SlotAlreadyInitialized {
+        slot: usize,
+    },
 
     /// 初期化前のスロットへ再代入しようとしました。
-    AssignmentToUninitializedSlot { slot: usize },
+    AssignmentToUninitializedSlot {
+        slot: usize,
+    },
 
     /// 不変のスロットへ再代入しようとしました。
-    AssignmentToImmutableSlot { slot: usize },
+    AssignmentToImmutableSlot {
+        slot: usize,
+    },
 
     /// 必要な値がスタックにありませんでした。
     StackUnderflow,
 
     /// 命令が期待した型と実際の値の型が一致しませんでした。
-    TypeMismatch { expected: Type, actual: Type },
+    TypeMismatch {
+        expected: Type,
+        actual: Type,
+    },
 
     /// その型では利用できない比較命令を実行しようとしました。
-    InvalidComparisonType { ty: Type },
+    InvalidComparisonType {
+        ty: Type,
+    },
 
     /// 整数をゼロで除算しようとしました。
     DivisionByZero,
 
-    /// 整数除算の結果を`i64`で表現できませんでした。
+    /// 整数除算の結果を指定された型で表現できませんでした。
     DivisionOverflow,
 
     /// 整数演算の結果を指定された型で表現できませんでした。
@@ -70,10 +107,15 @@ pub enum VmErrorKind {
     },
 
     /// 配列の外側を読み取ろうとしました。
-    ArrayIndexOutOfBounds { index: i64, length: usize },
+    ArrayIndexOutOfBounds {
+        index: i64,
+        length: usize,
+    },
 
     /// VM停止時に未使用の値がスタックへ残っていました。
-    UnusedStackValues { count: usize },
+    UnusedStackValues {
+        count: usize,
+    },
 }
 
 /// Primer VMの実行エラーと発生したbytecode命令位置を表します。
@@ -119,7 +161,7 @@ impl VmError {
 #[derive(Debug, Clone)]
 enum Value {
     Bool(bool),
-    I64(i64),
+    Integer(i64, IntegerType),
     F32(f32),
     F64(f64),
     Aggregate { type_id: usize, fields: Vec<Value> },
@@ -130,7 +172,7 @@ impl Value {
     fn ty(&self) -> Type {
         match self {
             Self::Bool(_) => Type::Bool,
-            Self::I64(_) => Type::I64,
+            Self::Integer(_, ty) => Type::Integer(*ty),
             Self::F32(_) => Type::F32,
             Self::F64(_) => Type::F64,
             Self::Aggregate { type_id, .. } => Type::Named(*type_id),
@@ -237,18 +279,31 @@ fn execute_frame_inner(
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match &instruction.kind {
-            InstructionKind::ConvertInteger { from, to } => match (from, to) {
-                (IntegerType::I64, IntegerType::I64) => {
-                    let value = at_instruction(pop_i64(&mut stack), pc)?;
-                    stack.push(Value::I64(value));
+            InstructionKind::ConvertInteger { from, to } => {
+                let value = at_instruction(pop_integer(&mut stack, *from), pc)?;
+                if !to.contains(value) {
+                    return Err(VmError::new(
+                        VmErrorKind::IntegerConversionOutOfRange {
+                            from: *from,
+                            to: *to,
+                        },
+                        pc,
+                    ));
                 }
-            },
+                stack.push(Value::Integer(value, *to));
+            }
             InstructionKind::PushBool(value) => {
                 stack.push(Value::Bool(*value));
             }
 
-            InstructionKind::PushI64(value) => {
-                stack.push(Value::I64(*value));
+            InstructionKind::PushInteger(value, ty) => {
+                if !ty.contains(*value) {
+                    return Err(VmError::new(
+                        VmErrorKind::InvalidIntegerValue { ty: *ty },
+                        pc,
+                    ));
+                }
+                stack.push(Value::Integer(*value, *ty));
             }
 
             InstructionKind::PushF32(value) => {
@@ -747,52 +802,35 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
     match ty {
         Type::Bool => {
             return Err(VmErrorKind::TypeMismatch {
-                expected: Type::I64,
+                expected: Type::Integer(IntegerType::I64),
                 actual: Type::Bool,
             });
         }
 
-        Type::I64 => {
-            let right = pop_i64(stack)?;
-
-            let left = pop_i64(stack)?;
-
+        Type::Integer(integer) => {
+            let right = pop_integer(stack, integer)? as i128;
+            let left = pop_integer(stack, integer)? as i128;
             let value = match operation {
-                BinaryOperation::Add => {
-                    left.checked_add(right)
-                        .ok_or(VmErrorKind::IntegerOverflow {
-                            operation: IntegerOperation::Add,
-                            ty: Type::I64,
-                        })?
-                }
-
-                BinaryOperation::Subtract => {
-                    left.checked_sub(right)
-                        .ok_or(VmErrorKind::IntegerOverflow {
-                            operation: IntegerOperation::Subtract,
-                            ty: Type::I64,
-                        })?
-                }
-
-                BinaryOperation::Multiply => {
-                    left.checked_mul(right)
-                        .ok_or(VmErrorKind::IntegerOverflow {
-                            operation: IntegerOperation::Multiply,
-                            ty: Type::I64,
-                        })?
-                }
-
+                BinaryOperation::Add => left + right,
+                BinaryOperation::Subtract => left - right,
+                BinaryOperation::Multiply => left * right,
                 BinaryOperation::Divide => {
                     if right == 0 {
                         return Err(VmErrorKind::DivisionByZero);
                     }
-
-                    left.checked_div(right)
-                        .ok_or(VmErrorKind::DivisionOverflow)?
+                    left / right
                 }
             };
-
-            stack.push(Value::I64(value));
+            if value < integer.minimum() as i128 || value > integer.maximum() as i128 {
+                let operation = match operation {
+                    BinaryOperation::Add => IntegerOperation::Add,
+                    BinaryOperation::Subtract => IntegerOperation::Subtract,
+                    BinaryOperation::Multiply => IntegerOperation::Multiply,
+                    BinaryOperation::Divide => return Err(VmErrorKind::DivisionOverflow),
+                };
+                return Err(VmErrorKind::IntegerOverflow { operation, ty });
+            }
+            stack.push(Value::Integer(value as i64, integer));
         }
 
         Type::F32 => {
@@ -833,7 +871,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
 
         Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
-                expected: Type::I64,
+                expected: Type::Integer(IntegerType::I64),
                 actual: ty,
             });
         }
@@ -869,9 +907,9 @@ fn compare(ty: Type, stack: &mut Vec<Value>, comparison: Comparison) -> VmResult
                 }
             }
         }
-        Type::I64 => {
-            let right = pop_i64(stack)?;
-            let left = pop_i64(stack)?;
+        Type::Integer(integer) => {
+            let right = pop_integer(stack, integer)?;
+            let left = pop_integer(stack, integer)?;
             compare_values(left, right, comparison)
         }
         Type::F32 => {
@@ -908,20 +946,24 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
     match ty {
         Type::Bool => {
             return Err(VmErrorKind::TypeMismatch {
-                expected: Type::I64,
+                expected: Type::Integer(IntegerType::I64),
                 actual: Type::Bool,
             });
         }
 
-        Type::I64 => {
-            let value = pop_i64(stack)?;
-
-            let value = value.checked_neg().ok_or(VmErrorKind::IntegerOverflow {
-                operation: IntegerOperation::Negate,
-                ty: Type::I64,
-            })?;
-
-            stack.push(Value::I64(value));
+        Type::Integer(integer) => {
+            if !integer.is_signed() {
+                return Err(VmErrorKind::InvalidNegationType { ty: integer });
+            }
+            let value = pop_integer(stack, integer)?;
+            let value = value
+                .checked_neg()
+                .filter(|value| integer.contains(*value))
+                .ok_or(VmErrorKind::IntegerOverflow {
+                    operation: IntegerOperation::Negate,
+                    ty,
+                })?;
+            stack.push(Value::Integer(value, integer));
         }
 
         Type::F32 => {
@@ -938,7 +980,7 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
 
         Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
-                expected: Type::I64,
+                expected: Type::Integer(IntegerType::I64),
                 actual: ty,
             });
         }
@@ -952,11 +994,15 @@ fn pop_value(stack: &mut Vec<Value>) -> VmResult<Value> {
 }
 
 fn pop_i64(stack: &mut Vec<Value>) -> VmResult<i64> {
+    pop_integer(stack, IntegerType::I64)
+}
+
+fn pop_integer(stack: &mut Vec<Value>, ty: IntegerType) -> VmResult<i64> {
     match pop_value(stack)? {
-        Value::I64(value) => Ok(value),
+        Value::Integer(value, actual) if actual == ty => Ok(value),
 
         other => Err(VmErrorKind::TypeMismatch {
-            expected: Type::I64,
+            expected: Type::Integer(ty),
             actual: other.ty(),
         }),
     }
@@ -1020,9 +1066,9 @@ fn assign_array_path(
 fn check_array_path(current: &Value, path: &[ArrayAccess], indices: &[Value]) -> VmResult<()> {
     let mut current = current;
     for (access, index) in path.iter().zip(indices) {
-        let Value::I64(index) = index else {
+        let Value::Integer(index, IntegerType::I64) = index else {
             return Err(VmErrorKind::TypeMismatch {
-                expected: Type::I64,
+                expected: Type::Integer(IntegerType::I64),
                 actual: index.ty(),
             });
         };
@@ -1085,7 +1131,9 @@ fn format_value(value: Value, expected: Type) -> VmResult<String> {
     match (value, expected) {
         (Value::Bool(value), Type::Bool) => Ok(value.to_string()),
 
-        (Value::I64(value), Type::I64) => Ok(value.to_string()),
+        (Value::Integer(value, actual), Type::Integer(expected)) if actual == expected => {
+            Ok(value.to_string())
+        }
 
         (Value::F32(value), Type::F32) => Ok(trim_decimal(format!("{value:.9}"))),
 
@@ -1120,6 +1168,7 @@ fn trim_decimal(mut text: String) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::types::IntegerType;
     use crate::{
         bytecode::{self, BytecodeProgram, Instruction, InstructionKind, Slot, Type},
         compile_to_bytecode, compile_to_ir,
@@ -1156,9 +1205,9 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
-                Instruction::synthetic(InstructionKind::PushI64(-1)),
-                Instruction::synthetic(InstructionKind::Divide(Type::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(-1, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::Divide(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
             ],
         };
@@ -1179,7 +1228,7 @@ mod tests {
             error.kind(),
             VmErrorKind::IntegerOverflow {
                 operation: IntegerOperation::Add,
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
             }
         );
         assert_eq!(error.instruction_index(), 2);
@@ -1192,9 +1241,9 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
-                Instruction::synthetic(InstructionKind::PushI64(1)),
-                Instruction::synthetic(InstructionKind::Subtract(Type::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(1, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::Subtract(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
             ],
         };
@@ -1205,7 +1254,7 @@ mod tests {
             error.kind(),
             VmErrorKind::IntegerOverflow {
                 operation: IntegerOperation::Subtract,
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
             }
         );
         assert_eq!(error.instruction_index(), 2);
@@ -1221,7 +1270,7 @@ mod tests {
             error.kind(),
             VmErrorKind::IntegerOverflow {
                 operation: IntegerOperation::Multiply,
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
             }
         );
         assert_eq!(error.instruction_index(), 2);
@@ -1234,8 +1283,8 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushI64(i64::MIN)),
-                Instruction::synthetic(InstructionKind::Negate(Type::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::Negate(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
             ],
         };
@@ -1246,7 +1295,7 @@ mod tests {
             error.kind(),
             VmErrorKind::IntegerOverflow {
                 operation: IntegerOperation::Negate,
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
             }
         );
         assert_eq!(error.instruction_index(), 1);
@@ -1262,7 +1311,7 @@ mod tests {
             error.kind(),
             VmErrorKind::IntegerOverflow {
                 operation: IntegerOperation::Negate,
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
             }
         );
         assert_eq!(error.instruction_index(), 1);
@@ -1275,13 +1324,13 @@ mod tests {
             functions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
                 mutable: false,
             }],
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushI64(1)),
+                Instruction::synthetic(InstructionKind::PushInteger(1, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Store(0)),
-                Instruction::synthetic(InstructionKind::PushI64(2)),
+                Instruction::synthetic(InstructionKind::PushInteger(2, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Assign(0)),
                 Instruction::synthetic(InstructionKind::Halt),
             ],
@@ -1303,13 +1352,13 @@ mod tests {
             functions: Vec::new(),
             slots: vec![Slot {
                 name: "value".into(),
-                ty: Type::I64,
+                ty: Type::Integer(IntegerType::I64),
                 mutable: false,
             }],
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushI64(1)),
+                Instruction::synthetic(InstructionKind::PushInteger(1, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Store(0)),
-                Instruction::synthetic(InstructionKind::PushI64(2)),
+                Instruction::synthetic(InstructionKind::PushInteger(2, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Store(0)),
                 Instruction::synthetic(InstructionKind::Halt),
             ],

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ir as primer_ir, types::IntegerType};
+use crate::ir as primer_ir;
 
 use super::ir::{Function, Instruction, Local, LoopKind, Module, Type};
 
@@ -69,7 +69,7 @@ fn lower_function(
         primer_ir::ReturnType::Void
         | primer_ir::ReturnType::Value(
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64,
         ) => None,
@@ -88,7 +88,7 @@ fn lower_function(
         name_counts.insert(parameter.name.clone(), 1);
         match &parameter.ty {
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
                 locations.insert(parameter.id, Location::Scalar(parameter.name.clone()));
@@ -198,7 +198,7 @@ fn lower_function(
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Bool
-                | primer_ir::Type::Integer(IntegerType::I64)
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
             ) => Some(scalar_type(ty)),
@@ -516,7 +516,7 @@ impl LoweringContext<'_> {
     ) {
         match ty {
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
                 self.emit_address(destination, instructions);
@@ -598,12 +598,22 @@ impl LoweringContext<'_> {
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, instructions: &mut Vec<Instruction>) -> Value {
+        let value = self.lower_expr_unchecked(expr, instructions);
+        if let Some(ty) = super::super::integer_range_check(expr) {
+            instructions.push(Instruction::CheckIntegerRange(ty));
+        }
+        value
+    }
+
+    fn lower_expr_unchecked(
+        &mut self,
+        expr: &primer_ir::Expr,
+        instructions: &mut Vec<Instruction>,
+    ) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::ConvertInteger {
-                value, from, to, ..
-            } => match (from, to) {
-                (IntegerType::I64, IntegerType::I64) => self.lower_expr(value, instructions),
-            },
+            primer_ir::ExprKind::ConvertInteger { value, .. } => {
+                self.lower_expr(value, instructions)
+            }
             primer_ir::ExprKind::Boolean(value) => {
                 instructions.push(Instruction::I32Const(i32::from(*value)));
                 Value::Scalar(Type::Bool)
@@ -901,6 +911,20 @@ impl LoweringContext<'_> {
                 }
                 Value::Scalar(ty)
             }
+            primer_ir::ExprKind::Logical { op, left, right } => {
+                self.lower_expr(left, instructions);
+                let mut rhs = Vec::new();
+                self.lower_expr(right, &mut rhs);
+                let (then_instructions, else_instructions) = match op {
+                    primer_ir::LogicalOp::And => (rhs, vec![Instruction::I32Const(0)]),
+                    primer_ir::LogicalOp::Or => (vec![Instruction::I32Const(1)], rhs),
+                };
+                instructions.push(Instruction::IfBool {
+                    then_instructions,
+                    else_instructions,
+                });
+                Value::Scalar(Type::Bool)
+            }
             primer_ir::ExprKind::Binary { op, left, right } => {
                 let Value::Scalar(left_ty) = self.lower_expr(left, instructions) else {
                     unreachable!("semantic analysis rejects aggregate binary operands")
@@ -936,7 +960,7 @@ impl LoweringContext<'_> {
                 Some((ty, address))
             }
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
@@ -963,7 +987,7 @@ impl LoweringContext<'_> {
                     address: Address::Static(address),
                 },
                 primer_ir::Type::Bool
-                | primer_ir::Type::Integer(IntegerType::I64)
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
             });
@@ -1234,7 +1258,7 @@ fn collect_locations(
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
-        | primer_ir::Type::Integer(IntegerType::I64)
+        | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 8,
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
@@ -1256,7 +1280,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::Integer(IntegerType::I64) => Type::I64,
+        primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
         primer_ir::Type::F64 => Type::F64,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -1268,7 +1292,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
-        primer_ir::Type::Integer(IntegerType::I64) => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
@@ -1311,18 +1335,10 @@ fn store_instruction(ty: Type, offset: u32) -> Instruction {
 
 fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
     match (op, ty) {
-        (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::CheckedI64Add
-        }
-        (primer_ir::BinaryOp::Subtract, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::CheckedI64Sub
-        }
-        (primer_ir::BinaryOp::Multiply, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::CheckedI64Mul
-        }
-        (primer_ir::BinaryOp::Divide, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::CheckedI64DivS
-        }
+        (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Add,
+        (primer_ir::BinaryOp::Subtract, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Sub,
+        (primer_ir::BinaryOp::Multiply, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Mul,
+        (primer_ir::BinaryOp::Divide, primer_ir::Type::Integer(_)) => Instruction::CheckedI64DivS,
         (primer_ir::BinaryOp::Add, primer_ir::Type::F32) => Instruction::F32Add,
         (primer_ir::BinaryOp::Subtract, primer_ir::Type::F32) => Instruction::F32Sub,
         (primer_ir::BinaryOp::Multiply, primer_ir::Type::F32) => Instruction::F32Mul,
@@ -1333,24 +1349,12 @@ fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
         (primer_ir::BinaryOp::Divide, primer_ir::Type::F64) => Instruction::F64Div,
         (primer_ir::BinaryOp::Equal, primer_ir::Type::Bool) => Instruction::I32Eq,
         (primer_ir::BinaryOp::NotEqual, primer_ir::Type::Bool) => Instruction::I32Ne,
-        (primer_ir::BinaryOp::Equal, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64Eq
-        }
-        (primer_ir::BinaryOp::NotEqual, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64Ne
-        }
-        (primer_ir::BinaryOp::Less, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64LtS
-        }
-        (primer_ir::BinaryOp::LessEqual, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64LeS
-        }
-        (primer_ir::BinaryOp::Greater, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64GtS
-        }
-        (primer_ir::BinaryOp::GreaterEqual, primer_ir::Type::Integer(IntegerType::I64)) => {
-            Instruction::I64GeS
-        }
+        (primer_ir::BinaryOp::Equal, primer_ir::Type::Integer(_)) => Instruction::I64Eq,
+        (primer_ir::BinaryOp::NotEqual, primer_ir::Type::Integer(_)) => Instruction::I64Ne,
+        (primer_ir::BinaryOp::Less, primer_ir::Type::Integer(_)) => Instruction::I64LtS,
+        (primer_ir::BinaryOp::LessEqual, primer_ir::Type::Integer(_)) => Instruction::I64LeS,
+        (primer_ir::BinaryOp::Greater, primer_ir::Type::Integer(_)) => Instruction::I64GtS,
+        (primer_ir::BinaryOp::GreaterEqual, primer_ir::Type::Integer(_)) => Instruction::I64GeS,
         (primer_ir::BinaryOp::Equal, primer_ir::Type::F32) => Instruction::F32Eq,
         (primer_ir::BinaryOp::NotEqual, primer_ir::Type::F32) => Instruction::F32Ne,
         (primer_ir::BinaryOp::Less, primer_ir::Type::F32) => Instruction::F32Lt,

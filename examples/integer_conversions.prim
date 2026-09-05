@@ -1,5 +1,5 @@
-// 二つの書き方は同じ変換です。現在はi64同士なので数値は変わりません。
-count: i64 = 21;
+// 二つの書き方は同じ変換です。i32の数値を変えずにi64へ広げます。
+count: i32 = 21;
 compact: infer = i64(count);
 explicit: infer = convert<i64>(count);
 

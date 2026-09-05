@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ir as primer_ir, types::IntegerType};
+use crate::ir as primer_ir;
 
 use super::ir::{
     Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
@@ -90,7 +90,7 @@ fn lower_body(
     for (index, parameter) in parameters.iter().enumerate() {
         match &parameter.ty {
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
                 lowerer.instructions.push(Instruction::StoreParameter {
@@ -434,12 +434,18 @@ impl Lowerer<'_> {
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
+        let value = self.lower_expr_unchecked(expr, depth);
+        if let Some(ty) = super::super::integer_range_check(expr) {
+            let label = self.next_label();
+            self.instructions
+                .push(Instruction::CheckIntegerRange { ty, label });
+        }
+        value
+    }
+
+    fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::ConvertInteger {
-                value, from, to, ..
-            } => match (from, to) {
-                (IntegerType::I64, IntegerType::I64) => self.lower_expr(value, depth),
-            },
+            primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value, depth),
             primer_ir::ExprKind::Boolean(value) => {
                 self.instructions
                     .push(Instruction::MovI64ImmediateToRax(i64::from(*value)));
@@ -498,6 +504,28 @@ impl Lowerer<'_> {
                     _ => unreachable!("semantic analysis rejects invalid unary operands"),
                 }
                 Value::Scalar(ty)
+            }
+            primer_ir::ExprKind::Logical { op, left, right } => {
+                self.lower_expr(left, depth);
+                let false_label = self.next_label();
+                let end_label = self.next_label();
+                self.instructions.push(Instruction::JumpIfZero(false_label));
+                if *op == primer_ir::LogicalOp::And {
+                    self.lower_expr(right, depth);
+                }
+                self.instructions.push(Instruction::Jump(end_label));
+                self.instructions.push(Instruction::Label {
+                    id: false_label,
+                    name: "logical_false",
+                });
+                if *op == primer_ir::LogicalOp::Or {
+                    self.lower_expr(right, depth);
+                }
+                self.instructions.push(Instruction::Label {
+                    id: end_label,
+                    name: "logical_end",
+                });
+                Value::Scalar(Type::Bool)
             }
             primer_ir::ExprKind::Binary { op, left, right } => {
                 let Value::Scalar(operand_ty) = self.lower_expr(left, depth + 1) else {
@@ -790,7 +818,7 @@ impl Lowerer<'_> {
                 Some((ty, self.allocate_aggregate(ty)))
             }
             primer_ir::Type::Bool
-            | primer_ir::Type::Integer(IntegerType::I64)
+            | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
@@ -814,7 +842,7 @@ impl Lowerer<'_> {
                     base_slot,
                 },
                 primer_ir::Type::Bool
-                | primer_ir::Type::Integer(IntegerType::I64)
+                | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
             });
@@ -888,10 +916,7 @@ impl Lowerer<'_> {
         pointer_offset: isize,
     ) {
         match (ty, value) {
-            (
-                primer_ir::Type::Bool | primer_ir::Type::Integer(IntegerType::I64),
-                Value::Scalar(actual),
-            ) => {
+            (primer_ir::Type::Bool | primer_ir::Type::Integer(_), Value::Scalar(actual)) => {
                 debug_assert!(matches!(actual, Type::Bool | Type::I64));
                 self.instructions
                     .push(Instruction::StoreI64ToPointer(pointer_offset));
@@ -1102,7 +1127,7 @@ fn collect_binding_slots(
 fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
-        | primer_ir::Type::Integer(IntegerType::I64)
+        | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 1,
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
@@ -1170,7 +1195,8 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
         | primer_ir::ExprKind::Variable { .. } => 1,
         primer_ir::ExprKind::ConvertInteger { value, .. } => count_expr_nodes(value),
         primer_ir::ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
-        primer_ir::ExprKind::Binary { left, right, .. } => {
+        primer_ir::ExprKind::Binary { left, right, .. }
+        | primer_ir::ExprKind::Logical { left, right, .. } => {
             1 + count_expr_nodes(left) + count_expr_nodes(right)
         }
         primer_ir::ExprKind::Construct { fields, .. } => {
@@ -1252,6 +1278,9 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
         primer_ir::ExprKind::Index { base, index } => {
             required_expr_scratch(base, depth).max(required_expr_scratch(index, depth))
         }
+        primer_ir::ExprKind::Logical { left, right, .. } => {
+            required_expr_scratch(left, depth).max(required_expr_scratch(right, depth))
+        }
         primer_ir::ExprKind::Binary { left, right, .. } => (depth + 1)
             .max(required_expr_scratch(left, depth + 1))
             .max(required_expr_scratch(right, depth + 1)),
@@ -1272,7 +1301,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::Integer(IntegerType::I64) => Type::I64,
+        primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
         primer_ir::Type::F64 => Type::F64,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -1284,7 +1313,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
-        primer_ir::Type::Integer(IntegerType::I64) => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),

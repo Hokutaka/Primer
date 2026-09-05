@@ -98,6 +98,8 @@ Every Primer IR expression has a resolved concrete type:
 
 ```text
 bool
+i32
+u32
 i64
 f32
 f64
@@ -107,13 +109,17 @@ fixed arrays
 
 `infer` is resolved before Primer IR is produced and therefore does not appear as a runtime or backend type.
 
-The AST, semantic model, and Primer IR share `IntegerType` to represent integer kinds. Currently, the only registered kind is `I64`, which exposes its name, signedness, and the bit width that determines its value range. Each backend explicitly maps this kind to its own type. The integer's semantic bit width is separate from the target's storage size or register width. The IR text continues to display `i64`.
+The AST, semantic model, Primer IR, and bytecode share `IntegerType`, with `I32`, `U32`, and `I64` kinds exposing names, signedness, bit widths, and bounds. VM values retain their integer kind; instructions check type agreement and result ranges.
 
 Unsuffixed floating-point literals are also resolved before backend lowering. A backend does not need to repeat contextual type inference.
 
 Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.
 
-The integer conversion spellings `i64(value)` and `convert<i64>(value)` resolve to the same `ConvertInteger` operation, with the original spelling retained separately as `ConversionSyntax`. The input type is not inferred again from the destination, and the input is evaluated once. Currently only `i64` to `i64` conversion is supported. Bytecode retains a conversion instruction with its origin; code generation backends need no additional execution instruction for this identity conversion.
+The integer conversion spellings `i32(value)` and `convert<i32>(value)` resolve to the same `ConvertInteger`, with original spelling retained as `ConversionSyntax`. The destination does not retype the input, which is evaluated once. All pairs of `i32`, `u32`, and `i64` are supported. Out-of-range conversion is a distinct VM error from arithmetic overflow. Bytecode conversion instructions retain both integer kinds and source origin.
+
+Current code generation backends store all three integer kinds in 64-bit values. Since `u32` is represented as a nonnegative 64-bit value, signed 64-bit comparison and division preserve its numerical meaning. Arithmetic and conversion results of `i32` and `u32` retain explicit `CheckIntegerRange` operations in backend IR. The existing overflow checks also apply to the underlying 64-bit arithmetic.
+
+This implements numerical ranges and failure conditions, not packed 32-bit storage or external ABI support. Arrays and products also use 64-bit locations, so memory use does not yet decrease. Keep the semantic type in Primer IR distinct from the backend's chosen storage type.
 
 Primer IR deliberately does not attempt to be a universal machine IR or prematurely impose SSA form. It represents Primer semantics closely enough to keep the frontend/backend boundary visible.
 
@@ -122,6 +128,18 @@ Primer IR statements and expressions share one sequence of `NodeId` values. `emi
 A `NodeId` refers to an element within one compilation result. It is not stable across source edits or Primer versions. Multiple IR elements with the same `Span` can still have different `NodeId` values. This distinction provides a foundation for recording how one expression is later split into multiple backend instructions without relying on source locations as identity.
 
 ## Backend lowering
+
+### Short-circuit logical expressions
+
+The AST and Primer IR retain `&&` and `||` as `Logical`, separate from eager binary operations. The frontend checks that both operands are `bool` and resolves the condition for executing the right operand as Primer semantics. A constant left operand that allows skipping does not bypass name resolution, type checking, or IR construction for the right operand.
+
+Bytecode lowering uses a conditional jump consuming the left value and a jump to the merge point. The branch carries the logical expression's `NodeId` and the left operand's `Span`; right-operand instructions retain their own origins. A failure in an evaluated right operand therefore points to the failed operation, not merely the containing logical expression.
+
+C uses short-circuit logical expressions, and WAT uses a Boolean-producing `if`. LLVM and QBE store the left result in compiler-generated storage, update it only in the right-operand branch, and load it after merging. Windows x86-64 retains the result in a register across branch and merge. None moves right-operand evaluation outside its branch.
+
+These transformations can be inspected through existing observation boundaries. They do not introduce a new public observation API or runtime history.
+
+### Target-specific lowering
 
 Each backend lowers Primer IR into a backend-specific Rust representation before emission.
 

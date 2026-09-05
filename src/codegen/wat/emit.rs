@@ -89,6 +89,8 @@ pub fn emit(module: &Module) -> String {
 
 #[derive(Clone, Copy, Default)]
 struct I64Operations {
+    check_i32: bool,
+    check_u32: bool,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -97,10 +99,19 @@ struct I64Operations {
 impl I64Operations {
     fn include(&mut self, instruction: &Instruction) {
         match instruction {
+            Instruction::CheckIntegerRange(ty) => match ty {
+                crate::types::IntegerType::I32 => self.check_i32 = true,
+                crate::types::IntegerType::U32 => self.check_u32 = true,
+                crate::types::IntegerType::I64 => {}
+            },
             Instruction::CheckedI64Add => self.add = true,
             Instruction::CheckedI64Sub => self.subtract = true,
             Instruction::CheckedI64Mul => self.multiply = true,
             Instruction::If {
+                then_instructions,
+                else_instructions,
+            }
+            | Instruction::IfBool {
                 then_instructions,
                 else_instructions,
             } => {
@@ -141,6 +152,15 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for (enabled, ty) in [
+        (operations.check_i32, crate::types::IntegerType::I32),
+        (operations.check_u32, crate::types::IntegerType::U32),
+    ] {
+        if enabled {
+            output.push_str(&format!("  (func $primer_check_{} (param $value i64) (result i64)\n    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n    if\n      unreachable\n    end\n    local.get $value\n  )\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        }
+    }
+
     if operations.add {
         output.push_str(
             "  (func $primer_i64_add (param $left i64) (param $right i64) (result i64)\n\
@@ -284,6 +304,9 @@ fn emit_instruction(
     let prefix = "  ".repeat(indent);
 
     match instruction {
+        Instruction::CheckIntegerRange(ty) => {
+            writeln!(output, "{prefix}call $primer_check_{}", ty.name()).unwrap();
+        }
         Instruction::I32Const(value) => {
             writeln!(output, "{prefix}i32.const {value}").unwrap();
         }
@@ -325,8 +348,17 @@ fn emit_instruction(
         Instruction::If {
             then_instructions,
             else_instructions,
+        }
+        | Instruction::IfBool {
+            then_instructions,
+            else_instructions,
         } => {
-            writeln!(output, "{prefix}if").unwrap();
+            let result = if matches!(instruction, Instruction::IfBool { .. }) {
+                " (result i32)"
+            } else {
+                ""
+            };
+            writeln!(output, "{prefix}if{result}").unwrap();
             for instruction in then_instructions {
                 emit_instruction(instruction, indent + 1, module, output);
             }
@@ -465,6 +497,10 @@ fn instruction_uses_bool_print(instruction: &Instruction) -> bool {
     match instruction {
         Instruction::CallPrint(Type::Bool) => true,
         Instruction::If {
+            then_instructions,
+            else_instructions,
+        }
+        | Instruction::IfBool {
             then_instructions,
             else_instructions,
         } => {

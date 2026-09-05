@@ -116,6 +116,15 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    Logical {
+        op: LogicalOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    CheckIntegerRange {
+        value: Box<Expr>,
+        ty: crate::types::IntegerType,
+    },
     Boolean(bool),
     Integer(i64),
     Float {
@@ -181,4 +190,10 @@ pub enum BinaryOp {
     LessEqual,
     Greater,
     GreaterEqual,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalOp {
+    And,
+    Or,
 }
