@@ -102,7 +102,8 @@ fn string_expr(expr: &Expr) -> Option<Span> {
         return Some(expr.span);
     }
     match &expr.kind {
-        ExprKind::ConvertNumeric { value, .. }
+        ExprKind::StringByteLength { value }
+        | ExprKind::ConvertNumeric { value, .. }
         | ExprKind::ConvertInteger { value, .. }
         | ExprKind::Unary { value, .. }
         | ExprKind::FieldAccess { base: value, .. } => string_expr(value),

@@ -100,3 +100,22 @@ The `string-values` observation fixture fixes all eight artifacts. Shared inputs
 QBE runs on Linux x86-64 and assembly on Windows x64. WAT is validated and converted with WABT, then run in Node's WebAssembly engine; tests also require `main` to be its only export. The test host's floating-point output is limited to the shared fixture's exact value `1.5`, not a general numeric formatter. Unavailable execution routes print a reason and are distinguished from completed comparisons. Together, both CI jobs require execution of every route.
 
 Development tools can be selected through `PRIMER_TEST_QBE`, `PRIMER_TEST_ASM_CLANG`, `PRIMER_TEST_NODE`, and `PRIMER_TEST_WAT2WASM_JS` (WABT's `bin/wat2wasm`). An unavailable configured tool fails the test. Install WABT with `npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39`. Launching these tools belongs to development tests; Primer's emission commands do not launch them.
+
+## Reading byte length
+
+`byte_len(value) -> i64` reads the stored UTF-8 byte count. It does not scan or normalize contents or allocate memory. Values currently originate from static literals; representable lengths on supported 32/64-bit platforms fit in `i64`.
+
+The frontend resolves arity, input type, and result type into a dedicated Primer IR `StringByteLength` operation. Even literal lengths remain observable operations without implicit constant folding in Primer. IR renders `byte_len.string(...)`; bytecode uses `byte_len.string`.
+
+| Route | Length access |
+| --- | --- |
+| VM | Check operand type and read the owned string's byte count |
+| C | Read `length`, cast to `int64_t` |
+| LLVM | `extractvalue %primer.string ..., 1` |
+| QBE | `loadl` from the length header |
+| WAT | `i64.load` from the private memory header |
+| Windows x64 ASM | `movq (%rax), %rax` from the length header |
+
+The argument is evaluated once before the read. C sequencing follows observable or fallible child expressions, preserving source order across multiple byte-length expressions. LLVM origin annotations connect the extraction to the source operation.
+
+`examples/string_byte_length.prim` exercises Japanese text, NUL, CR/LF, composed/decomposed Unicode, returned strings, arrays, defaults, reassignment, and short circuiting. Execution is compared against known output across all routes. `tests/fixtures/observation/string-byte-length/` records a small input and all eight artifacts.

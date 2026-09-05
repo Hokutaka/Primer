@@ -243,6 +243,20 @@ fn vm_failure(instructions: Vec<InstructionKind>) -> VmErrorKind {
 #[test]
 fn malformed_bytecode_cannot_treat_strings_as_numbers_or_order_them() {
     assert_eq!(
+        vm_failure(vec![InstructionKind::StringByteLength]),
+        VmErrorKind::StackUnderflow
+    );
+    assert_eq!(
+        vm_failure(vec![
+            InstructionKind::PushBool(true),
+            InstructionKind::StringByteLength
+        ]),
+        VmErrorKind::TypeMismatch {
+            expected: BytecodeType::String,
+            actual: BytecodeType::Bool
+        }
+    );
+    assert_eq!(
         vm_failure(vec![InstructionKind::Print(BytecodeType::String)]),
         VmErrorKind::StackUnderflow
     );
@@ -299,4 +313,61 @@ fn malformed_bytecode_cannot_treat_strings_as_numbers_or_order_them() {
             actual: BytecodeType::Integer(IntegerType::I64)
         }
     ));
+}
+
+#[test]
+fn byte_length_has_explicit_string_input_and_i64_result() {
+    assert_eq!(
+        run_vm("length: infer = byte_len(\"日本語\\0\"); print(length);").unwrap(),
+        "10\n"
+    );
+    for source in [
+        "print(byte_len());",
+        "print(byte_len(\"a\", \"b\"));",
+        "print(byte_len(1));",
+        "print(byte_len([\"a\"]));",
+        "small: i8 = byte_len(\"a\");",
+        "byte_len(\"unused\");",
+        "fn byte_len(text: string) -> i64 { return 0; }",
+        "fn recurse() -> string { print(byte_len(recurse())); return \"\"; }",
+    ] {
+        let error = compile(source).unwrap_err();
+        assert!(error.primary_span().is_some(), "{source}");
+    }
+}
+
+#[test]
+fn byte_length_preserves_ir_and_bytecode_origins_and_requires_native_targets() {
+    let source = "print(byte_len(\"日\"));";
+    let program = compile_to_ir(source).unwrap();
+    let StatementKind::Print { value } = &program.statements[0].kind else {
+        panic!()
+    };
+    assert!(matches!(value.kind, ExprKind::StringByteLength { .. }));
+    assert_eq!(value.ty, Type::Integer(IntegerType::I64));
+    let bytecode = compile_to_bytecode(source).unwrap();
+    let instruction = bytecode
+        .instructions
+        .iter()
+        .find(|i| matches!(i.kind, InstructionKind::StringByteLength))
+        .unwrap();
+    assert_eq!(
+        instruction.origin,
+        InstructionOrigin::Source {
+            node_id: value.id,
+            span: value.span
+        }
+    );
+    assert!(
+        compile_to_ir_text(source)
+            .unwrap()
+            .contains("byte_len.string(")
+    );
+    assert!(
+        compile_to_bytecode_text(source)
+            .unwrap()
+            .contains("byte_len.string")
+    );
+    assert!(primer_lang::compile_to_llvm(source).is_err());
+    assert!(primer_lang::compile_to_qbe(source).is_err());
 }
