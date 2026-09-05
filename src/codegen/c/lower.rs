@@ -256,6 +256,20 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
             left: Box::new(lower_expr(left)),
             right: Box::new(lower_expr(right)),
         },
+        primer_ir::ExprKind::ConvertNumeric {
+            value, from, to, ..
+        } => {
+            if from == to {
+                return lower_expr(value);
+            }
+            ExprKind::ConvertNumeric {
+                value: Box::new(lower_expr(value)),
+                conversion: crate::codegen::NumericConversion {
+                    from: *from,
+                    to: *to,
+                },
+            }
+        }
         primer_ir::ExprKind::ConvertInteger { value, .. } => return lower_expr(value),
         primer_ir::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
 
@@ -413,6 +427,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
                 }
             }
             primer_ir::ExprKind::FieldAccess { base, .. }
+            | primer_ir::ExprKind::ConvertNumeric { value: base, .. }
             | primer_ir::ExprKind::ConvertInteger { value: base, .. }
             | primer_ir::ExprKind::Unary { value: base, .. } => visit_expr(base, types),
             primer_ir::ExprKind::Call { arguments, .. } => {

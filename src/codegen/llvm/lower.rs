@@ -463,6 +463,27 @@ impl Lowerer {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertNumeric {
+                value, from, to, ..
+            } => {
+                let value = self.lower_expr(value);
+                if from == to {
+                    return value;
+                }
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::ConvertNumeric {
+                    dest,
+                    value: value.operand,
+                    conversion: crate::codegen::NumericConversion {
+                        from: *from,
+                        to: *to,
+                    },
+                });
+                Value {
+                    ty: expr.ty.clone().into(),
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value),
             primer_ir::ExprKind::Boolean(value) => Value {
                 ty: Type::Bool,

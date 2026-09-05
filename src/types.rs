@@ -89,6 +89,24 @@ impl IntegerType {
     }
 }
 
+/// 数値を変えない明示変換で扱う型です。boolや集約型は含めません。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NumericType {
+    Integer(IntegerType),
+    F32,
+    F64,
+}
+
+impl NumericType {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Integer(ty) => ty.name(),
+            Self::F32 => "f32",
+            Self::F64 => "f64",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::IntegerType;

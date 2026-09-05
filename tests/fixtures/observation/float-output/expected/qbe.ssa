@@ -1,0 +1,40 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+export function w $main() {
+@start
+  %tmp0 =d exts s_1e-20
+  %tmp1 =w call $printf(l $fmt_f32, ..., d %tmp0)
+  %tmp2 =w call $printf(l $fmt_f64, ..., d d_1e-20)
+  %tmp3 =w cned d_1e-20, d_0.0
+  %tmp4 =l extsw %tmp3
+  %tmp5 =l mul %tmp4, 8
+  %tmp6 =l add $bool_texts, %tmp5
+  %tmp7 =l loadl %tmp6
+  %tmp8 =w call $puts(l %tmp7)
+  %tmp9 =d exts s_1e-45
+  %tmp10 =w call $printf(l $fmt_f32, ..., d %tmp9)
+  %tmp11 =w call $printf(l $fmt_f64, ..., d d_5e-324)
+  %tmp12 =d exts s_3.4028234663852886e38
+  %tmp13 =w call $printf(l $fmt_f32, ..., d %tmp12)
+  %tmp14 =w call $printf(l $fmt_f64, ..., d d_1.7976931348623157e308)
+  %tmp15 =s neg s_0.0
+  %tmp16 =d exts %tmp15
+  %tmp17 =w call $printf(l $fmt_f32, ..., d %tmp16)
+  %tmp18 =d neg d_0.0
+  %tmp19 =w call $printf(l $fmt_f64, ..., d %tmp18)
+  %tmp20 =d exts s_0.0
+  %tmp21 =w call $printf(l $fmt_f32, ..., d %tmp20)
+  %tmp22 =w call $printf(l $fmt_f64, ..., d d_0.0)
+  %tmp23 =d exts s_0.0001
+  %tmp24 =w call $printf(l $fmt_f32, ..., d %tmp23)
+  %tmp25 =w call $printf(l $fmt_f64, ..., d d_0.0001)
+  %tmp26 =d exts s_1e9
+  %tmp27 =w call $printf(l $fmt_f32, ..., d %tmp26)
+  %tmp28 =w call $printf(l $fmt_f64, ..., d d_1e17)
+  ret 0
+}

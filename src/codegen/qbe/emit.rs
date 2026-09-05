@@ -60,6 +60,7 @@ pub fn emit(module: &Module) -> String {
 
 #[derive(Clone, Default)]
 struct I64Operations {
+    conversions: std::collections::BTreeSet<crate::codegen::NumericConversion>,
     integer_binary:
         std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
     range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
@@ -72,6 +73,9 @@ struct I64Operations {
 
 impl I64Operations {
     fn include(&mut self, instruction: &Instruction) {
+        if let Instruction::ConvertNumeric { conversion, .. } = instruction {
+            self.conversions.insert(*conversion);
+        }
         if let Instruction::IntegerBinary { op, ty, .. } = instruction {
             self.integer_binary.insert((*op, *ty));
         }
@@ -108,6 +112,9 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for &conversion in &operations.conversions {
+        super::conversion::emit_support(conversion, output);
+    }
     for &(op, ty) in &operations.integer_binary {
         super::integer::emit_support(op, ty, output);
     }
@@ -278,6 +285,22 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::ConvertNumeric {
+            dest,
+            value,
+            conversion,
+        } => {
+            writeln!(
+                output,
+                "  {} ={} call ${}({} {})",
+                temp(*dest),
+                super::conversion::type_name(conversion.to),
+                conversion.helper(),
+                super::conversion::type_name(conversion.from),
+                operand(value, slots)
+            )
+            .unwrap();
+        }
         Instruction::IntegerBinary {
             dest,
             op,

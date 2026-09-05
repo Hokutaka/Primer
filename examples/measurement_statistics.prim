@@ -1,0 +1,33 @@
+// 整数で記録した4回の測定を、小数で計算できる形へ変換します。
+// 平均は合計を個数で割った値、分散は平均との差の2乗の平均です。
+type Statistics {
+    mean: f64,
+    variance: f64,
+}
+
+fn summarize(samples: [i16; 4]) -> Statistics {
+    mut total: i32 = 0;
+    for (mut i: i64 = 0; i < 4; i = i + 1) {
+        total = total + i32(samples[i]);
+    }
+    // 整数のまま割ると小数部分がなくなるので、先に変換します。
+    count: i64 = 4;
+    mean: f64 = f64(total) / convert<f64>(count);
+    mut squared_difference: f64 = 0.0;
+    for (mut i: i64 = 0; i < 4; i = i + 1) {
+        difference: f64 = f64(samples[i]) - mean;
+        squared_difference = squared_difference + difference * difference;
+    }
+    return Statistics { mean: mean, variance: squared_difference / f64(count), };
+}
+
+samples: [i16; 4] = [10, 11, 13, 16];
+result: Statistics = summarize(samples);
+// 平均12.5、分散5.25。どちらもf32で同じ数値を表せます。
+print(result.mean);
+print(result.variance);
+print(f32(result.mean));
+print(f32(result.variance));
+
+// 次の行を有効にすると、小数部分を捨てないため変換で停止します。
+// print(i16(result.mean));

@@ -1,0 +1,1 @@
+primer: cannot convert f64 to f32: NaN cannot be preserved when changing types at 1:7 (bytecode instruction 0003)

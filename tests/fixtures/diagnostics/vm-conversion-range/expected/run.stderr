@@ -1,0 +1,1 @@
+primer: cannot convert f64 to i8: the value is outside the supported range at 1:7 (bytecode instruction 0001)

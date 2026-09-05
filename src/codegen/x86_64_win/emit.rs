@@ -114,6 +114,9 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::ConvertNumeric { conversion, label } => {
+            super::conversion::emit(*conversion, *label, label_prefix, output)
+        }
         Instruction::BitNot { mask } => {
             output.push_str(&format!("  movabsq ${mask}, %r11\n  xorq %r11, %rax\n"));
         }

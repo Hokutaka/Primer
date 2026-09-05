@@ -20,6 +20,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | --- | --- |
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
+| [small_values.prim](small_values.prim) | observing small numbers in scientific notation and distinguishing display from arithmetic rounding |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
 | [integer_conversions.prim](integer_conversions.prim) | widening `i32` to `i64` with two equivalent conversion spellings |
 | [bit_flags.prim](bit_flags.prim) | setting, clearing, toggling, and testing eight independent bit switches |
@@ -46,6 +47,8 @@ These examples show how to group, access, and pass multiple values. They use str
 
 | Example | Demonstrates |
 | --- | --- |
+| [measurement_statistics.prim](measurement_statistics.prim) | computing a fractional mean and variance from integer samples, then storing them exactly as `f32` |
+| [normalized_histogram.prim](normalized_histogram.prim) | converting integer counts to probabilities and recovering the original counts |
 | [square_root.prim](square_root.prim) | unrolled square-root approximation steps |
 | [while_square_root.prim](while_square_root.prim) | repeated square-root approximation with `while` |
 | [logistic_map.prim](logistic_map.prim) | result differences between `f32` and `f64` computation |

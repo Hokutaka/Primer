@@ -227,6 +227,26 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
     write!(output, "#{} ", expr.id.0).unwrap();
 
     match &expr.kind {
+        ExprKind::ConvertNumeric {
+            value,
+            from,
+            to,
+            syntax,
+        } => {
+            let spelling = match syntax {
+                crate::source::ConversionSyntax::Compact => "compact",
+                crate::source::ConversionSyntax::Explicit => "explicit",
+            };
+            write!(
+                output,
+                "convert.exact.{}->{}[{spelling}](",
+                from.name(),
+                to.name()
+            )
+            .unwrap();
+            emit_expr(value, program, output);
+            output.push(')');
+        }
         ExprKind::ConvertInteger {
             value,
             from,

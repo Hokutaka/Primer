@@ -1,0 +1,15 @@
+print(1e-20f32);
+print(1e-20);
+print(1e-20 != 0.0);
+print(1e-45f32);
+print(5e-324);
+print(3.4028234663852886e38f32);
+print(1.7976931348623157e308);
+print(-0.0f32);
+print(-0.0);
+print(0.0f32);
+print(0.0);
+print(0.0001f32);
+print(0.0001);
+print(1e9f32);
+print(1e17);

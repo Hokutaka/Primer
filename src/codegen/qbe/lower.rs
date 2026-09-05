@@ -441,6 +441,27 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertNumeric {
+                value, from, to, ..
+            } => {
+                let (ty, value) = self.lower_scalar_expr(value);
+                if from == to {
+                    return Value::Scalar { ty, operand: value };
+                }
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::ConvertNumeric {
+                    dest,
+                    value,
+                    conversion: crate::codegen::NumericConversion {
+                        from: *from,
+                        to: *to,
+                    },
+                });
+                Value::Scalar {
+                    ty: scalar_type(&expr.ty),
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value),
             primer_ir::ExprKind::Boolean(value) => Value::Scalar {
                 ty: Type::Bool,

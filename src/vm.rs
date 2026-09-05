@@ -1,4 +1,7 @@
+mod float_output;
+mod numeric;
 pub mod render;
+pub use numeric::NumericConversionFailure;
 
 use crate::bytecode::{ArrayAccess, BytecodeProgram, InstructionKind, ReturnType, Type};
 use crate::types::IntegerType;
@@ -16,6 +19,12 @@ pub enum IntegerOperation {
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
+    /// 変換前後の型と、値を保てなかった理由を保持します。
+    NumericConversionFailed {
+        from: crate::types::NumericType,
+        to: crate::types::NumericType,
+        reason: NumericConversionFailure,
+    },
     /// シフト量は0以上、左辺の型のビット数未満でなければなりません。
     InvalidShiftCount {
         ty: IntegerType,
@@ -286,6 +295,10 @@ fn execute_frame_inner(
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match &instruction.kind {
+            InstructionKind::ConvertNumeric { from, to } => {
+                let value = at_instruction(pop_value(&mut stack), pc)?;
+                stack.push(at_instruction(numeric::convert(value, *from, *to), pc)?);
+            }
             InstructionKind::ConvertInteger { from, to } => {
                 let value = at_instruction(pop_integer(&mut stack, *from), pc)?;
                 if !to.contains(value) {
@@ -1231,35 +1244,15 @@ fn format_value(value: Value, expected: Type) -> VmResult<String> {
             Ok(value.to_string())
         }
 
-        (Value::F32(value), Type::F32) => Ok(trim_decimal(format!("{value:.9}"))),
+        (Value::F32(value), Type::F32) => Ok(float_output::f32(value)),
 
-        (Value::F64(value), Type::F64) => Ok(trim_decimal(format!("{value:.17}"))),
+        (Value::F64(value), Type::F64) => Ok(float_output::f64(value)),
 
         (value, expected) => Err(VmErrorKind::TypeMismatch {
             expected,
             actual: value.ty(),
         }),
     }
-}
-
-fn trim_decimal(mut text: String) -> String {
-    if !text.contains('.') {
-        return text;
-    }
-
-    while text.ends_with('0') {
-        text.pop();
-    }
-
-    if text.ends_with('.') {
-        text.pop();
-    }
-
-    if text == "-0" {
-        return "0".to_owned();
-    }
-
-    text
 }
 
 #[cfg(test)]

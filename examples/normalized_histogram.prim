@@ -1,0 +1,25 @@
+// 4種類の結果が出た回数から、それぞれの割合を求めます。
+counts: [u32; 4] = [1, 2, 3, 2];
+mut total: i64 = 0;
+for (mut i: i64 = 0; i < 4; i = i + 1) {
+    total = total + i64(counts[i]);
+}
+
+mut probabilities: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
+mut sum: f64 = 0.0;
+for (mut i: i64 = 0; i < 4; i = i + 1) {
+    probability: f64 = f64(counts[i]) / f64(total);
+    // f32でも値が変わらないことを検査してから保存します。
+    probabilities[i] = convert<f32>(probability);
+    sum = sum + f64(probabilities[i]);
+    print(probabilities[i]);
+}
+// 割合は0.125、0.25、0.375、0.25。合計は1です。
+print(sum);
+// 保存した割合から元の回数を復元します。小数が残れば変換は失敗します。
+for (mut i: i64 = 0; i < 4; i = i + 1) {
+    print(u32(f64(probabilities[i]) * f64(total)));
+}
+
+// 回数を変えると、1/3などf32で正確に保存できない割合になる場合があります。
+// その場合、変換は値を丸めず停止します。通常の割り算の丸めとは別の検査です。

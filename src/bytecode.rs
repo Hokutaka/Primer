@@ -20,6 +20,16 @@ pub enum Type {
     Array { element: Box<Type>, length: usize },
 }
 
+impl From<crate::types::NumericType> for Type {
+    fn from(ty: crate::types::NumericType) -> Self {
+        match ty {
+            crate::types::NumericType::Integer(ty) => Self::Integer(ty),
+            crate::types::NumericType::F32 => Self::F32,
+            crate::types::NumericType::F64 => Self::F64,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BytecodeProgram {
     pub type_definitions: Vec<TypeDefinition>,
@@ -104,6 +114,10 @@ pub enum InstructionOrigin {
 
 #[derive(Debug, Clone)]
 pub enum InstructionKind {
+    ConvertNumeric {
+        from: crate::types::NumericType,
+        to: crate::types::NumericType,
+    },
     ConvertInteger {
         from: IntegerType,
         to: IntegerType,
@@ -639,6 +653,19 @@ impl Compiler {
 
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::ConvertNumeric {
+                value, from, to, ..
+            } => {
+                self.emit_expr(value);
+                self.emit_source(
+                    InstructionKind::ConvertNumeric {
+                        from: *from,
+                        to: *to,
+                    },
+                    expr.id,
+                    expr.span,
+                );
+            }
             ExprKind::ConvertInteger {
                 value, from, to, ..
             } => {
@@ -1157,6 +1184,9 @@ fn format_instruction(
             writeln!(output, "ge.{}", type_name(ty, program),).unwrap();
         }
 
+        InstructionKind::ConvertNumeric { from, to } => {
+            writeln!(output, "convert.exact {} -> {}", from.name(), to.name()).unwrap();
+        }
         InstructionKind::ConvertInteger { from, to } => {
             writeln!(output, "convert.checked {} -> {}", from.name(), to.name()).unwrap();
         }

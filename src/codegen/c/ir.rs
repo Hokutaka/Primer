@@ -116,6 +116,10 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    ConvertNumeric {
+        conversion: crate::codegen::NumericConversion,
+        value: Box<Expr>,
+    },
     IntegerBinary {
         scratch: usize,
         op: crate::codegen::IntegerBinaryOp,

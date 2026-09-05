@@ -1,8 +1,8 @@
+[![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
+
 # Primer
 
 日本語 | [English](README.en.md)
-
-[![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
 
 Primerは、コンパイラによる変換を観測可能にするための実験用プログラミング言語です。
 
@@ -24,7 +24,7 @@ AST
 Primer IR Builder
   - semantic validation
   - type resolution
-  - contextual float resolution
+  - contextual numeric literal resolution
       ↓
 Primer IR
       │
@@ -78,35 +78,17 @@ emit-bytecode  → .pbc
 
 Primerは現在、次の機能を備えています。
 
-- 静的型付け
-- `bool`、`i64`、`f32`、`f64`
-- 名前付きproduct type、既定field値、field access
-- 任意の固定サイズ値を要素にでき、直接入れ子にもできる固定長配列、添字参照、要素更新、値コピー、実行時の境界検査
-- scalar、product type、固定長配列を受け渡せる型付き関数、`void`、明示的な`return`
-- トップレベル実行文または明示的な`fn main() -> void`
-- 明示的な型宣言
-- `infer`による明示的な型推論
-- 不変な変数束縛
-- `+`、`-`、`*`、`/`
-- 単項`-`
-- `==`、`!=`、`<`、`<=`、`>`、`>=`
-- 単項`!`
-- `if` / `else`とブロックスコープ
-- `while`と、最内側のループを対象にする`break` / `continue`
-- 初期化、条件、更新を明示する`for`
-- 丸括弧
-- `print(expr);`
-- `//`による行コメント
-- `mut`による可変な束縛
-- 型を保った再代入と配列要素の更新
-- Primer IRの出力
-- Cコード生成
-- LLVM IR生成
-- QBE IR生成
-- WebAssembly Text生成
-- Windows x86-64直接アセンブリ生成
-- Primer bytecode生成
-- Primer VMによる実行
+- **型:** `bool`、`i8`・`u8`・`i16`・`u16`・`i32`・`u32`・`i64`、`f32`・`f64`。静的型付けと`infer`による明示的な型推論。
+- **変数:** 不変な束縛、`mut`による可変な束縛、型を保った再代入。
+- **数値計算:** `+`・`-`・`*`・`/`、単項`-`、整数の`%`。整数の桁あふれや不正な除算は実行を停止。
+- **比較・論理:** `==`・`!=`・`<`・`<=`・`>`・`>=`、`!`、短絡評価する`&&`・`||`。
+- **ビット演算:** 整数の`&`・`|`・`^`・`~`・`<<`・`>>`。シフト量を検査し、左シフトの桁あふれも検出。
+- **明示変換:** `f64(value)`と`convert<f64>(value)`など、同じ意味の二つの表記。実装済み数値型の間で、値を保てる場合だけ変換。
+- **データ構造:** 名前付き構造体（product type）、フィールドの既定値と参照、入れ子にできる固定長配列。値コピー、配列要素の更新、実行時の境界検査。
+- **関数・制御:** 数値・真偽値・構造体・固定長配列を受け渡せる型付き関数、`void`、明示的な`return`。`if` / `else`、`while`、`for`、`break` / `continue`。トップレベル実行文または明示的な`fn main() -> void`。
+- **出力・実行:** `print(expr);`、Primer IRと各バックエンド成果物の出力、Primer VMによる実行。`//`による行コメント。
+
+`u64`、文字列、動的な長さの配列、再帰、失敗からの回復、明示的な丸め・切り捨て操作は未実装です。小さい整数型も、現在の生成先では64ビット領域に格納し、値の範囲を検査します。
 
 例を示します。
 
@@ -124,7 +106,7 @@ print(double);
 print(inferred);
 ```
 
-現在の機能で動く基礎、数値計算、アルゴリズムのプログラムは、[サンプル一覧](examples/README.md)にまとめています。
+現在の機能で動く基礎、データ構造、数値計算、アルゴリズムのプログラムは、[サンプル一覧](examples/README.md)にまとめています。[測定値の平均・分散](examples/measurement_statistics.prim)や[回数から割合への変換](examples/normalized_histogram.prim)では、整数と浮動小数点の明示変換を使います。
 
 すべてのサンプルと実行結果をまとめて確認するには、リポジトリのルートで次を実行します。
 
@@ -149,7 +131,16 @@ b: f64 = 0.1 + 0.2;
 
 この決定は、バックエンドへのloweringより前にPrimer IRで解決されます。
 
-Primerは現在、`i64`、`f32`、`f64`の間で暗黙の数値変換を行いません。
+Primerは暗黙の数値変換を行いません。型を変える場合は、変換を明示します。
+
+```primer
+count: u32 = 3;
+ratio: f64 = f64(count) / convert<f64>(2);
+print(ratio); // 1.5
+// print(i32(ratio)); // 小数部分を捨てる変換になるため失敗
+```
+
+変換先で同じ値を表せなければ停止し、勝手に丸めません。ただし、通常の浮動小数点計算には丸めがあります。無限大・NaN・マイナスのゼロを含む詳しい規則は、[言語リファレンス](docs/reference/language.ja.md)を参照してください。
 
 ## インストール
 

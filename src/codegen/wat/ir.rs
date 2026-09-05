@@ -41,6 +41,9 @@ pub enum LoopKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    ConvertNumeric {
+        conversion: crate::codegen::NumericConversion,
+    },
     IntegerBinary {
         op: crate::codegen::IntegerBinaryOp,
         ty: crate::types::IntegerType,

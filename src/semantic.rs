@@ -1009,18 +1009,18 @@ fn type_of_expr_expected(
     match &expr.kind {
         ExprKind::Convert { target, value, .. } => {
             let target_ty = model.resolve_type_ref(target)?;
-            if !matches!(target_ty, Type::Integer(_)) {
+            if !is_numeric(&target_ty) {
                 return Err(Diagnostic::new(
-                    "conversion target must be an integer type",
+                    "conversion target must be a numeric type",
                     target.span,
                 ));
             }
             // 変換先の期待型を入力へ伝えると、変換前の計算の意味が変わってしまいます。
             let input_ty = model.type_of_expr(value, bindings)?;
-            if !matches!(input_ty, Type::Integer(_)) {
+            if !is_numeric(&input_ty) {
                 return Err(Diagnostic::new(
                     format!(
-                        "integer conversion requires an integer value, found {}",
+                        "numeric conversion requires a numeric value, found {}",
                         model.type_name(input_ty)
                     ),
                     value.span,

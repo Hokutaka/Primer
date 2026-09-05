@@ -611,6 +611,20 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertNumeric {
+                value, from, to, ..
+            } => {
+                self.lower_expr(value, instructions);
+                if from != to {
+                    instructions.push(Instruction::ConvertNumeric {
+                        conversion: crate::codegen::NumericConversion {
+                            from: *from,
+                            to: *to,
+                        },
+                    });
+                }
+                Value::Scalar(scalar_type(&expr.ty))
+            }
             primer_ir::ExprKind::ConvertInteger { value, .. } => {
                 self.lower_expr(value, instructions)
             }

@@ -1,0 +1,198 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+function d $primer_convert_i16_f64(l %value) {
+@start
+  %result =d sltof %value
+  %below =w cltd %result, d_-9223372036854775808
+  %above =w cged %result, d_9223372036854775808
+  %outside =w or %below, %above
+  jnz %outside, @trap, @convert
+@convert
+  %back =l dtosi %result
+  %changed =w cnel %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function s $primer_convert_u32_f32(l %value) {
+@start
+  %result =s sltof %value
+  %number =d exts %result
+  %below =w cltd %number, d_-9223372036854775808
+  %above =w cged %number, d_9223372036854775808
+  %outside =w or %below, %above
+  jnz %outside, @trap, @convert
+@convert
+  %back =l dtosi %number
+  %changed =w cnel %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function d $primer_convert_u32_f64(l %value) {
+@start
+  %result =d sltof %value
+  %below =w cltd %result, d_-9223372036854775808
+  %above =w cged %result, d_9223372036854775808
+  %outside =w or %below, %above
+  jnz %outside, @trap, @convert
+@convert
+  %back =l dtosi %result
+  %changed =w cnel %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function d $primer_convert_i64_f64(l %value) {
+@start
+  %result =d sltof %value
+  %below =w cltd %result, d_-9223372036854775808
+  %above =w cged %result, d_9223372036854775808
+  %outside =w or %below, %above
+  jnz %outside, @trap, @convert
+@convert
+  %back =l dtosi %result
+  %changed =w cnel %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function l $primer_convert_f32_i16(s %value) {
+@start
+  %number =d exts %value
+  %nan =w cuod %number, %number
+  %below =w cltd %number, d_-32768
+  %above =w cged %number, d_32768
+  %outside =w or %below, %above
+  %bits =l cast %number
+  %negative_zero =w ceql %bits, -9223372036854775808
+  %special =w or %nan, %negative_zero
+  %bad =w or %outside, %special
+  jnz %bad, @trap, @convert
+@convert
+  %result =l dtosi %number
+  %back =d sltof %result
+  %changed =w cned %back, %number
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function d $primer_convert_f32_f64(s %value) {
+@start
+  %nan =w cuos %value, %value
+  jnz %nan, @trap, @convert
+@convert
+  %result =d exts %value
+  jmp @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function l $primer_convert_f64_i64(d %value) {
+@start
+  %nan =w cuod %value, %value
+  %below =w cltd %value, d_-9223372036854775808
+  %above =w cged %value, d_9223372036854775808
+  %outside =w or %below, %above
+  %bits =l cast %value
+  %negative_zero =w ceql %bits, -9223372036854775808
+  %special =w or %nan, %negative_zero
+  %bad =w or %outside, %special
+  jnz %bad, @trap, @convert
+@convert
+  %result =l dtosi %value
+  %back =d sltof %result
+  %changed =w cned %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function s $primer_convert_f64_f32(d %value) {
+@start
+  %nan =w cuod %value, %value
+  jnz %nan, @trap, @convert
+@convert
+  %result =s truncd %value
+  %back =d exts %result
+  %changed =w cned %back, %value
+  jnz %changed, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function d $primer_fn_measure_0(l %arg0) {
+@start
+  %slot_value =l alloc8 8
+  storel %arg0, %slot_value
+  %tmp0 =l loadl %slot_value
+  %tmp1 =d call $primer_convert_i16_f64(l %tmp0)
+  %tmp2 =d call $primer_convert_i64_f64(l 2)
+  %tmp3 =d div %tmp1, %tmp2
+  ret %tmp3
+}
+
+export function w $main() {
+@start
+  %slot_count =l alloc8 8
+  %slot_wide =l alloc8 8
+  %slot_narrow =l alloc8 8
+  storel 42, %slot_count
+  %tmp0 =l loadl %slot_count
+  %tmp1 =d call $primer_convert_u32_f64(l %tmp0)
+  stored %tmp1, %slot_wide
+  %tmp2 =d loadd %slot_wide
+  %tmp3 =s call $primer_convert_f64_f32(d %tmp2)
+  stores %tmp3, %slot_narrow
+  %tmp4 =s loads %slot_narrow
+  %tmp5 =l call $primer_convert_f32_i16(s %tmp4)
+  %tmp6 =w call $printf(l $fmt_i64, ..., l %tmp5)
+  %tmp7 =d loadd %slot_wide
+  %tmp8 =l call $primer_convert_f64_i64(d %tmp7)
+  %tmp9 =w call $printf(l $fmt_i64, ..., l %tmp8)
+  %tmp10 =s loads %slot_narrow
+  %tmp11 =d call $primer_convert_f32_f64(s %tmp10)
+  %tmp12 =w call $printf(l $fmt_f64, ..., d %tmp11)
+  %tmp13 =l loadl %slot_count
+  %tmp14 =s call $primer_convert_u32_f32(l %tmp13)
+  %tmp15 =d exts %tmp14
+  %tmp16 =w call $printf(l $fmt_f32, ..., d %tmp15)
+  %tmp17 =d call $primer_fn_measure_0(l 3)
+  %tmp18 =w call $printf(l $fmt_f64, ..., d %tmp17)
+  %tmp19 =d neg d_0.0
+  %tmp20 =s call $primer_convert_f64_f32(d %tmp19)
+  %tmp21 =d exts %tmp20
+  %tmp22 =w call $printf(l $fmt_f32, ..., d %tmp21)
+  ret 0
+}

@@ -1,8 +1,8 @@
+[![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
+
 # Primer
 
 [日本語](README.md) | English
-
-[![CI](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml/badge.svg)](https://github.com/Hokutaka/Primer/actions/workflows/ci.yml)
 
 Primer is an experimental programming language designed to make compiler transformations observable.
 
@@ -24,7 +24,7 @@ AST
 Primer IR Builder
   - semantic validation
   - type resolution
-  - contextual float resolution
+  - contextual numeric literal resolution
       ↓
 Primer IR
       │
@@ -78,35 +78,17 @@ The existing `emit-*` commands are the observation surface. Backend-specific Rus
 
 Primer currently supports:
 
-- static typing;
-- `bool`, `i64`, `f32`, and `f64`;
-- named product types, default field values, and field access;
-- nestable fixed arrays of fixed-size values that may also be product-type fields, indexing, element updates, value copies, and runtime bounds checks;
-- typed functions accepting scalars, product types, and fixed arrays, plus `void` and explicit `return`;
-- top-level executable statements or an explicit `fn main() -> void`;
-- explicit type declarations;
-- explicit type inference with `infer`;
-- immutable bindings;
-- `+`, `-`, `*`, `/`;
-- unary `-`;
-- `==`, `!=`, `<`, `<=`, `>`, and `>=`;
-- unary `!`;
-- `if` / `else` and block scope;
-- `while` with `break` / `continue` targeting the innermost loop;
-- `for` with explicit initialization, condition, and update;
-- parentheses;
-- `print(expr);`;
-- `//` line comments;
-- mutable bindings with `mut`;
-- type-preserving reassignment and array-element updates;
-- Primer IR emission;
-- C code generation;
-- LLVM IR generation;
-- QBE IR generation;
-- WebAssembly Text generation;
-- direct Windows x86-64 assembly generation;
-- Primer bytecode generation;
-- Primer VM execution.
+- **Types:** `bool`; `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`; `f32`, `f64`. Static typing and explicit type inference with `infer`.
+- **Variables:** immutable bindings, mutable bindings with `mut`, and type-preserving reassignment.
+- **Arithmetic:** `+`, `-`, `*`, `/`, unary `-`, and integer `%`. Integer overflow and invalid division stop execution.
+- **Comparison and logic:** `==`, `!=`, `<`, `<=`, `>`, `>=`, `!`, and short-circuiting `&&` and `||`.
+- **Bit operations:** integer `&`, `|`, `^`, `~`, `<<`, and `>>`, with checked shift counts and left-shift overflow detection.
+- **Explicit conversion:** equivalent spellings such as `f64(value)` and `convert<f64>(value)`. Conversion between implemented numeric types succeeds only when it preserves the value.
+- **Data structures:** named structs (product types), default field values and field access, and nestable fixed arrays. Value copies, array-element updates, and runtime bounds checks.
+- **Functions and control flow:** typed functions passing numbers, booleans, structs, and fixed arrays, with `void` and explicit `return`. `if` / `else`, `while`, `for`, and `break` / `continue`. Top-level executable statements or an explicit `fn main() -> void`.
+- **Output and execution:** `print(expr);`, Primer IR and backend artifact emission, and Primer VM execution. Line comments use `//`.
+
+`u64`, strings, dynamically sized arrays, recursion, failure recovery, and explicit rounding/truncation operations are not implemented. Current generated targets store even small integer types in 64-bit storage and check their value ranges.
 
 Example:
 
@@ -124,7 +106,7 @@ print(double);
 print(inferred);
 ```
 
-Programs demonstrating basics, numerical computation, and algorithms supported by the current language are collected in the [examples index](examples/README.en.md).
+Programs demonstrating basics, data structures, numerical computation, and algorithms are collected in the [examples index](examples/README.en.md). The [sample mean and variance](examples/measurement_statistics.prim) and [count-to-probability](examples/normalized_histogram.prim) examples use explicit integer/floating-point conversion.
 
 Run every example and display its output from the repository root with:
 
@@ -149,7 +131,16 @@ b: f64 = 0.1 + 0.2;
 
 That decision is resolved in Primer IR before backend lowering.
 
-Primer currently performs no implicit numeric conversion between `i64`, `f32`, and `f64`.
+Primer performs no implicit numeric conversion. Changing a type requires an explicit conversion:
+
+```primer
+count: u32 = 3;
+ratio: f64 = f64(count) / convert<f64>(2);
+print(ratio); // 1.5
+// print(i32(ratio)); // fails because the fractional part would be lost
+```
+
+Conversion stops execution if the destination cannot preserve the value; it does not silently round it. Ordinary floating-point arithmetic still rounds. See the [language reference](docs/reference/language.en.md) for detailed rules, including infinity, NaN, and negative zero.
 
 ## Install
 
