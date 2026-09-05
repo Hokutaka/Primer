@@ -233,6 +233,12 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
 
 fn lower_expr(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
+        primer_ir::ExprKind::ConvertInteger {
+            value, from, to, ..
+        } => match (from, to) {
+            // 同じ整数型への変換はPrimer IRに残し、Cでは入力をそのまま使います。
+            (IntegerType::I64, IntegerType::I64) => return lower_expr(value),
+        },
         primer_ir::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
 
         primer_ir::ExprKind::Integer(value) => ExprKind::Integer(*value),
@@ -360,6 +366,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
                 }
             }
             primer_ir::ExprKind::FieldAccess { base, .. }
+            | primer_ir::ExprKind::ConvertInteger { value: base, .. }
             | primer_ir::ExprKind::Unary { value: base, .. } => visit_expr(base, types),
             primer_ir::ExprKind::Call { arguments, .. } => {
                 for argument in arguments {

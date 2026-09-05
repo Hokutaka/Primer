@@ -443,6 +443,11 @@ impl Lowerer {
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertInteger {
+                value, from, to, ..
+            } => match (from, to) {
+                (IntegerType::I64, IntegerType::I64) => self.lower_expr(value),
+            },
             primer_ir::ExprKind::Boolean(value) => Value {
                 ty: Type::Bool,
                 operand: Operand::Boolean(*value),

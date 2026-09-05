@@ -1,0 +1,7 @@
+fn value() -> i64 {
+    print(7);
+    return 42;
+}
+compact: infer = i64(value());
+explicit: infer = convert<i64>(compact);
+print(explicit);

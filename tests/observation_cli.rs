@@ -4,6 +4,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "i64-addition",
     "checked-i64-arithmetic",
     "i64-minimum-literal",
+    "integer-conversions",
     "float-types",
     "mutable-assignment",
     "boolean-comparisons",

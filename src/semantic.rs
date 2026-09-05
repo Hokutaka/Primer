@@ -207,6 +207,15 @@ fn register_function_names(program: &Program) -> SemanticResult<HashMap<String, 
         let Item::FunctionDefinition(definition) = item else {
             continue;
         };
+        if ast::Type::from_name(&definition.name).is_some() {
+            return Err(Diagnostic::new(
+                format!(
+                    "function name `{}` is reserved for a built-in type",
+                    definition.name
+                ),
+                definition.name_span,
+            ));
+        }
         let id = FunctionId(names.len());
         if names.insert(definition.name.clone(), id).is_some() {
             return Err(Diagnostic::new(
@@ -437,7 +446,9 @@ fn collect_calls_in_expr(expr: &Expr, model: &SemanticModel, calls: &mut Vec<(Fu
             collect_calls_in_expr(base, model, calls);
             collect_calls_in_expr(index, model, calls);
         }
-        ExprKind::FieldAccess { base, .. } | ExprKind::Unary { value: base, .. } => {
+        ExprKind::FieldAccess { base, .. }
+        | ExprKind::Unary { value: base, .. }
+        | ExprKind::Convert { value: base, .. } => {
             collect_calls_in_expr(base, model, calls);
         }
         ExprKind::Binary { left, right, .. } => {
@@ -474,6 +485,15 @@ fn register_type_names(program: &Program) -> SemanticResult<HashMap<String, Type
         let Item::TypeDefinition(definition) = item else {
             continue;
         };
+        if ast::Type::from_name(&definition.name).is_some() {
+            return Err(Diagnostic::new(
+                format!(
+                    "type name `{}` is reserved for a built-in type",
+                    definition.name
+                ),
+                definition.name_span,
+            ));
+        }
         let id = TypeId(names.len());
 
         if names.insert(definition.name.clone(), id).is_some() {
@@ -544,16 +564,14 @@ fn resolve_type_name(
     span: Span,
     type_names: &HashMap<String, TypeId>,
 ) -> SemanticResult<Type> {
-    match name {
-        "bool" => Ok(Type::Bool),
-        "i64" => Ok(Type::Integer(IntegerType::I64)),
-        "f32" => Ok(Type::F32),
-        "f64" => Ok(Type::F64),
-        _ => type_names
+    if let Some(ty) = ast::Type::from_name(name) {
+        Ok(scalar_type(ty))
+    } else {
+        type_names
             .get(name)
             .copied()
             .map(Type::Named)
-            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span)),
+            .ok_or_else(|| Diagnostic::new(format!("unknown type `{name}`"), span))
     }
 }
 
@@ -989,6 +1007,27 @@ fn type_of_expr_expected(
     model: &SemanticModel,
 ) -> SemanticResult<Type> {
     match &expr.kind {
+        ExprKind::Convert { target, value, .. } => {
+            let target_ty = model.resolve_type_ref(target)?;
+            if !matches!(target_ty, Type::Integer(_)) {
+                return Err(Diagnostic::new(
+                    "conversion target must be an integer type",
+                    target.span,
+                ));
+            }
+            // 変換先の期待型を入力へ伝えると、変換前の計算の意味が変わってしまいます。
+            let input_ty = model.type_of_expr(value, bindings)?;
+            if !matches!(input_ty, Type::Integer(_)) {
+                return Err(Diagnostic::new(
+                    format!(
+                        "integer conversion requires an integer value, found {}",
+                        model.type_name(input_ty)
+                    ),
+                    value.span,
+                ));
+            }
+            Ok(target_ty)
+        }
         ExprKind::Boolean(_) => Ok(Type::Bool),
 
         ExprKind::Integer(literal) => {

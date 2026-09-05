@@ -113,6 +113,8 @@ Unsuffixed floating-point literals are also resolved before backend lowering. A 
 
 Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.
 
+The integer conversion spellings `i64(value)` and `convert<i64>(value)` resolve to the same `ConvertInteger` operation, with the original spelling retained separately as `ConversionSyntax`. The input type is not inferred again from the destination, and the input is evaluated once. Currently only `i64` to `i64` conversion is supported. Bytecode retains a conversion instruction with its origin; code generation backends need no additional execution instruction for this identity conversion.
+
 Primer IR deliberately does not attempt to be a universal machine IR or prematurely impose SSA form. It represents Primer semantics closely enough to keep the frontend/backend boundary visible.
 
 Primer IR statements and expressions share one sequence of `NodeId` values. `emit-ir` renders them as `#0`, `#1`, and so on. IDs are allocated deterministically, with a parent before its children and in textual IR order, so the same Primer version and input produce the same IDs.

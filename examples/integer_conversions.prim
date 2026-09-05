@@ -1,0 +1,8 @@
+// 二つの書き方は同じ変換です。現在はi64同士なので数値は変わりません。
+count: i64 = 21;
+compact: infer = i64(count);
+explicit: infer = convert<i64>(count);
+
+// 二つの結果を足した42と、元の値21を表示します。
+print(compact + explicit);
+print(count);

@@ -1,6 +1,7 @@
 pub mod render;
 
 use crate::bytecode::{ArrayAccess, BytecodeProgram, InstructionKind, ReturnType, Type};
+use crate::types::IntegerType;
 
 /// 整数の桁あふれを起こした演算を表します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +237,12 @@ fn execute_frame_inner(
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match &instruction.kind {
+            InstructionKind::ConvertInteger { from, to } => match (from, to) {
+                (IntegerType::I64, IntegerType::I64) => {
+                    let value = at_instruction(pop_i64(&mut stack), pc)?;
+                    stack.push(Value::I64(value));
+                }
+            },
             InstructionKind::PushBool(value) => {
                 stack.push(Value::Bool(*value));
             }

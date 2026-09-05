@@ -86,6 +86,8 @@ unary       := ("-" | "!") unary
 postfix     := primary (("." IDENT) | ("[" expression "]"))*
 
 primary     := "true"
+             | "i64" "(" expression ","? ")"
+             | "convert" "<" type_ref ">" "(" expression ","? ")"
              | "false"
              | INTEGER
              | FLOAT
@@ -480,6 +482,26 @@ The `f32` binding supplies the expected type to unsuffixed floating-point litera
 This decision is recorded in Primer IR and is not recomputed by individual backends.
 
 Comparison operands must also have the same type. Primer IR exposes the operand type separately from the resulting `bool` type.
+
+## Explicit integer conversions
+
+Integer conversion has two equivalent spellings:
+
+```primer
+value: i64 = 42;
+compact: infer = i64(value);
+explicit: infer = convert<i64>(value);
+```
+
+Currently, only `i64` to `i64` conversion is supported. Neither the value nor the type changes, but an explicit conversion remains in Primer IR and bytecode. `i32`, `u32`, and conversions between integers and floating-point types are not supported yet.
+
+Both spellings evaluate the expression inside parentheses exactly once. The destination type is not passed into the input expression to change its arithmetic. A noninteger input is a compile-time error. Exactly one argument is required; a trailing comma is allowed. Conversion produces a value and cannot be used as a standalone statement.
+
+If input evaluation fails, the diagnostic points to that operation. For example, `i64(1 / 0)` stops at division before conversion is reached.
+
+Primer IR retains the source and destination integer types, input, original spelling, and source location. Both spellings use the same operation kind; spelling is origin information. Bytecode emits `convert.checked i64 -> i64`, with the corresponding Primer IR `NodeId` and `Span` as the instruction origin. C, LLVM, QBE, WAT, and Windows x86-64 omit the identity conversion operation and use its input directly.
+
+Functions and types cannot be defined with the built-in type names `bool`, `i64`, `f32`, or `f64`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
 
 ## Output
 

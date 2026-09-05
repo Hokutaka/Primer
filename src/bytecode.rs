@@ -104,6 +104,10 @@ pub enum InstructionOrigin {
 
 #[derive(Debug, Clone)]
 pub enum InstructionKind {
+    ConvertInteger {
+        from: IntegerType,
+        to: IntegerType,
+    },
     PushBool(bool),
     PushI64(i64),
     PushF32(f32),
@@ -628,6 +632,19 @@ impl Compiler {
 
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::ConvertInteger {
+                value, from, to, ..
+            } => {
+                self.emit_expr(value);
+                self.emit_source(
+                    InstructionKind::ConvertInteger {
+                        from: *from,
+                        to: *to,
+                    },
+                    expr.id,
+                    expr.span,
+                );
+            }
             ExprKind::Boolean(value) => {
                 self.emit_source(InstructionKind::PushBool(*value), expr.id, expr.span);
             }
@@ -1060,6 +1077,9 @@ fn format_instruction(
             writeln!(output, "ge.{}", type_name(ty, program),).unwrap();
         }
 
+        InstructionKind::ConvertInteger { from, to } => {
+            writeln!(output, "convert.checked {} -> {}", from.name(), to.name()).unwrap();
+        }
         InstructionKind::Negate(ty) => {
             writeln!(output, "neg.{}", type_name(ty, program),).unwrap();
         }

@@ -21,6 +21,7 @@
 | [hello.prim](hello.prim) | 整数に名前を付け、足し算の結果を`print`で表示する最初の例 |
 | [floating_point.prim](floating_point.prim) | `f32`と`f64`の精度の違い、`infer`による型推論 |
 | [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
+| [integer_conversions.prim](integer_conversions.prim) | 同じ意味になる二つの変換表記。現在は`i64`から`i64`への変換 |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | 真偽値と比較演算 |
 | [conditional.prim](conditional.prim) | `if` / `else`とscope |
 | [loop_control.prim](loop_control.prim) | `while`、`break`、`continue` |

@@ -21,6 +21,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
+| [integer_conversions.prim](integer_conversions.prim) | two equivalent conversion spellings, currently converting `i64` to `i64` |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |
 | [loop_control.prim](loop_control.prim) | `while`, `break`, and `continue` |

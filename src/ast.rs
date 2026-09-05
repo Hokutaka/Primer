@@ -1,4 +1,7 @@
-use crate::{source::Span, types::IntegerType};
+use crate::{
+    source::{ConversionSyntax, Span},
+    types::IntegerType,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
@@ -6,6 +9,19 @@ pub enum Type {
     Integer(IntegerType),
     F32,
     F64,
+}
+
+impl Type {
+    /// 組み込み型の名前を解決します。関数やユーザー定義型で上書きできません。
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "bool" => Some(Self::Bool),
+            "i64" => Some(Self::Integer(IntegerType::I64)),
+            "f32" => Some(Self::F32),
+            "f64" => Some(Self::F64),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -190,6 +206,11 @@ impl IntegerLiteral {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    Convert {
+        target: TypeRef,
+        value: Box<Expr>,
+        syntax: ConversionSyntax,
+    },
     Boolean(bool),
     Integer(IntegerLiteral),
     Float {

@@ -1,6 +1,13 @@
 use primer_lang::run_vm;
 
 #[test]
+fn integer_conversions_example_preserves_both_results_and_the_original() {
+    let output = run_vm(include_str!("../examples/integer_conversions.prim")).unwrap();
+
+    assert_eq!(output, "42\n21\n");
+}
+
+#[test]
 fn hello_example_adds_two_named_integers() {
     let output = run_vm(include_str!("../examples/hello.prim")).unwrap();
 

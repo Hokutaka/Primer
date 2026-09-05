@@ -1,7 +1,10 @@
 pub mod builder;
 pub mod text;
 
-use crate::{source::Span, types::IntegerType};
+use crate::{
+    source::{ConversionSyntax, Span},
+    types::IntegerType,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -159,6 +162,13 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    /// 数値を変えずに整数型を変換します。範囲外なら失敗します。
+    ConvertInteger {
+        value: Box<Expr>,
+        from: IntegerType,
+        to: IntegerType,
+        syntax: ConversionSyntax,
+    },
     Boolean(bool),
     Integer(i64),
     Float {

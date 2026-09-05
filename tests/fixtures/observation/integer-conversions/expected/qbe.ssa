@@ -1,0 +1,22 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+function l $primer_fn_value_0() {
+@start
+  %tmp0 =w call $printf(l $fmt_i64, ..., l 7)
+  ret 42
+}
+
+export function w $main() {
+@start
+  %slot_compact =l alloc8 8
+  %slot_explicit =l alloc8 8
+  %tmp0 =l call $primer_fn_value_0()
+  storel %tmp0, %slot_compact
+  %tmp1 =l loadl %slot_compact
+  storel %tmp1, %slot_explicit
+  %tmp2 =l loadl %slot_explicit
+  %tmp3 =w call $printf(l $fmt_i64, ..., l %tmp2)
+  ret 0
+}

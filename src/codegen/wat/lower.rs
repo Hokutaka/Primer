@@ -599,6 +599,11 @@ impl LoweringContext<'_> {
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, instructions: &mut Vec<Instruction>) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertInteger {
+                value, from, to, ..
+            } => match (from, to) {
+                (IntegerType::I64, IntegerType::I64) => self.lower_expr(value, instructions),
+            },
             primer_ir::ExprKind::Boolean(value) => {
                 instructions.push(Instruction::I32Const(i32::from(*value)));
                 Value::Scalar(Type::Bool)

@@ -337,6 +337,18 @@ impl Builder<'_> {
         let ty = self.model.type_of_expr_expected(expr, bindings, expected)?;
 
         let kind = match &expr.kind {
+            ast::ExprKind::Convert { value, syntax, .. } => {
+                let value = self.build_expr(value, None, bindings)?;
+                let (Type::Integer(from), semantic::Type::Integer(to)) = (&value.ty, &ty) else {
+                    unreachable!("semantic analysis checked integer conversion types");
+                };
+                ExprKind::ConvertInteger {
+                    from: *from,
+                    to: *to,
+                    value: Box::new(value),
+                    syntax: *syntax,
+                }
+            }
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
             ast::ExprKind::Integer(literal) => {
                 ExprKind::Integer(semantic::resolve_i64_literal(literal, expr.span)?)
