@@ -227,6 +227,11 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
     write!(output, "#{} ", expr.id.0).unwrap();
 
     match &expr.kind {
+        ExprKind::StringByteLength { value } => {
+            output.push_str("byte_len.string(");
+            emit_expr(value, program, output);
+            output.push(')');
+        }
         ExprKind::ConvertNumeric {
             value,
             from,

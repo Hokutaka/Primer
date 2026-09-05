@@ -49,7 +49,9 @@ fn expected_output(case_name: &str, file_name: &str) -> String {
 fn assert_observation(case_name: &str, command: &str, expected_file: &str) {
     let mut process = Command::new(env!("CARGO_BIN_EXE_primer"));
     process.arg(command).arg(source_path(case_name));
-    if matches!(command, "emit-llvm" | "emit-qbe") && case_name == "string-values" {
+    if matches!(command, "emit-llvm" | "emit-qbe")
+        && matches!(case_name, "string-values" | "string-byte-length")
+    {
         process.args(["--target", "x86_64-unknown-linux-gnu"]);
     }
     let output = process
@@ -102,6 +104,7 @@ fn string_observations_match_ir_bytecode_and_vm_output() {
         ("run", "run.stdout"),
     ] {
         assert_observation("string-values", command, file);
+        assert_observation("string-byte-length", command, file);
     }
 }
 

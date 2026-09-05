@@ -412,6 +412,11 @@ fn emit_print(
 
 fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     match &expr.kind {
+        ExprKind::StringByteLength { value } => {
+            output.push_str("((int64_t)(");
+            emit_expr(value, module, output);
+            output.push_str(").length)");
+        }
         ExprKind::String(value) => super::string::literal(value, output),
         ExprKind::Temporary(id) => output.push_str(&format!("_primer_eval_{id}")),
         ExprKind::Sequence { bindings, value } => {
@@ -664,6 +669,7 @@ impl RuntimeSupport {
     fn include_expr(&mut self, expr: &Expr) {
         self.strings |= expr.ty == Type::String;
         match &expr.kind {
+            ExprKind::StringByteLength { value } => self.include_expr(value),
             ExprKind::Sequence { bindings, value } => {
                 for (_, value) in bindings {
                     self.include_expr(value);

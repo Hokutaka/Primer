@@ -164,13 +164,31 @@ Supported escapes inside strings are:
 
 `==` and `!=` compare the entire contents. Comparison is case-sensitive and does not normalize Unicode. Visually identical text with different character sequences remains distinct. `"a\0b"` is not treated as `"a"`.
 
-Concatenation, string indexing, length queries, ordering, and numeric conversions are not implemented. Strings do not implicitly convert to or from other types.
+Concatenation, string indexing, character counts, ordering, and numeric conversions are not implemented. Strings do not implicitly convert to or from other types.
 
 `print` writes the contents unchanged and appends LF. In contrast, textual Primer IR and bytecode escape line breaks and control characters. Decoded values are kept distinct from the UTF-8 byte range (Span) of the original quoted spelling.
 
 Strings are supported by every output route. LLVM and QBE require [CLI target selection](cli.en.md#llvm-target-selection); omitting it produces a source-located diagnostic before lowering, including strings in unused types, functions, and branches. Direct assembly is fixed to Windows x64; WAT uses the WebAssembly output host contract.
 
 C emission uses read-only data retained until process exit, paired with a byte count. Generated programs using strings set standard output to binary mode on Windows, preventing automatic LF or CR translation. See [String design](../design/strings.en.md) for representation and lifetime details.
+
+### UTF-8 byte length
+
+`byte_len(text)` accepts one `string` and returns its stored UTF-8 byte count as `i64`. Its argument is evaluated once.
+
+```primer
+print(byte_len(""));          // 0
+print(byte_len("日本語"));    // 9
+print(byte_len("\0\r\n"));  // 3
+print(byte_len("\u{e9}"));    // 2
+print(byte_len("e\u{301}"));  // 3
+```
+
+NUL and line endings count as data. No Unicode normalization occurs. This does not count Unicode scalar values, displayed characters, or display width. The result is always `i64`; use an existing explicit conversion to assign it to a smaller integer type.
+
+`byte_len` is reserved as a built-in operation name: defining a function with that name is rejected. Wrong argument counts/types and discarding its result in a call statement produce source-located diagnostics. Variable and function namespaces remain separate. The operation accepts function results, array elements, fields, and defaults.
+
+`byte_len(f())` evaluates `f()` exactly once. Short-circuited operands remain unevaluated. If evaluating the argument fails, for example through an out-of-bounds access, execution stops before reading the length.
 
 ## Named product types
 
@@ -435,7 +453,7 @@ fixed arrays
 named product types
 ```
 
-Backends map supported types to their own representations during lowering. Strings currently support C, bytecode, and the VM.
+Backends map supported types to their own representations during lowering. Strings are supported by every output route.
 
 For example, the C backend maps them as follows:
 

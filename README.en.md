@@ -72,7 +72,7 @@ The public observation points are Primer IR and emitted artifacts. Backend-speci
 
 Integer overflow, invalid integer division, out-of-bounds array access, and conversions that cannot preserve the value stop execution. There are no implicit numeric conversions. Ordinary floating-point arithmetic still rounds.
 
-Strings are immutable UTF-8 values, supporting printing, equality, and use in functions and data structures. They work through every output route. LLVM and QBE require an explicit runtime `--target`. [LLVM target selection](docs/reference/cli.en.md#llvm-target-selection) supports Windows x64 and Linux x86-64. QBE targets Linux x86-64, direct assembly targets Windows x64, and WAT uses a WebAssembly output host function. See [string design](docs/design/strings.en.md) for representation differences. Concatenation and string indexing are not implemented.
+Strings are immutable UTF-8 values, supporting printing, equality, UTF-8 byte-length queries, and use in functions and data structures. They work through every output route. LLVM and QBE require an explicit runtime `--target`. [LLVM target selection](docs/reference/cli.en.md#llvm-target-selection) supports Windows x64 and Linux x86-64. QBE targets Linux x86-64, direct assembly targets Windows x64, and WAT uses a WebAssembly output host function. See [string design](docs/design/strings.en.md) for representation differences. Concatenation and string indexing are not implemented.
 
 `u64`, dynamically sized arrays, recursion, failure recovery, and explicit rounding/truncation operations are not implemented. Current generated targets store even small integer types in 64-bit storage and check their value ranges.
 

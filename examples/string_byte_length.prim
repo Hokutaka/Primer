@@ -1,0 +1,39 @@
+// byte_lenは文字数ではなく、保持しているUTF-8のバイト数を返します。
+type Payload {
+    text: string,
+    default_bytes: i64 = byte_len("既定"),
+}
+
+fn traced(text: string) -> string {
+    print(text);
+    return text;
+}
+
+fn local_words() -> [string; 2] {
+    return ["日", "😀"];
+}
+
+print(byte_len(""));
+print(byte_len("日本語"));
+print(byte_len("\0\r\n"));
+print(byte_len("\u{e9}"));
+print(byte_len("e\u{301}"));
+print(byte_len("😀"));
+
+words: infer = local_words();
+print(byte_len(words[0]) + byte_len(words[1]));
+
+mut current: string = "old";
+saved: infer = current;
+current = "日本語";
+print(byte_len(saved));
+print(byte_len(current));
+
+// 各引数は左から一度だけ評価し、短絡評価の右辺は実行しません。
+print(byte_len(traced("left")) + byte_len(traced("right")));
+print(false && byte_len(traced("skipped")) > 0);
+print(false && byte_len(["bad"][1]) > 0);
+
+payload: Payload = Payload { text: "日本語\0", };
+print(payload.default_bytes);
+print(byte_len(payload.text));

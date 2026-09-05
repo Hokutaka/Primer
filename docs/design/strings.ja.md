@@ -100,3 +100,22 @@ LLVMのスナップショットはLinuxターゲットを明示して固定し�
 QBEはLinux x86-64、ASMはWindows x64で実行します。WATはWABTで検証・変換してNodeのWebAssemblyエンジンで実行し、公開要素が`main`だけであることも検査します。テスト用ホストの浮動小数点出力は共通fixtureの正確な値`1.5`に限定しており、一般的な数値整形実装ではありません。実行できない経路は理由を表示し、成功した比較とは区別します。CIでは両OSのジョブを合わせて全経路の実行を必須にします。
 
 開発用ツールは`PRIMER_TEST_QBE`、`PRIMER_TEST_ASM_CLANG`、`PRIMER_TEST_NODE`、`PRIMER_TEST_WAT2WASM_JS`（WABTの`bin/wat2wasm`）で明示できます。指定したツールがない場合はテスト失敗です。WABTの導入例は`npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39`です。ツールの起動は開発用テストの責務で、Primerの生成コマンドには追加しません。
+
+## バイト数を読む
+
+`byte_len(value) -> i64`は保持済みのUTF-8バイト数を読みます。内容を走査・正規化せず、動的確保もしません。現在は静的リテラル由来の値のみを扱い、対応する32/64ビット環境で表現可能な長さは`i64`の範囲内です。
+
+フロントエンドで引数の型・個数と戻り値を確定し、Primer IRには専用の`StringByteLength`を残します。リテラルの長さでもPrimer内で定数へ折り畳まず、操作を観測できます。表記は`byte_len.string(...)`、bytecodeは`byte_len.string`命令です。各lowererは次の読み出しへ変換します。
+
+| 経路 | 長さの取り出し |
+| --- | --- |
+| VM | 型を検査して所有する文字列のバイト数を読む |
+| C | 構造体の`length`を読み、`int64_t`へ変換 |
+| LLVM | `extractvalue %primer.string ..., 1` |
+| QBE | 長さヘッダを`loadl`で読む |
+| WAT | 非公開メモリの長さヘッダを`i64.load`で読む |
+| Windows x64 ASM | `movq (%rax), %rax`で長さヘッダを読む |
+
+長さを読む前に引数を一度評価します。Cでも引数にある呼び出しや失敗し得る式を評価順の処理へ伝え、複数の`byte_len`を組み合わせてもソース順を保ちます。LLVMの出自注釈からは`extractvalue`と元の`byte_len`式を対応付けられます。
+
+`examples/string_byte_length.prim`は日本語、NUL、CR/LF、合成済み・分解済みの文字列、関数返却、配列、既定値、再代入、短絡評価を実際に使います。全経路で既知の出力と比較し、`tests/fixtures/observation/string-byte-length/`には小さな入力と全8成果物を固定します。

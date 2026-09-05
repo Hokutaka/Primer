@@ -66,7 +66,13 @@ pub const CASES: &[(&str, &str)] = &[
 pub const UNUSED_DEFAULT: &str =
     r#"type Unused { flag: bool = "a" == "a", } print(1); print(true);"#;
 
+pub const BYTE_LENGTH: (&str, &str) = (
+    include_str!("../../examples/string_byte_length.prim"),
+    "0\n9\n3\n2\n3\n4\n7\n3\n9\nleft\nright\n9\nfalse\nfalse\n6\n10\n",
+);
+
 pub const OUT_OF_BOUNDS: &[&str] = &[
+    r#"print(byte_len(["a"][1]));"#,
     r#"print(["a"][-1]);"#,
     r#"mut values: [string; 1] = ["a"]; values[1] = "replacement";"#,
 ];
