@@ -136,3 +136,9 @@ LLVMの場合は、[CLIリファレンス](../docs/reference/cli.ja.md#llvmの�
 `cargo test --test c_strings`はC生成物を最適化あり・なしで実行し、VMの結果と比較します。既定のCコンパイラがない環境では実行比較をスキップしますが、`PRIMER_TEST_CC`にコンパイラを指定すると検証を必須にできます。CIではClangを必須とし、AddressSanitizerとUndefinedBehaviorSanitizerでも検査します。
 
 `xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。`linear_regression.prim`では、勾配降下法で直線の傾きと切片をデータから学びます。XORニューラルネット自体の学習はまだ含みません。
+
+### 文字列の変換元を辿る
+
+`string_origins.prim`は関数呼び出し、文字列の内容比較、短絡評価を観察する例です。出力をエスケープ表記にすると`日本語\0\ntrue\nfalse\n`です。`skipped`は出力されません。
+
+`emit-ir`と`emit-llvm --annotate-origins`を並べると、`#7`の内容比較や`#14`の短絡評価からLLVMの呼び出し・分岐へ辿れます。[実行手順と出自注釈](../docs/reference/cli.ja.md#llvmの出自を辿る)を参照してください。
