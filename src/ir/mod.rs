@@ -1,12 +1,12 @@
 pub mod builder;
 pub mod text;
 
-use crate::source::Span;
+use crate::{source::Span, types::IntegerType};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
     Named(TypeId),

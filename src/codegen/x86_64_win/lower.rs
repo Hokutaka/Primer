@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ir as primer_ir;
+use crate::{ir as primer_ir, types::IntegerType};
 
 use super::ir::{
     Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
@@ -90,7 +90,7 @@ fn lower_body(
     for (index, parameter) in parameters.iter().enumerate() {
         match &parameter.ty {
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(IntegerType::I64)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
                 lowerer.instructions.push(Instruction::StoreParameter {
@@ -785,7 +785,7 @@ impl Lowerer<'_> {
                 Some((ty, self.allocate_aggregate(ty)))
             }
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(IntegerType::I64)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
@@ -809,7 +809,7 @@ impl Lowerer<'_> {
                     base_slot,
                 },
                 primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(IntegerType::I64)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
             });
@@ -883,7 +883,10 @@ impl Lowerer<'_> {
         pointer_offset: isize,
     ) {
         match (ty, value) {
-            (primer_ir::Type::Bool | primer_ir::Type::I64, Value::Scalar(actual)) => {
+            (
+                primer_ir::Type::Bool | primer_ir::Type::Integer(IntegerType::I64),
+                Value::Scalar(actual),
+            ) => {
                 debug_assert!(matches!(actual, Type::Bool | Type::I64));
                 self.instructions
                     .push(Instruction::StoreI64ToPointer(pointer_offset));
@@ -1094,7 +1097,7 @@ fn collect_binding_slots(
 fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
-        | primer_ir::Type::I64
+        | primer_ir::Type::Integer(IntegerType::I64)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 1,
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
@@ -1262,7 +1265,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::I64 => Type::I64,
+        primer_ir::Type::Integer(IntegerType::I64) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
         primer_ir::Type::F64 => Type::F64,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -1274,7 +1277,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
-        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::Integer(IntegerType::I64) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::F64),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),

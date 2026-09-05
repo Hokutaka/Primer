@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ir as primer_ir;
+use crate::{ir as primer_ir, types::IntegerType};
 
 use super::ir::{
     BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
@@ -476,7 +476,7 @@ impl Lowerer {
                     }
                 }
 
-                primer_ir::Type::I64 => {
+                primer_ir::Type::Integer(IntegerType::I64) => {
                     unreachable!("integer cannot be lowered as float")
                 }
 
@@ -823,7 +823,7 @@ impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
             primer_ir::Type::Bool => Self::Bool,
-            primer_ir::Type::I64 => Self::I64,
+            primer_ir::Type::Integer(IntegerType::I64) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,
             primer_ir::Type::Named(id) => Self::Named(id.0),

@@ -7,6 +7,7 @@ use crate::{
         UnaryOp,
     },
     source::Span,
+    types::IntegerType,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -652,7 +653,7 @@ impl Compiler {
                     self.emit_source(InstructionKind::PushF64(value), expr.id, expr.span);
                 }
 
-                ir::Type::I64 => {
+                ir::Type::Integer(IntegerType::I64) => {
                     unreachable!("integer cannot be emitted as float");
                 }
 
@@ -874,7 +875,7 @@ impl From<ir::Type> for Type {
     fn from(value: ir::Type) -> Self {
         match value {
             ir::Type::Bool => Self::Bool,
-            ir::Type::I64 => Self::I64,
+            ir::Type::Integer(IntegerType::I64) => Self::I64,
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
             ir::Type::Named(id) => Self::Named(id.0),

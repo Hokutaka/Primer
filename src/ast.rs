@@ -1,9 +1,9 @@
-use crate::source::Span;
+use crate::{source::Span, types::IntegerType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
 }

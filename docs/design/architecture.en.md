@@ -107,6 +107,8 @@ fixed arrays
 
 `infer` is resolved before Primer IR is produced and therefore does not appear as a runtime or backend type.
 
+The AST, semantic model, and Primer IR share `IntegerType` to represent integer kinds. Currently, the only registered kind is `I64`, which exposes its name, signedness, and the bit width that determines its value range. Each backend explicitly maps this kind to its own type. The integer's semantic bit width is separate from the target's storage size or register width. The IR text continues to display `i64`.
+
 Unsuffixed floating-point literals are also resolved before backend lowering. A backend does not need to repeat contextual type inference.
 
 Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.

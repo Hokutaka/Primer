@@ -343,7 +343,7 @@ fn emit_arguments(arguments: &[Expr], program: &Program, output: &mut String) {
 fn type_name(ty: &Type, program: &Program) -> String {
     match ty {
         Type::Bool => "bool".into(),
-        Type::I64 => "i64".into(),
+        Type::Integer(integer) => integer.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),
         Type::Named(id) => {

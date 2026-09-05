@@ -7,6 +7,7 @@ use crate::{
     },
     diagnostic::Diagnostic,
     source::Span,
+    types::IntegerType,
 };
 
 pub type Bindings = HashMap<String, BindingInfo>;
@@ -24,7 +25,7 @@ pub struct FunctionId(pub usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
-    I64,
+    Integer(IntegerType),
     F32,
     F64,
     Named(TypeId),
@@ -133,7 +134,7 @@ impl SemanticModel {
     pub fn type_name(&self, ty: Type) -> String {
         match ty {
             Type::Bool => "bool".into(),
-            Type::I64 => "i64".into(),
+            Type::Integer(integer) => integer.name().into(),
             Type::F32 => "f32".into(),
             Type::F64 => "f64".into(),
             Type::Named(id) => self.type_definition(id).name.clone(),
@@ -545,7 +546,7 @@ fn resolve_type_name(
 ) -> SemanticResult<Type> {
     match name {
         "bool" => Ok(Type::Bool),
-        "i64" => Ok(Type::I64),
+        "i64" => Ok(Type::Integer(IntegerType::I64)),
         "f32" => Ok(Type::F32),
         "f64" => Ok(Type::F64),
         _ => type_names
@@ -613,7 +614,7 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
         match ty {
             Type::Named(id) => Some(*id),
             Type::Array { element, .. } => named_type_dependency(element),
-            Type::Bool | Type::I64 | Type::F32 | Type::F64 => None,
+            Type::Bool | Type::Integer(IntegerType::I64) | Type::F32 | Type::F64 => None,
         }
     }
 
@@ -746,9 +747,12 @@ fn check_statements(
                         ));
                     };
 
-                    let index_ty =
-                        model.type_of_expr_expected(index, &bindings, Some(Type::I64))?;
-                    if index_ty != Type::I64 {
+                    let index_ty = model.type_of_expr_expected(
+                        index,
+                        &bindings,
+                        Some(Type::Integer(IntegerType::I64)),
+                    )?;
+                    if index_ty != Type::Integer(IntegerType::I64) {
                         return Err(Diagnostic::new(
                             format!(
                                 "array index must be i64, found {}",
@@ -989,7 +993,7 @@ fn type_of_expr_expected(
 
         ExprKind::Integer(literal) => {
             resolve_i64_literal(literal, expr.span)?;
-            Ok(Type::I64)
+            Ok(Type::Integer(IntegerType::I64))
         }
 
         ExprKind::Float { explicit_type, .. } => {
@@ -1062,8 +1066,12 @@ fn type_of_expr_expected(
                     base.span,
                 ));
             };
-            let index_ty = model.type_of_expr_expected(index, bindings, Some(Type::I64))?;
-            if index_ty != Type::I64 {
+            let index_ty = model.type_of_expr_expected(
+                index,
+                bindings,
+                Some(Type::Integer(IntegerType::I64)),
+            )?;
+            if index_ty != Type::Integer(IntegerType::I64) {
                 return Err(Diagnostic::new(
                     format!(
                         "array index must be i64, found {}",
@@ -1179,7 +1187,7 @@ fn type_of_expr_expected(
             crate::ast::UnaryOp::Negate => {
                 if let ExprKind::Integer(literal) = &value.kind {
                     resolve_negated_i64_literal(literal, expr.span)?;
-                    return Ok(Type::I64);
+                    return Ok(Type::Integer(IntegerType::I64));
                 }
 
                 let ty = type_of_expr_expected(value, bindings, expected, model)?;
@@ -1353,7 +1361,7 @@ fn check_call(
 const fn scalar_type(ty: ast::Type) -> Type {
     match ty {
         ast::Type::Bool => Type::Bool,
-        ast::Type::I64 => Type::I64,
+        ast::Type::Integer(integer) => Type::Integer(integer),
         ast::Type::F32 => Type::F32,
         ast::Type::F64 => Type::F64,
     }
@@ -1399,7 +1407,7 @@ fn operator_name(op: BinaryOp) -> &'static str {
 }
 
 const fn is_numeric(ty: &Type) -> bool {
-    matches!(ty, Type::I64 | Type::F32 | Type::F64)
+    matches!(ty, Type::Integer(_) | Type::F32 | Type::F64)
 }
 
 const fn is_arithmetic(op: BinaryOp) -> bool {
@@ -1422,7 +1430,7 @@ const fn is_comparison(op: BinaryOp) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{lexer::lex, parser::parse, source::Span};
+    use crate::{lexer::lex, parser::parse, source::Span, types::IntegerType};
 
     use super::{Type, analyze, check};
 
@@ -1502,7 +1510,7 @@ mod tests {
 
         assert_eq!(
             bindings.get("x").map(|binding| binding.ty.clone()),
-            Some(Type::I64)
+            Some(Type::Integer(IntegerType::I64))
         );
     }
 
@@ -1557,7 +1565,7 @@ mod tests {
 
         assert_eq!(
             bindings.get("x").map(|binding| binding.ty.clone()),
-            Some(Type::I64)
+            Some(Type::Integer(IntegerType::I64))
         );
         assert_eq!(bindings.get("x").map(|binding| binding.mutable), Some(true));
     }

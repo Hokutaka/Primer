@@ -4,6 +4,7 @@ use crate::{
     ast,
     diagnostic::Diagnostic,
     semantic::{self, BindingInfo, Bindings, SemanticModel},
+    types::IntegerType,
 };
 
 use super::{
@@ -216,7 +217,11 @@ impl Builder<'_> {
                     };
                     let element_ty = *element;
                     projections.push(AssignmentProjection::Index {
-                        index: self.build_expr(index, Some(semantic::Type::I64), &bindings)?,
+                        index: self.build_expr(
+                            index,
+                            Some(semantic::Type::Integer(IntegerType::I64)),
+                            &bindings,
+                        )?,
                         element: ir_type(element_ty.clone()),
                         length,
                         span: *span,
@@ -445,7 +450,11 @@ impl Builder<'_> {
             }
             ast::ExprKind::Index { base, index } => ExprKind::Index {
                 base: Box::new(self.build_expr(base, None, bindings)?),
-                index: Box::new(self.build_expr(index, Some(semantic::Type::I64), bindings)?),
+                index: Box::new(self.build_expr(
+                    index,
+                    Some(semantic::Type::Integer(IntegerType::I64)),
+                    bindings,
+                )?),
             },
             ast::ExprKind::Call {
                 name,
@@ -561,7 +570,7 @@ impl Builder<'_> {
 fn ir_type(value: semantic::Type) -> Type {
     match value {
         semantic::Type::Bool => Type::Bool,
-        semantic::Type::I64 => Type::I64,
+        semantic::Type::Integer(integer) => Type::Integer(integer),
         semantic::Type::F32 => Type::F32,
         semantic::Type::F64 => Type::F64,
         semantic::Type::Named(id) => Type::Named(TypeId(id.0)),

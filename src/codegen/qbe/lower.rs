@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ir as primer_ir;
+use crate::{ir as primer_ir, types::IntegerType};
 
 use super::ir::{
     BinaryOp, CompareOp, Function, Instruction, Module, Operand, Parameter, ParameterPassing,
@@ -71,7 +71,7 @@ fn lower_function(
                 name: parameter.name.clone(),
                 passing: match &parameter.ty {
                     primer_ir::Type::Bool
-                    | primer_ir::Type::I64
+                    | primer_ir::Type::Integer(IntegerType::I64)
                     | primer_ir::Type::F32
                     | primer_ir::Type::F64 => ParameterPassing::Scalar(scalar_type(&parameter.ty)),
                     primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -117,7 +117,7 @@ fn lower_function(
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(IntegerType::I64)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
             ) => Some(scalar_type(ty)),
@@ -132,7 +132,7 @@ fn lower_function(
             primer_ir::ReturnType::Void
             | primer_ir::ReturnType::Value(
                 primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(IntegerType::I64)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64,
             ) => None,
@@ -856,7 +856,7 @@ impl Lowerer<'_> {
                 Some((ty, slot))
             }
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(IntegerType::I64)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
@@ -873,7 +873,7 @@ impl Lowerer<'_> {
         let (dest, return_type, scalar_result) = match result_type {
             Some(
                 ty @ (primer_ir::Type::Bool
-                | primer_ir::Type::I64
+                | primer_ir::Type::Integer(IntegerType::I64)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
             ) => {
@@ -911,7 +911,7 @@ impl Lowerer<'_> {
                 address: Operand::Slot(slot),
             },
             primer_ir::Type::Bool
-            | primer_ir::Type::I64
+            | primer_ir::Type::Integer(IntegerType::I64)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
         })
@@ -1087,7 +1087,7 @@ fn collect_slots(
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
         primer_ir::Type::Bool
-        | primer_ir::Type::I64
+        | primer_ir::Type::Integer(IntegerType::I64)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 8,
         primer_ir::Type::Named(id) => program.type_definitions[id.0]
@@ -1109,7 +1109,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
         primer_ir::Type::Bool => Type::Bool,
-        primer_ir::Type::I64 => Type::I64,
+        primer_ir::Type::Integer(IntegerType::I64) => Type::I64,
         primer_ir::Type::F32 => Type::Single,
         primer_ir::Type::F64 => Type::Double,
         primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
@@ -1121,7 +1121,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
-        primer_ir::Type::I64 => ArrayElement::Scalar(Type::I64),
+        primer_ir::Type::Integer(IntegerType::I64) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),
         primer_ir::Type::F64 => ArrayElement::Scalar(Type::Double),
         primer_ir::Type::Named(id) => ArrayElement::Named(id.0),
