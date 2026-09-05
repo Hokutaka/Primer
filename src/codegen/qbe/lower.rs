@@ -70,6 +70,9 @@ fn lower_function(
             Parameter {
                 name: parameter.name.clone(),
                 passing: match &parameter.ty {
+                    primer_ir::Type::String => {
+                        unreachable!("strings are rejected before backend lowering")
+                    }
                     primer_ir::Type::Bool
                     | primer_ir::Type::Integer(_)
                     | primer_ir::Type::F32
@@ -114,6 +117,9 @@ fn lower_function(
         name: function.name.clone(),
         parameters,
         return_type: match &function.return_type {
+            primer_ir::ReturnType::Value(primer_ir::Type::String) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Bool
@@ -126,6 +132,9 @@ fn lower_function(
             ) => None,
         },
         aggregate_return_size: match &function.return_type {
+            primer_ir::ReturnType::Value(primer_ir::Type::String) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }),
             ) => Some(type_size(program, ty)),
@@ -441,6 +450,9 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::String(_) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
             } => {
@@ -959,6 +971,7 @@ impl Lowerer<'_> {
     ) -> Option<Value> {
         let mut lowered_arguments = Vec::new();
         let aggregate_result = result_type.and_then(|ty| match ty {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 let slot = self.allocate_aggregate(type_size(self.program, ty));
                 lowered_arguments.push((Type::Pointer, Operand::Slot(slot)));
@@ -980,6 +993,9 @@ impl Lowerer<'_> {
         }
 
         let (dest, return_type, scalar_result) = match result_type {
+            Some(primer_ir::Type::String) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             Some(
                 ty @ (primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
@@ -1010,6 +1026,7 @@ impl Lowerer<'_> {
         }
 
         aggregate_result.map(|(ty, slot)| match ty {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(id) => Value::Aggregate {
                 type_id: id.0,
                 address: Operand::Slot(slot),
@@ -1195,6 +1212,7 @@ fn collect_slots(
 
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool
         | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
@@ -1217,6 +1235,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::Single,
@@ -1229,6 +1248,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
         primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),

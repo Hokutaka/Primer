@@ -1,0 +1,25 @@
+// 文字列をキーとして、配列の中から対応する表示を探します。
+type Entry {
+    key: string,
+    text: string = "未登録",
+}
+
+fn lookup(entries: [Entry; 3], key: string) -> string {
+    for (mut i: i64 = 0; i < 3; i = i + 1) {
+        if entries[i].key == key {
+            return entries[i].text;
+        }
+    }
+    return "見つかりません";
+}
+
+entries: [Entry; 3] = [
+    Entry { key: "hello", text: "こんにちは", },
+    Entry { key: "bye", text: "さようなら", },
+    Entry { key: "pending", },
+];
+
+print(lookup(entries, "hello"));
+print(lookup(entries, "bye"));
+print(lookup(entries, "pending"));
+print(lookup(entries, "missing"));

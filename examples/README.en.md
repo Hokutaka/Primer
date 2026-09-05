@@ -30,6 +30,7 @@ The runner checks each example's exit status. Use `cargo test --test examples` t
 | Example | Demonstrates |
 | --- | --- |
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
+| [string_values.prim](string_values.prim) | Japanese text, equality, line breaks, and preserved string copies after reassignment |
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
 | [small_values.prim](small_values.prim) | observing small numbers in scientific notation and distinguishing display from arithmetic rounding |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
@@ -49,6 +50,7 @@ These examples show how to group, access, and pass multiple values. They use str
 | Example | Demonstrates |
 | --- | --- |
 | [ring_buffer.prim](ring_buffer.prim) | cycling a storage position with `%` to keep the latest four values and their average |
+| [string_lookup.prim](string_lookup.prim) | linear search by a string key in an array of structs, returning display text or a default |
 | [product-point.prim](product-point.prim) | grouping point coordinates in a struct, with field defaults and access |
 | [fixed_arrays.prim](fixed_arrays.prim) | indexing, summation, and linear search in fixed arrays, and independent values after copying |
 | [product_arrays.prim](product_arrays.prim) | arrays of structs, nearest-point search, and array value copies |
@@ -112,8 +114,10 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 ## Current scope
 
-These examples are programs expressible with numbers, booleans, bindings, functions, conditionals, loops, named product types, and fixed arrays.
+These examples are programs expressible with numbers, booleans, strings, bindings, functions, conditionals, loops, named product types, and fixed arrays.
 
-Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Strings, recursion, and dynamically sized collections are not available yet.
+Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
+
+The two string examples currently run in the VM, with transformations visible through `emit-ir` and `emit-bytecode`. C, LLVM, QBE, WAT, and assembly emission do not support them yet.
 
 `xor_neural_network.prim` demonstrates inference with predetermined weights. `linear_regression.prim` learns a line's slope and intercept from data using gradient descent. Training the XOR neural network itself is not included.

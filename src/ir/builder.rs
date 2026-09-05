@@ -356,6 +356,7 @@ impl Builder<'_> {
                 }
             }
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
+            ast::ExprKind::String(value) => ExprKind::String(value.clone()),
             ast::ExprKind::Integer(literal) => {
                 let semantic::Type::Integer(integer) = ty else {
                     unreachable!()
@@ -608,6 +609,7 @@ impl Builder<'_> {
 fn ir_type(value: semantic::Type) -> Type {
     match value {
         semantic::Type::Bool => Type::Bool,
+        semantic::Type::String => Type::String,
         semantic::Type::Integer(integer) => Type::Integer(integer),
         semantic::Type::F32 => Type::F32,
         semantic::Type::F64 => Type::F64,

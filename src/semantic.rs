@@ -25,6 +25,7 @@ pub struct FunctionId(pub usize);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
+    String,
     Integer(IntegerType),
     F32,
     F64,
@@ -134,6 +135,7 @@ impl SemanticModel {
     pub fn type_name(&self, ty: Type) -> String {
         match ty {
             Type::Bool => "bool".into(),
+            Type::String => "string".into(),
             Type::Integer(integer) => integer.name().into(),
             Type::F32 => "f32".into(),
             Type::F64 => "f64".into(),
@@ -456,6 +458,7 @@ fn collect_calls_in_expr(expr: &Expr, model: &SemanticModel, calls: &mut Vec<(Fu
             collect_calls_in_expr(right, model, calls);
         }
         ExprKind::Boolean(_)
+        | ExprKind::String(_)
         | ExprKind::Integer(_)
         | ExprKind::Float { .. }
         | ExprKind::Variable(_) => {}
@@ -632,7 +635,7 @@ fn reject_infinite_types(model: &SemanticModel) -> SemanticResult<()> {
         match ty {
             Type::Named(id) => Some(*id),
             Type::Array { element, .. } => named_type_dependency(element),
-            Type::Bool | Type::Integer(_) | Type::F32 | Type::F64 => None,
+            Type::Bool | Type::String | Type::Integer(_) | Type::F32 | Type::F64 => None,
         }
     }
 
@@ -1029,6 +1032,7 @@ fn type_of_expr_expected(
             Ok(target_ty)
         }
         ExprKind::Boolean(_) => Ok(Type::Bool),
+        ExprKind::String(_) => Ok(Type::String),
 
         ExprKind::Integer(literal) => {
             let ty = literal
@@ -1469,6 +1473,7 @@ fn check_call(
 const fn scalar_type(ty: ast::Type) -> Type {
     match ty {
         ast::Type::Bool => Type::Bool,
+        ast::Type::String => Type::String,
         ast::Type::Integer(integer) => Type::Integer(integer),
         ast::Type::F32 => Type::F32,
         ast::Type::F64 => Type::F64,

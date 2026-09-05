@@ -463,6 +463,9 @@ impl Lowerer {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::String(_) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
             } => {
@@ -496,6 +499,9 @@ impl Lowerer {
             },
 
             primer_ir::ExprKind::Float { text } => match expr.ty {
+                primer_ir::Type::String => {
+                    unreachable!("strings are rejected before backend lowering")
+                }
                 primer_ir::Type::F32 => {
                     let value = text
                         .parse::<f32>()
@@ -936,6 +942,7 @@ fn collect_slots(
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,

@@ -10,6 +10,7 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_llvm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
+    super::support::reject_strings(program, "emit-llvm")?;
     let module = lower(program);
 
     Ok(emit(&module))

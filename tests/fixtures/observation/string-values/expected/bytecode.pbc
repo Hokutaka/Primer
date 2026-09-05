@@ -1,0 +1,18 @@
+; Primer bytecode v0.1
+
+.slot 0 mut text string
+.slot 1 saved string
+
+0000  push.string "日本語\n\0"
+0001  store 0       ; text
+0002  load 0        ; text
+0003  store 1       ; saved
+0004  push.string "changed"
+0005  assign 0      ; text
+0006  load 1        ; saved
+0007  push.string "日本語\n\0"
+0008  eq.string
+0009  print.bool
+0010  load 0        ; text
+0011  print.string
+0012  halt
