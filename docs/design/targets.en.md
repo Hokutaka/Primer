@@ -54,7 +54,7 @@ The current outputs can be described as follows:
 
 ## Artifact consumer boundary
 
-An existing output route does not imply support for every language feature. Strings currently lower only to Primer bytecode. Other routes diagnose strings before lowering, including unused definitions. Successful semantic validation is distinct from successful generation through each route.
+An existing output route does not imply support for every language feature. Strings currently lower to C and Primer bytecode. Other routes diagnose strings before lowering, including unused definitions. Successful semantic validation is distinct from successful generation through each route.
 
 Artifact comparison separates the following questions. Support information is data, not permission to launch external programs.
 

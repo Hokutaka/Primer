@@ -17,19 +17,19 @@ static int64_t primer_i64_add(int64_t left, int64_t right) {
 }
 
 int main(void) {
-    int64_t primer_value = 0;
-    int64_t primer_sum = 0;
-    while (primer_value < 10) {
-        primer_value = primer_i64_add(primer_value, 1);
-        if (primer_value < 3) {
+    int64_t primer_binding_0_value = 0;
+    int64_t primer_binding_1_sum = 0;
+    while (primer_binding_0_value < 10) {
+        primer_binding_0_value = primer_i64_add(primer_binding_0_value, 1);
+        if (primer_binding_0_value < 3) {
             continue;
         }
-        if (primer_value > 5) {
+        if (primer_binding_0_value > 5) {
             break;
         }
-        primer_sum = primer_i64_add(primer_sum, primer_value);
+        primer_binding_1_sum = primer_i64_add(primer_binding_1_sum, primer_binding_0_value);
     }
-    printf("%lld\n", (long long)(primer_sum));
-    printf("%lld\n", (long long)(primer_value));
+    printf("%lld\n", (long long)(primer_binding_1_sum));
+    printf("%lld\n", (long long)(primer_binding_0_value));
     return 0;
 }

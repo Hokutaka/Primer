@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
+    String,
     I64,
     Float,
     Double,
@@ -10,6 +11,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub temporaries: Vec<Type>,
     pub array_types: Vec<Type>,
     pub array_assignment_types: Vec<Type>,
     pub type_definitions: Vec<TypeDefinition>,
@@ -20,6 +22,7 @@ pub struct Module {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
+    pub temporaries: Vec<Type>,
     pub id: usize,
     pub name: String,
     pub parameters: Vec<Parameter>,
@@ -62,6 +65,7 @@ pub enum Statement {
         value: Expr,
     },
     Call {
+        evaluation: Vec<(usize, Expr)>,
         function_id: usize,
         function_name: String,
         arguments: Vec<Expr>,
@@ -103,6 +107,7 @@ pub struct ArrayProjection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrintFormat {
     Bool,
+    String,
     I64,
     F32,
     F64,
@@ -116,6 +121,13 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    /// 複数の作用や失敗を、ソース順に一度ずつ評価します。
+    Sequence {
+        bindings: Vec<(usize, Expr)>,
+        value: Box<Expr>,
+    },
+    Temporary(usize),
+    String(String),
     ConvertNumeric {
         conversion: crate::codegen::NumericConversion,
         value: Box<Expr>,

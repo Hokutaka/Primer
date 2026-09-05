@@ -90,6 +90,7 @@ fn string_observations_match_ir_bytecode_and_vm_output() {
     // 文字列の対応経路だけを検証し、未対応経路の診断も別テストで確認します。
     for (command, file) in [
         ("emit-ir", "ir.pir"),
+        ("emit-c", "c.c"),
         ("emit-bytecode", "bytecode.pbc"),
         ("run", "run.stdout"),
     ] {
@@ -115,7 +116,7 @@ fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
     use std::io::Write;
     file.write_all(b"existing artifact").unwrap();
     drop(file);
-    for command in ["emit-c", "emit-llvm", "emit-qbe", "emit-wat", "emit-asm"] {
+    for command in ["emit-llvm", "emit-qbe", "emit-wat", "emit-asm"] {
         let output = Command::new(env!("CARGO_BIN_EXE_primer"))
             .arg(command)
             .arg(source_path("string-values"))

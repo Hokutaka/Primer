@@ -16,14 +16,14 @@ static int64_t primer_i64_neg(int64_t value) {
 }
 
 int main(void) {
-    int64_t primer_value = 1;
-    if (primer_value < 2) {
-        primer_value = 42;
-        bool primer_value = true;
-        printf("%s\n", (primer_value) ? "true" : "false");
+    int64_t primer_binding_0_value = 1;
+    if (primer_binding_0_value < 2) {
+        primer_binding_0_value = 42;
+        bool primer_binding_1_value = true;
+        printf("%s\n", (primer_binding_1_value) ? "true" : "false");
     } else {
-        primer_value = primer_i64_neg(1);
+        primer_binding_0_value = primer_i64_neg(1);
     }
-    printf("%lld\n", (long long)(primer_value));
+    printf("%lld\n", (long long)(primer_binding_0_value));
     return 0;
 }

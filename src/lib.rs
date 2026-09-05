@@ -221,9 +221,9 @@ mod tests {
         let c = compile_to_c(source).unwrap();
 
         assert!(c.contains("typedef struct primer_type_Point_0"));
-        assert!(c.contains("primer_type_Point_0 primer_point"));
+        assert!(c.contains("primer_type_Point_0 primer_binding_0_point"));
         assert!(c.contains(".y = 2.0, .x = 0.0"));
-        assert!(c.contains("(primer_point).x"));
+        assert!(c.contains("(primer_binding_0_point).x"));
     }
 
     #[test]

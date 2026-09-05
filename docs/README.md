@@ -14,6 +14,7 @@ Primer documentation is divided into `design`, which records design decisions, a
 | Functions / 関数 | [日本語](design/functions.ja.md) | [English](design/functions.en.md) |
 | Named product types / 名前付きproduct type | [日本語](design/product-types.ja.md) | [English](design/product-types.en.md) |
 | Fixed arrays / 固定長配列 | [日本語](design/fixed-arrays.ja.md) | [English](design/fixed-arrays.en.md) |
+| Strings / 文字列 | [日本語](design/strings.ja.md) | [English](design/strings.en.md) |
 
 ## Reference / リファレンス
 

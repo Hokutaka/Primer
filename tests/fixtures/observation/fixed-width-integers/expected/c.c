@@ -44,19 +44,19 @@ static int64_t primer_i64_neg(int64_t value) {
     return -value;
 }
 
-int64_t primer_fn_add_0(int64_t primer_left, int64_t primer_right);
+int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right);
 
-int64_t primer_fn_add_0(int64_t primer_left, int64_t primer_right) {
-    return primer_check_i32(primer_i64_add(primer_left, primer_right));
+int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right) {
+    return primer_check_i32(primer_i64_add(primer_binding_0_left, primer_binding_1_right));
 }
 
 int main(void) {
-    int64_t primer_small = primer_fn_add_0(primer_check_i32(primer_i64_neg(3)), 5);
-    int64_t primer_large = 4294967295;
-    printf("%lld\n", (long long)(primer_small));
-    printf("%lld\n", (long long)(primer_check_u32(primer_i64_div(primer_large, 2))));
-    printf("%lld\n", (long long)(primer_large));
-    printf("%s\n", ((primer_large > 2147483648)) ? "true" : "false");
-    printf("%lld\n", (long long)(primer_check_u32(primer_small)));
+    int64_t primer_binding_2_small = primer_fn_add_0(primer_check_i32(primer_i64_neg(3)), 5);
+    int64_t primer_binding_3_large = 4294967295;
+    printf("%lld\n", (long long)(primer_binding_2_small));
+    printf("%lld\n", (long long)(primer_check_u32(primer_i64_div(primer_binding_3_large, 2))));
+    printf("%lld\n", (long long)(primer_binding_3_large));
+    printf("%s\n", ((primer_binding_3_large > 2147483648)) ? "true" : "false");
+    printf("%lld\n", (long long)(primer_check_u32(primer_binding_2_small)));
     return 0;
 }

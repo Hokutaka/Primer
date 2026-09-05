@@ -6,7 +6,8 @@ use super::ir::{
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
-    Module {
+    let mut module = Module {
+        temporaries: Vec::new(),
         array_types: collect_array_types(program),
         array_assignment_types: collect_array_assignment_types(program),
         type_definitions: lower_type_definitions(program),
@@ -14,13 +15,14 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .function_definitions
             .iter()
             .map(|function| Function {
+                temporaries: Vec::new(),
                 id: function.id.0,
                 name: function.name.clone(),
                 parameters: function
                     .parameters
                     .iter()
                     .map(|parameter| Parameter {
-                        name: parameter.name.clone(),
+                        name: binding_name(parameter.id, &parameter.name),
                         ty: parameter.ty.clone().into(),
                     })
                     .collect(),
@@ -37,7 +39,9 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .find(|function| function.name == "main")
             .map(|function| function.id.0),
         statements: program.statements.iter().map(lower_statement).collect(),
-    }
+    };
+    super::sequence::lower(&mut module);
+    module
 }
 
 fn collect_array_assignment_types(program: &primer_ir::Program) -> Vec<Type> {
@@ -136,7 +140,7 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
 
 fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => None,
         primer_ir::Type::Named(id) => Some(*id),
         primer_ir::Type::Array { element, .. } => named_type_dependency(element),
         primer_ir::Type::Bool
@@ -149,16 +153,20 @@ fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
 fn lower_statement(statement: &primer_ir::Statement) -> Statement {
     match &statement.kind {
         primer_ir::StatementKind::Binding {
-            name, ty, value, ..
+            id,
+            name,
+            ty,
+            value,
+            ..
         } => Statement::Binding {
-            name: name.clone(),
+            name: binding_name(*id, name),
             ty: ty.clone().into(),
             value: lower_expr(value),
         },
 
         primer_ir::StatementKind::Assignment { target, value } => Statement::Assignment {
             target: AssignmentTarget {
-                name: target.name.clone(),
+                name: binding_name(target.id, &target.name),
                 projections: target
                     .projections
                     .iter()
@@ -191,6 +199,7 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
             function_name,
             arguments,
         } => Statement::Call {
+            evaluation: Vec::new(),
             function_id: function_id.0,
             function_name: function_name.clone(),
             arguments: arguments.iter().map(lower_expr).collect(),
@@ -232,6 +241,11 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
     }
 }
 
+// Cの宣言スコープや補助関数名に影響されず、解決済みの束縛を参照します。
+fn binding_name(id: primer_ir::BindingId, name: &str) -> String {
+    format!("binding_{}_{name}", id.0)
+}
+
 fn lower_expr(expr: &primer_ir::Expr) -> Expr {
     let value = lower_expr_unchecked(expr);
     if let Some(ty) = super::super::integer_range_check(expr) {
@@ -249,9 +263,7 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 
 fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
-        primer_ir::ExprKind::String(_) => {
-            unreachable!("strings are rejected before backend lowering")
-        }
+        primer_ir::ExprKind::String(value) => ExprKind::String(value.clone()),
         primer_ir::ExprKind::Logical { op, left, right } => ExprKind::Logical {
             op: match op {
                 primer_ir::LogicalOp::And => super::ir::LogicalOp::And,
@@ -284,7 +296,7 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
             suffix_f32: expr.ty == primer_ir::Type::F32,
         },
 
-        primer_ir::ExprKind::Variable { name, .. } => ExprKind::Variable(name.clone()),
+        primer_ir::ExprKind::Variable { id, name } => ExprKind::Variable(binding_name(*id, name)),
 
         primer_ir::ExprKind::Unary {
             op: primer_ir::UnaryOp::BitNot,
@@ -366,7 +378,7 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
 
 fn print_format(ty: &primer_ir::Type) -> PrintFormat {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => PrintFormat::String,
         primer_ir::Type::Bool => PrintFormat::Bool,
         primer_ir::Type::Integer(_) => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
@@ -380,7 +392,7 @@ fn print_format(ty: &primer_ir::Type) -> PrintFormat {
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+            primer_ir::Type::String => Self::String,
             primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
@@ -408,9 +420,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     fn visit_expr(expr: &primer_ir::Expr, types: &mut Vec<Type>) {
         add(&expr.ty, types);
         match &expr.kind {
-            primer_ir::ExprKind::String(_) => {
-                unreachable!("strings are rejected before backend lowering")
-            }
+            primer_ir::ExprKind::String(_) => {}
             primer_ir::ExprKind::Array(values) => {
                 for value in values {
                     visit_expr(value, types);

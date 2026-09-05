@@ -19,10 +19,10 @@ typedef struct primer_type_Row_0 {
 } primer_type_Row_0;
 
 int main(void) {
-    primer_type_Row_0 primer_first = (primer_type_Row_0){ .values = (primer_array_i64_3){ .items = { 1, 2, 3 } } };
-    primer_type_Row_0 primer_second = primer_first;
-    primer_first = (primer_type_Row_0){ .values = (primer_array_i64_3){ .items = { 4, 5, 6 } } };
-    printf("%lld\n", (long long)(primer_array_get_i64_3((primer_second).values, 1)));
-    printf("%lld\n", (long long)(primer_array_get_i64_3((primer_first).values, 2)));
+    primer_type_Row_0 primer_binding_0_first = (primer_type_Row_0){ .values = (primer_array_i64_3){ .items = { 1, 2, 3 } } };
+    primer_type_Row_0 primer_binding_1_second = primer_binding_0_first;
+    primer_binding_0_first = (primer_type_Row_0){ .values = (primer_array_i64_3){ .items = { 4, 5, 6 } } };
+    printf("%lld\n", (long long)(primer_array_get_i64_3((primer_binding_1_second).values, 1)));
+    printf("%lld\n", (long long)(primer_array_get_i64_3((primer_binding_0_first).values, 2)));
     return 0;
 }

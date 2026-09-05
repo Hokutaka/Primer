@@ -2,23 +2,31 @@ use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, 
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
-    let i64_operations = i64_operations(module);
-    if !i64_operations.conversions.is_empty() {
+    let support = required_support(module);
+    let strings = support.strings || super::string::uses_type(module);
+    if !support.conversions.is_empty() {
         output.push_str("#include <math.h>\n#include <float.h>\n");
     }
 
-    if module_uses_bool(module) {
+    if module_uses_bool(module) || strings {
         output.push_str("#include <stdbool.h>\n");
     }
 
     output.push_str("#include <stdint.h>\n");
     output.push_str("#include <stdio.h>\n");
-    if !module.array_types.is_empty() || i64_operations.any() {
+    if strings {
+        output.push_str("#include <stddef.h>\n#include <string.h>\n");
+        output.push_str("#ifdef _WIN32\n#include <io.h>\n#include <fcntl.h>\n#endif\n");
+    }
+    if !module.array_types.is_empty() || support.any_numeric() {
         output.push_str("#include <stdlib.h>\n");
     }
     output.push('\n');
 
-    emit_i64_operation_support(i64_operations, &mut output);
+    emit_i64_operation_support(support, &mut output);
+    if strings {
+        output.push_str(super::string::SUPPORT);
+    }
 
     let mut emitted_array_types = Vec::new();
     for ty in &module.array_types {
@@ -68,6 +76,7 @@ pub fn emit(module: &Module) -> String {
     for function in &module.functions {
         emit_function_signature(function, module, &mut output);
         output.push_str(" {\n");
+        emit_temporaries(&function.temporaries, module, &mut output);
         emit_integer_scratch(&function.body, &mut output);
         for statement in &function.body {
             emit_statement(statement, 1, module, &mut output);
@@ -76,6 +85,11 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push_str("int main(void) {\n");
+    if strings {
+        // WindowsのテキストモードによるLFの書き換えを防ぎ、VMと同じバイトを出力します。
+        output.push_str("#ifdef _WIN32\n    if (_setmode(_fileno(stdout), _O_BINARY) == -1) {\n        fputs(\"primer: cannot set stdout to binary mode\\n\", stderr);\n        return 1;\n    }\n#endif\n");
+    }
+    emit_temporaries(&module.temporaries, module, &mut output);
     emit_integer_scratch(&module.statements, &mut output);
 
     for statement in &module.statements {
@@ -122,6 +136,12 @@ fn emit_function_signature(function: &super::ir::Function, module: &Module, outp
 
 fn function_name(id: usize, name: &str) -> String {
     format!("primer_fn_{name}_{id}")
+}
+
+fn emit_temporaries(types: &[Type], module: &Module, output: &mut String) {
+    for (id, ty) in types.iter().enumerate() {
+        output.push_str(&format!("    {} _primer_eval_{id};\n", c_type(ty, module)));
+    }
 }
 
 fn emit_statement(statement: &Statement, indent: usize, module: &Module, output: &mut String) {
@@ -196,10 +216,16 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
         }
 
         Statement::Call {
+            evaluation,
             function_id,
             function_name,
             arguments,
         } => {
+            for (id, value) in evaluation {
+                output.push_str(&format!("{prefix}_primer_eval_{id} = "));
+                emit_expr(value, module, output);
+                output.push_str(";\n");
+            }
             output.push_str(&prefix);
             emit_call(*function_id, function_name, arguments, module, output);
             output.push_str(";\n");
@@ -316,6 +342,7 @@ fn emit_for_clause(statement: &Statement, module: &Module, output: &mut String) 
 fn c_type(ty: &Type, module: &Module) -> String {
     match ty {
         Type::Bool => "bool".into(),
+        Type::String => "primer_string".into(),
         Type::I64 => "int64_t".into(),
         Type::Float => "float".into(),
         Type::Double => "double".into(),
@@ -339,6 +366,12 @@ fn emit_print(
     output: &mut String,
 ) {
     match format {
+        PrintFormat::String => {
+            output.push_str(prefix);
+            output.push_str("primer_print_string(");
+            emit_expr(expr, module, output);
+            output.push_str(");\n");
+        }
         PrintFormat::Bool => {
             output.push_str(prefix);
             output.push_str("printf(\"%s\\n\", (");
@@ -379,6 +412,18 @@ fn emit_print(
 
 fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     match &expr.kind {
+        ExprKind::String(value) => super::string::literal(value, output),
+        ExprKind::Temporary(id) => output.push_str(&format!("_primer_eval_{id}")),
+        ExprKind::Sequence { bindings, value } => {
+            output.push('(');
+            for (id, value) in bindings {
+                output.push_str(&format!("_primer_eval_{id} = "));
+                emit_expr(value, module, output);
+                output.push_str(", ");
+            }
+            emit_expr(value, module, output);
+            output.push(')');
+        }
         ExprKind::ConvertNumeric { value, conversion } => {
             output.push_str(&conversion.helper());
             output.push('(');
@@ -513,6 +558,24 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             output.push(')');
         }
         ExprKind::Binary { op, left, right } => {
+            if left.ty == Type::String {
+                output.push('(');
+                if *op == BinaryOp::NotEqual {
+                    output.push('!');
+                } else {
+                    assert_eq!(
+                        *op,
+                        BinaryOp::Equal,
+                        "string ordering is rejected by semantics"
+                    );
+                }
+                output.push_str("primer_string_equal(");
+                emit_expr(left, module, output);
+                output.push_str(", ");
+                emit_expr(right, module, output);
+                output.push_str("))");
+                return;
+            }
             let helper = match op {
                 BinaryOp::CheckedI64Add => Some("primer_i64_add"),
                 BinaryOp::CheckedI64Subtract => Some("primer_i64_sub"),
@@ -572,7 +635,8 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 }
 
 #[derive(Clone, Default)]
-struct I64Operations {
+struct RuntimeSupport {
+    strings: bool,
     conversions: std::collections::BTreeSet<crate::codegen::NumericConversion>,
     scratch: std::collections::BTreeSet<usize>,
     integer_binary:
@@ -585,8 +649,8 @@ struct I64Operations {
     negate: bool,
 }
 
-impl I64Operations {
-    fn any(&self) -> bool {
+impl RuntimeSupport {
+    fn any_numeric(&self) -> bool {
         !self.conversions.is_empty()
             || !self.integer_binary.is_empty()
             || !self.range_checks.is_empty()
@@ -598,7 +662,14 @@ impl I64Operations {
     }
 
     fn include_expr(&mut self, expr: &Expr) {
+        self.strings |= expr.ty == Type::String;
         match &expr.kind {
+            ExprKind::Sequence { bindings, value } => {
+                for (_, value) in bindings {
+                    self.include_expr(value);
+                }
+                self.include_expr(value);
+            }
             ExprKind::ConvertNumeric { value, conversion } => {
                 self.conversions.insert(*conversion);
                 self.include_expr(value);
@@ -673,6 +744,8 @@ impl I64Operations {
                 }
             }
             ExprKind::Boolean(_)
+            | ExprKind::String(_)
+            | ExprKind::Temporary(_)
             | ExprKind::Integer(_)
             | ExprKind::Float { .. }
             | ExprKind::Variable(_) => {}
@@ -690,7 +763,14 @@ impl I64Operations {
                     self.include_expr(&projection.index);
                 }
             }
-            Statement::Call { arguments, .. } => {
+            Statement::Call {
+                evaluation,
+                arguments,
+                ..
+            } => {
+                for (_, value) in evaluation {
+                    self.include_expr(value);
+                }
                 for argument in arguments {
                     self.include_expr(argument);
                 }
@@ -736,7 +816,7 @@ impl I64Operations {
 
 // 一時変数は関数内に置き、短絡評価やループ内で式が実行される位置は変えません。
 fn emit_integer_scratch(statements: &[Statement], output: &mut String) {
-    let mut operations = I64Operations::default();
+    let mut operations = RuntimeSupport::default();
     for statement in statements {
         operations.include_statement(statement);
     }
@@ -747,8 +827,8 @@ fn emit_integer_scratch(statements: &[Statement], output: &mut String) {
     }
 }
 
-fn i64_operations(module: &Module) -> I64Operations {
-    let mut operations = I64Operations::default();
+fn required_support(module: &Module) -> RuntimeSupport {
+    let mut operations = RuntimeSupport::default();
     for statement in &module.statements {
         operations.include_statement(statement);
     }
@@ -760,7 +840,7 @@ fn i64_operations(module: &Module) -> I64Operations {
     operations
 }
 
-fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+fn emit_i64_operation_support(operations: RuntimeSupport, output: &mut String) {
     for &conversion in &operations.conversions {
         super::conversion::emit_support(conversion, output);
     }
@@ -771,7 +851,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         output.push_str(&format!("static int64_t primer_check_{}(int64_t value) {{\n    if (value < {}LL || value > {}LL) abort();\n    return value;\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
-    if !operations.any() {
+    if !operations.any_numeric() {
         return;
     }
 
@@ -855,15 +935,17 @@ fn emit_condition(expr: &Expr, module: &Module, output: &mut String) {
 }
 
 fn module_uses_bool(module: &Module) -> bool {
-    module
-        .type_definitions
-        .iter()
-        .flat_map(|definition| &definition.fields)
-        .any(|field| type_uses_bool(&field.ty))
+    module.temporaries.iter().any(type_uses_bool)
+        || module
+            .type_definitions
+            .iter()
+            .flat_map(|definition| &definition.fields)
+            .any(|field| type_uses_bool(&field.ty))
         || module.array_types.iter().any(type_uses_bool)
         || module.statements.iter().any(statement_uses_bool)
         || module.functions.iter().any(|function| {
-            function.return_type.as_ref().is_some_and(type_uses_bool)
+            function.temporaries.iter().any(type_uses_bool)
+                || function.return_type.as_ref().is_some_and(type_uses_bool)
                 || function
                     .parameters
                     .iter()
@@ -876,7 +958,7 @@ fn type_uses_bool(ty: &Type) -> bool {
     match ty {
         Type::Bool => true,
         Type::Array { element, .. } => type_uses_bool(element),
-        Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
+        Type::String | Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
     }
 }
 
@@ -884,7 +966,7 @@ fn type_uses_named(ty: &Type) -> bool {
     match ty {
         Type::Named(_) => true,
         Type::Array { element, .. } => type_uses_named(element),
-        Type::Bool | Type::I64 | Type::Float | Type::Double => false,
+        Type::Bool | Type::String | Type::I64 | Type::Float | Type::Double => false,
     }
 }
 
@@ -978,6 +1060,7 @@ fn array_at_name(element: &Type, length: usize, module: &Module) -> String {
 fn array_element_name(element: &Type, module: &Module) -> String {
     match element {
         Type::Bool => "bool".into(),
+        Type::String => "string".into(),
         Type::I64 => "i64".into(),
         Type::Float => "f32".into(),
         Type::Double => "f64".into(),

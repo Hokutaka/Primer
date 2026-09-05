@@ -16,7 +16,7 @@ static int64_t primer_i64_add(int64_t left, int64_t right) {
 }
 
 int main(void) {
-    int64_t primer_x = primer_i64_add(1, 2);
-    printf("%lld\n", (long long)(primer_x));
+    int64_t primer_binding_0_x = primer_i64_add(1, 2);
+    printf("%lld\n", (long long)(primer_binding_0_x));
     return 0;
 }

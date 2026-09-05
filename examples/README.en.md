@@ -118,6 +118,17 @@ These examples are programs expressible with numbers, booleans, strings, binding
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
 
-The two string examples currently run in the VM, with transformations visible through `emit-ir` and `emit-bytecode`. C, LLVM, QBE, WAT, and assembly emission do not support them yet.
+The two string examples support VM execution and C emission, with transformations also visible through `emit-ir` and `emit-bytecode`. LLVM, QBE, WAT, and assembly emission do not support them yet.
+
+For example, emit and compile the string-key lookup:
+
+```sh
+cargo run --quiet -- emit-c examples/string_lookup.prim -o target/string_lookup.c
+clang -std=c11 target/string_lookup.c -o target/string_lookup
+```
+
+Run the executable with `./target/string_lookup` in Bash or `.\target\string_lookup.exe` on Windows. An external C compiler is required.
+
+`cargo test --test c_strings` runs generated C with and without optimization and compares it with the VM. Execution comparisons skip when the default C compiler is unavailable; setting `PRIMER_TEST_CC` makes the selected compiler mandatory. CI requires Clang and also checks with AddressSanitizer and UndefinedBehaviorSanitizer.
 
 `xor_neural_network.prim` demonstrates inference with predetermined weights. `linear_regression.prim` learns a line's slope and intercept from data using gradient descent. Training the XOR neural network itself is not included.

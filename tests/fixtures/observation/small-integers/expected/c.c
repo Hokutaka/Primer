@@ -54,16 +54,18 @@ static int64_t primer_i64_neg(int64_t value) {
     return -value;
 }
 
-int64_t primer_fn_average_0(int64_t primer_left, int64_t primer_right);
+int64_t primer_fn_average_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right);
 
-int64_t primer_fn_average_0(int64_t primer_left, int64_t primer_right) {
-    return primer_check_u8(primer_check_u16(primer_i64_div(primer_check_u16(primer_i64_add(primer_check_u16(primer_left), primer_check_u16(primer_right))), 2)));
+int64_t primer_fn_average_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right) {
+    int64_t _primer_eval_0;
+    int64_t _primer_eval_1;
+    return primer_check_u8(primer_check_u16(primer_i64_div(primer_check_u16((_primer_eval_0 = primer_check_u16(primer_binding_0_left), _primer_eval_1 = primer_check_u16(primer_binding_1_right), primer_i64_add(_primer_eval_0, _primer_eval_1))), 2)));
 }
 
 int main(void) {
-    int64_t primer_offset = primer_check_i8(primer_i64_neg(3));
-    int64_t primer_reading = primer_check_i16(primer_i64_neg(32000));
-    printf("%lld\n", (long long)(primer_check_i16(primer_i64_add(primer_reading, primer_check_i16(primer_offset)))));
+    int64_t primer_binding_2_offset = primer_check_i8(primer_i64_neg(3));
+    int64_t primer_binding_3_reading = primer_check_i16(primer_i64_neg(32000));
+    printf("%lld\n", (long long)(primer_check_i16(primer_i64_add(primer_binding_3_reading, primer_check_i16(primer_binding_2_offset)))));
     printf("%lld\n", (long long)(primer_fn_average_0(240, 80)));
     printf("%s\n", ((127 > -128)) ? "true" : "false");
     printf("%lld\n", (long long)(primer_check_u16(255)));

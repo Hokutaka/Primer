@@ -27,10 +27,10 @@ static primer_array_i64_3 primer_array_get_array_i64_3_2(primer_array_array_i64_
 }
 
 int main(void) {
-    primer_array_array_i64_3_2 primer_matrix = (primer_array_array_i64_3_2){ .items = { (primer_array_i64_3){ .items = { 1, 2, 3 } }, (primer_array_i64_3){ .items = { 4, 5, 6 } } } };
-    primer_array_array_i64_3_2 primer_copy = primer_matrix;
-    primer_matrix = (primer_array_array_i64_3_2){ .items = { (primer_array_i64_3){ .items = { 7, 8, 9 } }, (primer_array_i64_3){ .items = { 10, 11, 12 } } } };
-    printf("%lld\n", (long long)(primer_array_get_i64_3(primer_array_get_array_i64_3_2(primer_copy, 1), 2)));
-    printf("%lld\n", (long long)(primer_array_get_i64_3(primer_array_get_array_i64_3_2(primer_matrix, 0), 1)));
+    primer_array_array_i64_3_2 primer_binding_0_matrix = (primer_array_array_i64_3_2){ .items = { (primer_array_i64_3){ .items = { 1, 2, 3 } }, (primer_array_i64_3){ .items = { 4, 5, 6 } } } };
+    primer_array_array_i64_3_2 primer_binding_1_copy = primer_binding_0_matrix;
+    primer_binding_0_matrix = (primer_array_array_i64_3_2){ .items = { (primer_array_i64_3){ .items = { 7, 8, 9 } }, (primer_array_i64_3){ .items = { 10, 11, 12 } } } };
+    printf("%lld\n", (long long)(primer_array_get_i64_3(primer_array_get_array_i64_3_2(primer_binding_1_copy, 1), 2)));
+    printf("%lld\n", (long long)(primer_array_get_i64_3(primer_array_get_array_i64_3_2(primer_binding_0_matrix, 0), 1)));
     return 0;
 }

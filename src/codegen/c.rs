@@ -3,6 +3,8 @@ mod emit;
 mod integer;
 pub mod ir;
 mod lower;
+mod sequence;
+mod string;
 
 pub use emit::emit;
 use lower::lower;
@@ -10,7 +12,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_c(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    super::support::reject_strings(program, "emit-c")?;
     let module = lower(program);
 
     Ok(emit(&module))
@@ -50,7 +51,7 @@ mod tests {
 
         let c = emit_c(&program).unwrap();
 
-        assert!(c.contains("float primer_x = (0.1f + 0.2f);"));
+        assert!(c.contains("float primer_binding_0_x = (0.1f + 0.2f);"));
     }
 
     #[test]
@@ -63,7 +64,7 @@ mod tests {
 
         let c = emit_c(&program).unwrap();
 
-        assert!(c.contains("double primer_x = (0.1 + 0.2);"));
+        assert!(c.contains("double primer_binding_0_x = (0.1 + 0.2);"));
     }
 
     #[test]
@@ -76,7 +77,7 @@ mod tests {
 
         let c = emit_c(&program).unwrap();
 
-        assert!(c.contains("double primer_x = (0.1 + 0.2);"));
+        assert!(c.contains("double primer_binding_0_x = (0.1 + 0.2);"));
     }
 
     #[test]
@@ -103,8 +104,10 @@ mod tests {
         .unwrap();
         let c = emit_c(&program).unwrap();
 
-        assert!(c.contains("int64_t primer_fn_add_0(int64_t primer_left, int64_t primer_right);"));
-        assert!(c.contains("return primer_i64_add(primer_left, primer_right);"));
+        assert!(c.contains("int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right);"));
+        assert!(
+            c.contains("return primer_i64_add(primer_binding_0_left, primer_binding_1_right);")
+        );
         assert!(c.contains("primer_fn_add_0(20, 22)"));
     }
 
@@ -114,7 +117,7 @@ mod tests {
 
         let c = emit_c(&program).unwrap();
 
-        assert!(c.contains("int64_t primer_x = INT64_MIN;"));
+        assert!(c.contains("int64_t primer_binding_0_x = INT64_MIN;"));
     }
 
     #[test]
