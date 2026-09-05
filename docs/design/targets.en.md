@@ -44,7 +44,7 @@ The current outputs can be described as follows:
 | Output route | Target | Artifact |
 | --- | --- | --- |
 | C | not selected by Primer | C source `.c` |
-| LLVM IR | not selected by Primer | LLVM IR `.ll` |
+| LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 (required for strings) | LLVM IR `.ll` |
 | QBE IR | not selected by Primer | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
 | Native assembly | x86-64, Windows, Windows x64 ABI | GNU-style assembly `.s` |
@@ -54,7 +54,9 @@ The current outputs can be described as follows:
 
 ## Artifact consumer boundary
 
-An existing output route does not imply support for every language feature. Strings currently lower to C and Primer bytecode. Other routes diagnose strings before lowering, including unused definitions. Successful semantic validation is distinct from successful generation through each route.
+An existing output route does not imply support for every language feature. Strings currently lower to C, explicitly targeted LLVM, and Primer bytecode. Other routes diagnose strings before lowering, including unused definitions. Successful semantic validation is distinct from successful generation through each route.
+
+LLVM `--target` selects `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc` and records a `target triple` in the artifact. Programs using strings use this selection to initialize Windows standard output in binary mode. Omitting the target for strings produces a source-located diagnostic; the host never supplies a default. See [string design](strings.en.md#llvm-representation-and-targets) for representation and initialization details.
 
 Artifact comparison separates the following questions. Support information is data, not permission to launch external programs.
 

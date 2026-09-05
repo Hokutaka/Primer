@@ -3,15 +3,57 @@ mod emit;
 mod integer;
 pub mod ir;
 mod lower;
+mod string;
 
 pub use emit::emit;
 use lower::lower;
 
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
+/// 出力の実行環境を明示します。コンパイラを動かすOSからは選びません。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    X86_64UnknownLinuxGnu,
+    X86_64PcWindowsMsvc,
+}
+
+impl Target {
+    pub const fn triple(self) -> &'static str {
+        match self {
+            Self::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
+            Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "x86_64-unknown-linux-gnu" => Some(Self::X86_64UnknownLinuxGnu),
+            "x86_64-pc-windows-msvc" => Some(Self::X86_64PcWindowsMsvc),
+            _ => None,
+        }
+    }
+}
+
 pub fn emit_llvm(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    super::support::reject_strings(program, "emit-llvm")?;
-    let module = lower(program);
+    emit_llvm_with_target(program, None)
+}
+
+pub fn emit_llvm_with_target(
+    program: &primer_ir::Program,
+    target: Option<Target>,
+) -> Result<String, Diagnostic> {
+    let string_span = super::support::first_string_span(program);
+    if let Some(span) = string_span
+        && target.is_none()
+    {
+        return Err(Diagnostic::new(
+            "LLVM string values require an explicit --target: x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc",
+            span,
+        ));
+    }
+    let mut module = lower(program);
+    module.target = target;
+    module.uses_strings = string_span.is_some();
 
     Ok(emit(&module))
 }

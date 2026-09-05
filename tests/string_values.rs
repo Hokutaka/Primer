@@ -171,7 +171,6 @@ fn ir_and_bytecode_preserve_types_values_spans_and_node_origins() {
 
 type Emitter = fn(&ir::Program) -> Result<String, Diagnostic>;
 const UNSUPPORTED: &[(&str, Emitter)] = &[
-    ("emit-llvm", codegen::emit_llvm),
     ("emit-qbe", codegen::emit_qbe),
     ("emit-wat", codegen::emit_wat),
     ("emit-asm", codegen::emit_x86_64_win_asm),

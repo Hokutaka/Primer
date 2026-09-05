@@ -27,8 +27,20 @@ jobs:
         run: cargo test --all-targets
         env:
           PRIMER_TEST_CC: clang
+          PRIMER_TEST_LLVM_CLANG: clang
       - name: C string memory checks
         run: cargo test --test c_strings
         env:
           PRIMER_TEST_CC: clang
           PRIMER_TEST_SANITIZE: "1"
+
+  windows-strings:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - name: Compare string output on Windows
+        run: cargo test --test llvm_strings --test c_strings
+        env:
+          PRIMER_TEST_CC: clang
+          PRIMER_TEST_LLVM_CLANG: clang

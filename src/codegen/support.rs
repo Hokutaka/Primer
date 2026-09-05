@@ -8,39 +8,41 @@ use crate::{
 
 /// 未対応の出力先へ文字列を渡さず、lowering前にソース位置付きで報告します。
 pub(super) fn reject_strings(program: &Program, route: &str) -> Result<(), Diagnostic> {
-    let check = |span| {
-        Diagnostic::new(
+    match first_string_span(program) {
+        Some(span) => Err(Diagnostic::new(
             format!("string values are not supported by `{route}` yet"),
             span,
-        )
-    };
+        )),
+        None => Ok(()),
+    }
+}
+
+/// 未使用の型や関数も含めて、文字列を必要とする最初の位置を返します。
+pub(super) fn first_string_span(program: &Program) -> Option<Span> {
     for definition in &program.type_definitions {
         for field in &definition.fields {
             if contains_string(&field.ty) {
-                return Err(check(field.span));
+                return Some(field.span);
             }
             if let Some(span) = field.default.as_ref().and_then(string_expr) {
-                return Err(check(span));
+                return Some(span);
             }
         }
     }
     for function in &program.function_definitions {
         for parameter in &function.parameters {
             if contains_string(&parameter.ty) {
-                return Err(check(parameter.span));
+                return Some(parameter.span);
             }
         }
         if matches!(&function.return_type, ReturnType::Value(ty) if contains_string(ty)) {
-            return Err(check(function.span));
+            return Some(function.span);
         }
         if let Some(span) = string_statements(&function.body) {
-            return Err(check(span));
+            return Some(span);
         }
     }
-    if let Some(span) = string_statements(&program.statements) {
-        return Err(check(span));
-    }
-    Ok(())
+    string_statements(&program.statements)
 }
 
 fn contains_string(ty: &Type) -> bool {

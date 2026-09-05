@@ -8,6 +8,12 @@ use super::ir::{
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
     let i64_operations = i64_operations(module);
+    if let Some(target) = module.target {
+        writeln!(output, "target triple = \"{}\"\n", target.triple()).unwrap();
+    }
+    if module.uses_strings {
+        super::string::emit_data(module, &mut output);
+    }
 
     output.push_str("@.fmt_i64 = private unnamed_addr constant [6 x i8] c\"%lld\\0A\\00\"\n");
     output.push_str("@.fmt_f32 = private unnamed_addr constant [6 x i8] c\"%.9g\\0A\\00\"\n");
@@ -61,6 +67,9 @@ pub fn emit(module: &Module) -> String {
     output.push('\n');
 
     emit_i64_operation_support(i64_operations, &mut output);
+    if module.uses_strings {
+        super::string::emit_support(module, &mut output);
+    }
 
     for ty in &array_types {
         emit_array_get(ty, module, &mut output);
@@ -77,6 +86,13 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push_str("define i32 @main() {\nentry:\n");
+    if module.uses_strings && module.target == Some(super::Target::X86_64PcWindowsMsvc) {
+        // CRTの標準出力(記述子1)を、最初の出力より前にバイナリモードにします。
+        output.push_str("  %stdout.mode = call i32 @_setmode(i32 1, i32 32768)\n");
+        output.push_str("  %stdout.failed = icmp eq i32 %stdout.mode, -1\n");
+        output.push_str("  br i1 %stdout.failed, label %stdout_error, label %stdout_ready\n");
+        output.push_str("stdout_error:\n  ret i32 1\nstdout_ready:\n");
+    }
 
     for slot in &module.slots {
         writeln!(
@@ -153,6 +169,14 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::PrintString { value } => {
+            writeln!(
+                output,
+                "  call void @primer.print.string(%primer.string {})",
+                operand(*value)
+            )
+            .unwrap();
+        }
         Instruction::ConvertNumeric {
             dest,
             value,
@@ -409,6 +433,20 @@ fn emit_instruction(
             left,
             right,
         } => {
+            if *operand_ty == Type::String {
+                let name = temp(*dest);
+                let result = if *op == CompareOp::NotEqual {
+                    format!("{name}.equal")
+                } else {
+                    assert_eq!(*op, CompareOp::Equal);
+                    name.clone()
+                };
+                writeln!(output, "  {result} = call i1 @primer.string.equal(%primer.string {}, %primer.string {})", operand(*left), operand(*right)).unwrap();
+                if *op == CompareOp::NotEqual {
+                    writeln!(output, "  {name} = xor i1 {result}, true").unwrap();
+                }
+                return;
+            }
             writeln!(
                 output,
                 "  {} = {} {} {}, {}",
@@ -491,6 +529,7 @@ fn label(label: Label) -> String {
 
 fn type_name(ty: &Type, module: &Module) -> String {
     match ty {
+        Type::String => "%primer.string".into(),
         Type::Bool => "i1".into(),
         Type::I64 => "i64".into(),
         Type::Float => "float".into(),
@@ -645,6 +684,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
 
 fn compare_name(op: CompareOp, ty: &Type) -> &'static str {
     match (op, ty) {
+        (_, Type::String) => unreachable!("string comparisons use a content helper"),
         (CompareOp::Equal, Type::Bool | Type::I64) => "icmp eq",
         (CompareOp::NotEqual, Type::Bool | Type::I64) => "icmp ne",
         (CompareOp::Less, Type::I64) => "icmp slt",
@@ -681,6 +721,7 @@ fn format_name(format: PrintFormat) -> &'static str {
 
 fn operand(operand: Operand) -> String {
     match operand {
+        Operand::String { id, length } => format!("{{ ptr @primer.string.{id}, i64 {length} }}"),
         Operand::Boolean(value) => i32::from(value).to_string(),
 
         Operand::Integer(value) => value.to_string(),
@@ -874,6 +915,7 @@ fn array_set_name(element: &Type, length: usize, module: &Module) -> String {
 
 fn array_element_name(element: &Type, module: &Module) -> String {
     match element {
+        Type::String => "string".into(),
         Type::Bool => "bool".into(),
         Type::I64 => "i64".into(),
         Type::Float => "f32".into(),

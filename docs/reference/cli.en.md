@@ -12,7 +12,7 @@ The current CLI provides the following commands:
 primer check <file>
 primer emit-ir <file> [-o <output.pir>]
 primer emit-c <file> [-o <output.c>]
-primer emit-llvm <file> [-o <output.ll>]
+primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-qbe <file> [-o <output.ssa>]
 primer emit-asm <file> [-o <output.s>]
@@ -29,7 +29,7 @@ primer check <file>
 
 `primer check` parses the input source file and performs semantic validation and type checking.
 
-A successful `check` does not guarantee that every output route supports the program. Strings currently work with `check`, `emit-ir`, `emit-c`, `emit-bytecode`, and `run`. LLVM, QBE, WAT, and assembly emission diagnose string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
+A successful `check` does not guarantee that every output route supports the program. Strings work with `check`, `emit-ir`, `emit-c`, `emit-bytecode`, `run`, and `emit-llvm` with an explicit `--target`. Omitting the LLVM target, or emitting QBE, WAT, or assembly, diagnoses string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
 
 ## Primer IR emission
 
@@ -43,7 +43,7 @@ primer emit-ir <file> [-o <output.pir>]
 
 ```text
 primer emit-c <file> [-o <output.c>]
-primer emit-llvm <file> [-o <output.ll>]
+primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [-o <output.s>]
@@ -55,7 +55,7 @@ Each command emits the following artifact:
 | Command | Output route | Current target | Artifact |
 | --- | --- | --- | --- |
 | `emit-c` | C | not selected by Primer | `.c` |
-| `emit-llvm` | LLVM IR | not selected by Primer | `.ll` |
+| `emit-llvm` | LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 | `.ll` |
 | `emit-qbe` | QBE IR | not selected by Primer | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
 | `emit-asm` | native assembly | x86-64, Windows, Windows x64 ABI | `.s` |
@@ -64,6 +64,30 @@ Each command emits the following artifact:
 Each `emit-*` command writes its observation to standard output by default. With `-o`, the caller chooses the output path.
 
 The current `emit-asm` command has no target-selection option and emits assembly for x86-64 Windows.
+
+### LLVM target selection
+
+`--target` accepts `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc`. Programs using strings require it, including unused types and functions. Existing numeric-only invocations may omit it. The host OS never supplies a default. `--target` and `-o` (also `--output`) may appear in either order; duplicate options, missing values, and unsupported targets are errors.
+
+On Linux x86-64:
+
+```sh
+primer emit-llvm examples/string_lookup.prim --target x86_64-unknown-linux-gnu -o target/string_lookup.ll
+clang --target=x86_64-unknown-linux-gnu target/string_lookup.ll -o target/string_lookup
+./target/string_lookup
+```
+
+On Windows x64 with the MSVC CRT and linker available:
+
+```powershell
+primer emit-llvm examples/string_lookup.prim --target x86_64-pc-windows-msvc -o target/string_lookup.ll
+clang --target=x86_64-pc-windows-msvc target/string_lookup.ll -o target/string_lookup.exe
+.\target\string_lookup.exe
+```
+
+Primer only generates LLVM; it does not launch Clang or the executable. Selection is recorded in `target triple`. Pass the same target to downstream tools. Windows programs containing strings initialize standard output in binary mode to preserve NUL, CR, and LF. See [string design](../design/strings.en.md#llvm-representation-and-targets).
+
+Library callers can use `compile_to_llvm_with_target(source, Some(codegen::llvm::Target::X86_64UnknownLinuxGnu))`, or `X86_64PcWindowsMsvc`. Existing `compile_to_llvm(source)` remains the unspecified-target API.
 
 ## Execution
 

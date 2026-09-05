@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    String,
     Bool,
     I64,
     Float,
@@ -10,6 +11,9 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub target: Option<super::Target>,
+    pub uses_strings: bool,
+    pub strings: Vec<String>,
     pub type_definitions: Vec<TypeDefinition>,
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
@@ -58,6 +62,7 @@ pub struct Label(pub usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operand {
+    String { id: usize, length: usize },
     Boolean(bool),
     Integer(i64),
     Float32(u32),
@@ -98,6 +103,9 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    PrintString {
+        value: Operand,
+    },
     ConvertNumeric {
         conversion: crate::codegen::NumericConversion,
         dest: Temp,

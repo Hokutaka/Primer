@@ -8,10 +8,11 @@ use super::ir::{
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let mut strings = Vec::new();
     let functions = program
         .function_definitions
         .iter()
-        .map(lower_function)
+        .map(|function| lower_function(function, &mut strings))
         .collect();
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
@@ -24,6 +25,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     );
 
     let mut lowerer = Lowerer {
+        strings: &mut strings,
         slots,
         slot_map,
         instructions: Vec::new(),
@@ -35,6 +37,8 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     lowerer.lower_statements(&program.statements);
 
     Module {
+        target: None,
+        uses_strings: crate::codegen::support::first_string_span(program).is_some(),
         type_definitions: program
             .type_definitions
             .iter()
@@ -56,10 +60,11 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .map(|function| function.id.0),
         slots: lowerer.slots,
         instructions: lowerer.instructions,
+        strings,
     }
 }
 
-fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
+fn lower_function(function: &primer_ir::FunctionDefinition, strings: &mut Vec<String>) -> Function {
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
     let mut name_counts = HashMap::new();
@@ -84,6 +89,7 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
     collect_slots(&function.body, &mut slots, &mut slot_map, &mut name_counts);
 
     let mut lowerer = Lowerer {
+        strings,
         slots,
         slot_map,
         instructions: Vec::new(),
@@ -112,7 +118,8 @@ fn lower_function(function: &primer_ir::FunctionDefinition) -> Function {
     }
 }
 
-struct Lowerer {
+struct Lowerer<'a> {
+    strings: &'a mut Vec<String>,
     slots: Vec<Slot>,
     slot_map: HashMap<primer_ir::BindingId, SlotId>,
     instructions: Vec<Instruction>,
@@ -133,7 +140,7 @@ struct Value {
     operand: Operand,
 }
 
-impl Lowerer {
+impl Lowerer<'_> {
     fn lower_statements(&mut self, statements: &[primer_ir::Statement]) -> bool {
         for statement in statements {
             if self.lower_statement(statement) {
@@ -463,8 +470,17 @@ impl Lowerer {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::String(_) => {
-                unreachable!("strings are rejected before backend lowering")
+            primer_ir::ExprKind::String(value) => {
+                // 出現順のIDを使い、保存先や共有の有無に意味を持たせません。
+                let id = self.strings.len();
+                self.strings.push(value.clone());
+                Value {
+                    ty: Type::String,
+                    operand: Operand::String {
+                        id,
+                        length: value.len(),
+                    },
+                }
             }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
@@ -500,7 +516,7 @@ impl Lowerer {
 
             primer_ir::ExprKind::Float { text } => match expr.ty {
                 primer_ir::Type::String => {
-                    unreachable!("strings are rejected before backend lowering")
+                    unreachable!("a float literal cannot have string type")
                 }
                 primer_ir::Type::F32 => {
                     let value = text
@@ -597,8 +613,10 @@ impl Lowerer {
                     | (primer_ir::UnaryOp::Not, Type::I64 | Type::Float | Type::Double) => {
                         unreachable!("semantic analysis rejects invalid unary operands");
                     }
-                    (_, Type::Named(_) | Type::Array { .. }) => {
-                        unreachable!("semantic analysis rejects aggregate unary operands");
+                    (_, Type::String | Type::Named(_) | Type::Array { .. }) => {
+                        unreachable!(
+                            "semantic analysis rejects string and aggregate unary operands"
+                        );
                     }
                 }
 
@@ -811,6 +829,9 @@ impl Lowerer {
 
     fn lower_print(&mut self, value: Value) {
         match value.ty {
+            Type::String => self.instructions.push(Instruction::PrintString {
+                value: value.operand,
+            }),
             Type::Bool => {
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::SelectBoolText {
@@ -942,7 +963,7 @@ fn collect_slots(
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+            primer_ir::Type::String => Self::String,
             primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
@@ -986,7 +1007,7 @@ fn binary_op(op: primer_ir::BinaryOp, ty: &Type) -> BinaryOp {
             | primer_ir::BinaryOp::Subtract
             | primer_ir::BinaryOp::Multiply
             | primer_ir::BinaryOp::Divide,
-            Type::Named(_),
+            Type::Named(_) | Type::String,
         )
         | (
             primer_ir::BinaryOp::Add
