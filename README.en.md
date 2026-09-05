@@ -122,9 +122,9 @@ The `.sh` scripts default to `target/unix`, keeping Linux build output separate 
 ## Related Tools
 
 - [Tint\*](https://github.com/Hokutaka/Tint-St.): a development and inspection environment that presents source and generated representations side by side.
-- [Whitebase](https://github.com/Hokutaka/Whitebase): a consumer of Primer artifacts for building, running, measuring, and comparing with external tools.
+- [Whitebase](https://github.com/Hokutaka/Whitebase): an experiment environment that runs, measures, and compares built-in Rust, C++, and Assembly operations. Integration with Primer artifacts is not implemented yet.
 
-Primer owns language semantics and compilation; these tools handle presentation and external tool execution and comparison.
+Primer owns language semantics and compilation. The intended Whitebase integration keeps experiments using emitted artifacts on the consumer side. See [Tool responsibilities](docs/design/architecture.en.md#tool-responsibilities) for the current implementation and integration boundary.
 
 ## License
 

@@ -52,6 +52,35 @@ The current outputs can be described as follows:
 
 "Not selected by Primer" does not mean inferred implicitly from the host environment. It means that Primer does not include target-specific decisions in that observation and that the caller of a downstream tool selects the target.
 
+## Artifact consumer boundary
+
+Artifact comparison separates the following questions. Support information is data, not permission to launch external programs.
+
+| Question | What is checked | Owner |
+| --- | --- | --- |
+| Can it be generated? | Whether the Primer version supports the output route and target; source-specific errors are diagnosed during generation | Primer |
+| Can it be built? | Whether suitable compilers, assemblers, linkers, and required libraries are available | Consumer |
+| Can it be executed? | Whether CPU, OS, runtime libraries, and host functions meet the requirements | Consumer |
+| May it be executed? | Whether user authorization and execution-environment restrictions permit it | Consumer execution policy |
+
+Finding an external tool does not establish that a build or execution will succeed. Keep preflight checks separate from actual stage results, distinguishing unsupported routes, missing tools, policy denial, generation failure, build failure, execution failure, and timeout. Do not silently drop unexecutable routes or count them as successes.
+
+The environment running Primer is separate from the artifact target. Calling `emit-asm` in WSL still produces GNU AT&T assembly for Windows x86-64. Linux assembly requires a separate implementation; support checks alone cannot add it. Even on Windows, Primer's internal aggregate passing convention does not guarantee external C ABI compatibility.
+
+### What comparison establishes
+
+The current CLI runs source in the VM through `run` and returns artifacts through `emit-*`. Comparing exit status and standard output through these commands does not require a new public API. There is no CLI for loading and executing `.pbc` files in the VM.
+
+Matching standard output establishes matching displayed results. It does not prove equality of unprinted information such as floating-point NaN payload bits. If bitwise comparison becomes necessary, design a separate typed observation format. Numeric tolerances and newline normalization must also be explicit comparison conditions when used.
+
+Do not treat the VM alone as an oracle. Retain checks against known expected results and language rules. Two nonzero exits do not establish the same cause of failure. Preserve the failing stage (generation, build, or execution) and each stage's diagnostics.
+
+### Recording and safety
+
+The consumer records input and artifact identity, Primer build identity, output route, actual target, external-tool versions and explicit options, stage results, and comparison conditions. `primer --version` reports the package version. To distinguish development builds sharing a version, also record the verified commit or executable hash. A machine-readable supported-route listing is not implemented. Define a versioned public schema from actual consumer needs when one becomes necessary.
+
+Do not interpret strings in artifacts or observation data as executable commands or authorization. Executing generated code is a separate operation from reading observations. The consumer selects trusted tools and arguments and runs untrusted code in appropriate isolation. Timeouts and separate processes alone are not a security sandbox; also bound captured output. Do not unconditionally record source text, paths, or entire environments.
+
 ## Observation identity
 
 When a target affects an artifact, an observation is identified by at least the following conditions:

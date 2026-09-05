@@ -122,9 +122,9 @@ bash scripts/test.sh
 ## 関連ツール
 
 - [Tint\*](https://github.com/Hokutaka/Tint-St.): ソースと生成された表現を並べて観察するための開発・観察環境。
-- [Whitebase](https://github.com/Hokutaka/Whitebase): Primerの成果物を受け取り、外部ツールによるビルド・実行・測定・比較を行うツール。
+- [Whitebase](https://github.com/Hokutaka/Whitebase): Rust・C++・Assemblyの組み込み演算を実行・測定・比較する実験環境。Primerの生成物との連携は未実装です。
 
-言語の意味とコンパイル処理はPrimerが担当し、表示や外部ツールの実行・比較はこれらのツールが担当します。
+言語の意味とコンパイル処理はPrimerが担当します。Whitebaseとの連携では、生成物を使った実験を利用側に分ける方針です。現在の実装と連携時の境界は[ツールの責務](docs/design/architecture.ja.md#ツールの責務)を参照してください。
 
 ## ライセンス
 
