@@ -1,0 +1,23 @@
+// 3、5、6からいくつか選んで、作れる合計を一度に調べます。
+// 下からn番目のビットが1なら、合計nを作れます。
+weights: [u32; 3] = [3, 5, 6];
+mut reachable: u32 = 1; // 何も選ばなければ、合計0を作れます。
+print(reachable);
+
+for (mut i: i64 = 0; i < 3; i = i + 1) {
+    // 左へ重さの分だけ動かすと、その重さを足した合計の集まりになります。
+    // 元の集まりと合わせれば、「選ばない」と「選ぶ」の両方を残せます。
+    reachable = reachable | (reachable << weights[i]);
+    print(reachable);
+}
+
+fn can_make(bits: u32, total: u32) -> bool {
+    return (bits & (1 << total)) != 0;
+}
+
+print(can_make(reachable, 8));  // true: 3 + 5。
+print(can_make(reachable, 9));  // true: 3 + 6。
+print(can_make(reachable, 10)); // false。
+print(can_make(reachable, 14)); // true: 3 + 5 + 6。
+
+// この例の合計は最大14です。u32の幅を超える問題には、もっと広い表現が必要です。

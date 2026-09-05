@@ -36,3 +36,64 @@ fn integer_range_check(expr: &crate::ir::Expr) -> Option<crate::types::IntegerTy
         IntegerType::I64 => None,
     }
 }
+
+/// 整数専用の演算を、元の型の幅とともに各出力先へ渡します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IntegerBinaryOp {
+    Remainder,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
+}
+
+impl IntegerBinaryOp {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Remainder => "rem",
+            Self::BitAnd => "bit_and",
+            Self::BitOr => "bit_or",
+            Self::BitXor => "bit_xor",
+            Self::ShiftLeft => "shl",
+            Self::ShiftRight => "shr",
+        }
+    }
+    pub fn helper(self, ty: crate::types::IntegerType) -> String {
+        format!("primer_{}_{}", ty.name(), self.name())
+    }
+}
+
+fn integer_binary_op(op: crate::ir::BinaryOp) -> Option<IntegerBinaryOp> {
+    use crate::ir::BinaryOp;
+    match op {
+        BinaryOp::Remainder => Some(IntegerBinaryOp::Remainder),
+        BinaryOp::BitAnd => Some(IntegerBinaryOp::BitAnd),
+        BinaryOp::BitOr => Some(IntegerBinaryOp::BitOr),
+        BinaryOp::BitXor => Some(IntegerBinaryOp::BitXor),
+        BinaryOp::ShiftLeft => Some(IntegerBinaryOp::ShiftLeft),
+        BinaryOp::ShiftRight => Some(IntegerBinaryOp::ShiftRight),
+        BinaryOp::Add
+        | BinaryOp::Subtract
+        | BinaryOp::Multiply
+        | BinaryOp::Divide
+        | BinaryOp::Equal
+        | BinaryOp::NotEqual
+        | BinaryOp::Less
+        | BinaryOp::LessEqual
+        | BinaryOp::Greater
+        | BinaryOp::GreaterEqual => None,
+    }
+}
+
+fn integer_type(ty: &crate::ir::Type) -> crate::types::IntegerType {
+    let crate::ir::Type::Integer(ty) = ty else {
+        unreachable!("integer operation must have integer operands")
+    };
+    *ty
+}
+
+fn complement_mask(ty: &crate::ir::Type) -> i64 {
+    let ty = integer_type(ty);
+    if ty.is_signed() { -1 } else { ty.maximum() }
+}

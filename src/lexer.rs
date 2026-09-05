@@ -41,6 +41,13 @@ pub enum TokenKind {
     Arrow,
     Star,
     Slash,
+    Percent,
+    Ampersand,
+    Pipe,
+    Caret,
+    Tilde,
+    ShiftLeft,
+    ShiftRight,
 
     LeftParen,
     RightParen,
@@ -94,6 +101,34 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b'|' if bytes.get(i + 1) == Some(&b'|') => {
                 i += 2;
                 TokenKind::OrOr
+            }
+            b'%' => {
+                i += 1;
+                TokenKind::Percent
+            }
+            b'&' => {
+                i += 1;
+                TokenKind::Ampersand
+            }
+            b'|' => {
+                i += 1;
+                TokenKind::Pipe
+            }
+            b'^' => {
+                i += 1;
+                TokenKind::Caret
+            }
+            b'~' => {
+                i += 1;
+                TokenKind::Tilde
+            }
+            b'<' if bytes.get(i + 1) == Some(&b'<') => {
+                i += 2;
+                TokenKind::ShiftLeft
+            }
+            b'>' if bytes.get(i + 1) == Some(&b'>') => {
+                i += 2;
+                TokenKind::ShiftRight
             }
             b':' => {
                 i += 1;

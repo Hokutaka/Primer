@@ -89,6 +89,8 @@ pub fn emit(module: &Module) -> String {
 
 #[derive(Clone, Default)]
 struct I64Operations {
+    integer_binary:
+        std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
     range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
@@ -97,6 +99,9 @@ struct I64Operations {
 
 impl I64Operations {
     fn include(&mut self, instruction: &Instruction) {
+        if let Instruction::IntegerBinary { op, ty, .. } = instruction {
+            self.integer_binary.insert((*op, *ty));
+        }
         match instruction {
             Instruction::CheckIntegerRange(ty) => {
                 if *ty != crate::types::IntegerType::I64 {
@@ -151,6 +156,9 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for &(op, ty) in &operations.integer_binary {
+        super::integer::emit_support(op, ty, output);
+    }
     for ty in &operations.range_checks {
         output.push_str(&format!("  (func $primer_check_{} (param $value i64) (result i64)\n    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n    if\n      unreachable\n    end\n    local.get $value\n  )\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
@@ -298,6 +306,9 @@ fn emit_instruction(
     let prefix = "  ".repeat(indent);
 
     match instruction {
+        Instruction::IntegerBinary { op, ty } => {
+            writeln!(output, "{prefix}call ${}", op.helper(*ty)).unwrap();
+        }
         Instruction::CheckIntegerRange(ty) => {
             writeln!(output, "{prefix}call $primer_check_{}", ty.name()).unwrap();
         }

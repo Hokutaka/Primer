@@ -153,6 +153,23 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::IntegerBinary {
+            dest,
+            op,
+            ty,
+            left,
+            right,
+        } => {
+            writeln!(
+                output,
+                "  {} = call i64 @{}(i64 {}, i64 {})",
+                temp(*dest),
+                op.helper(*ty),
+                operand(*left),
+                operand(*right)
+            )
+            .unwrap();
+        }
         Instruction::CheckIntegerRange { dest, value, ty } => {
             writeln!(
                 output,
@@ -500,6 +517,8 @@ fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
 
 #[derive(Clone, Default)]
 struct I64Operations {
+    integer_binary:
+        std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
     range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
@@ -509,10 +528,18 @@ struct I64Operations {
 
 impl I64Operations {
     fn any(&self) -> bool {
-        !self.range_checks.is_empty() || self.add || self.subtract || self.multiply || self.divide
+        !self.integer_binary.is_empty()
+            || !self.range_checks.is_empty()
+            || self.add
+            || self.subtract
+            || self.multiply
+            || self.divide
     }
 
     fn include(&mut self, instruction: &Instruction) {
+        if let Instruction::IntegerBinary { op, ty, .. } = instruction {
+            self.integer_binary.insert((*op, *ty));
+        }
         if let Instruction::CheckIntegerRange { ty, .. } = instruction
             && *ty != crate::types::IntegerType::I64
         {
@@ -545,6 +572,9 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for &(op, ty) in &operations.integer_binary {
+        super::integer::emit_support(op, ty, output);
+    }
     for ty in &operations.range_checks {
         output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @llvm.trap()\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }

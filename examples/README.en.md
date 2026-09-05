@@ -22,6 +22,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
 | [integer_conversions.prim](integer_conversions.prim) | widening `i32` to `i64` with two equivalent conversion spellings |
+| [bit_flags.prim](bit_flags.prim) | setting, clearing, toggling, and testing eight independent bit switches |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
 | [short_circuit.prim](short_circuit.prim) | combining conditions with `&&`/`\|\|` to skip unnecessary division, indexing, and function calls |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |
@@ -35,6 +36,7 @@ These examples show how to group, access, and pass multiple values. They use str
 
 | Example | Demonstrates |
 | --- | --- |
+| [ring_buffer.prim](ring_buffer.prim) | cycling a storage position with `%` to keep the latest four values and their average |
 | [product-point.prim](product-point.prim) | grouping point coordinates in a struct, with field defaults and access |
 | [fixed_arrays.prim](fixed_arrays.prim) | indexing, summation, and linear search in fixed arrays, and independent values after copying |
 | [product_arrays.prim](product_arrays.prim) | arrays of structs, nearest-point search, and array value copies |
@@ -60,6 +62,7 @@ These examples show how to group, access, and pass multiple values. They use str
 | [color_blending.prim](color_blending.prim) | widening `u8` color channels to `u16` before adding and averaging them |
 | [sensor_calibration.prim](sensor_calibration.prim) | correcting `i16` readings with an `i8` offset, then aggregating in `i32` |
 | [maximum_subarray.prim](maximum_subarray.prim) | maximum sum of a contiguous `i32` subarray, converting a `u32` position to an index |
+| [subset_sum_bits.prim](subset_sum_bits.prim) | finding reachable sums together using shifts and bitwise OR |
 | [euclidean_gcd.prim](euclidean_gcd.prim) | greatest common divisor with the Euclidean algorithm |
 | [fibonacci.prim](fibonacci.prim) | the Fibonacci sequence and update order for multiple values |
 | [factorial.prim](factorial.prim) | factorial with `for` |

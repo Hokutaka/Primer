@@ -41,6 +41,10 @@ pub enum LoopKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    IntegerBinary {
+        op: crate::codegen::IntegerBinaryOp,
+        ty: crate::types::IntegerType,
+    },
     CheckIntegerRange(crate::types::IntegerType),
     I32Const(i32),
     I64Const(i64),

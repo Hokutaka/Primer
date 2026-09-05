@@ -24,6 +24,27 @@ mod tests {
     };
 
     #[test]
+    fn probes_stack_allocations_of_a_page_or_more_in_main_and_functions() {
+        let program =
+            compile_to_ir("fn value(x: i64) -> i64 { return x; } print(value(7));").unwrap();
+        for frame_size in [4080, 4096, 4112, 32768] {
+            let mut module = lower(&program);
+            module.frame_size = frame_size;
+            module.functions[0].frame_size = frame_size;
+            let asm = super::emit(&module);
+            if frame_size >= 4096 {
+                let allocation =
+                    format!("movq ${frame_size}, %rax\n  callq __chkstk\n  subq %rax, %rsp");
+                assert_eq!(asm.matches(&allocation).count(), 2);
+            } else {
+                assert!(!asm.contains("__chkstk"));
+                assert_eq!(asm.matches(&format!("subq ${frame_size}, %rsp")).count(), 2);
+            }
+            assert!(asm.contains(&format!("addq ${frame_size}, %rsp")));
+        }
+    }
+
+    #[test]
     fn lowers_i64_add_to_asm_ir() {
         let program = compile_to_ir("x: i64 = 1 + 2;").unwrap();
         let module = lower(&program);

@@ -116,6 +116,13 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    IntegerBinary {
+        scratch: usize,
+        op: crate::codegen::IntegerBinaryOp,
+        ty: crate::types::IntegerType,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
     Logical {
         op: LogicalOp,
         left: Box<Expr>,

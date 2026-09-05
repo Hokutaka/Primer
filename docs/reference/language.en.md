@@ -80,17 +80,25 @@ expression  := logical_or
 
 logical_or  := logical_and ("||" logical_and)*
 
-logical_and := equality ("&&" equality)*
+logical_and := bit_or ("&&" bit_or)*
+
+bit_or      := bit_xor ("|" bit_xor)*
+
+bit_xor     := bit_and ("^" bit_and)*
+
+bit_and     := equality ("&" equality)*
 
 equality    := comparison (("==" | "!=") comparison)*
 
-comparison  := additive (("<" | "<=" | ">" | ">=") additive)*
+comparison  := shift (("<" | "<=" | ">" | ">=") shift)*
+
+shift       := additive (("<<" | ">>") additive)*
 
 additive    := multiply (("+" | "-") multiply)*
 
-multiply    := unary (("*" | "/") unary)*
+multiply    := unary (("*" | "/" | "%") unary)*
 
-unary       := ("-" | "!") unary
+unary       := ("-" | "!" | "~") unary
              | postfix
 
 postfix     := primary (("." IDENT) | ("[" expression "]"))*
@@ -461,7 +469,7 @@ When needed, the right operand is evaluated exactly once. Calls, effects such as
 
 Name resolution and type checking still apply to both operands. `false && missing` and `true || 1` are compile errors even though the right operand would not execute.
 
-Precedence from strongest to weakest is unary operations, multiplication/division, addition/subtraction, ordering comparisons, equality comparisons, `&&`, then `||`. Thus `a < b && c == d || ready` means `((a < b) && (c == d)) || ready`. Repeated operators associate to the left; parentheses change grouping. `a < b < c` is not a range comparison.
+Precedence from strongest to weakest is unary operations, multiplication/division/remainder, addition/subtraction, shifts, ordering comparisons, equality comparisons, `&`, `^`, `|`, `&&`, then `||`. Thus `a < b && c == d || ready` means `((a < b) && (c == d)) || ready`. Repeated operators associate to the left; parentheses change grouping. `a < b < c` is not a range comparison.
 
 Logical operators work anywhere a `bool` expression is accepted, including bindings, function arguments/results, array elements, and product fields, not only conditions. The [short-circuit example](../../examples/short_circuit.prim) includes array traversal.
 
@@ -530,7 +538,7 @@ x: f64 = 1.5e-3;
 
 ## Type checking
 
-Arithmetic currently requires both operands to have the same type.
+The four arithmetic operations require both operands to have the same type. Remainder and bit operations are restricted to integer types.
 
 ```text
 i8 op i8 -> i8
@@ -567,6 +575,34 @@ The `f32` binding supplies the expected type to unsuffixed floating-point litera
 This decision is recorded in Primer IR and is not recomputed by individual backends.
 
 Comparison operands must also have the same type. Primer IR exposes the operand type separately from the resulting `bool` type.
+
+## Remainder and bit operations
+
+Bits are the zeros and ones that represent a number. A `u8` can be viewed as eight switches. Remainder and bit operations support all seven implemented integer kinds, not Boolean or floating-point values.
+
+| Operation | Meaning | Example |
+| --- | --- | --- |
+| `a % b` | Integer remainder | `7 % 3` is `1` |
+| `a & b` | Keep bits set in both values | `6u8 & 3` is `2u8` |
+| `a \| b` | Set bits present in either value | `6u8 \| 3` is `7u8` |
+| `a ^ b` | Set bits present in exactly one value | `6u8 ^ 3` is `5u8` |
+| `~a` | Complement bits within the original type's width | `~0u8` is `255u8` |
+| `a << b` | Shift left by b bits; fail outside the type's range | `3u8 << 2` is `12u8` |
+| `a >> b` | Shift right by b bits | `12u8 >> 2` is `3u8` |
+
+Binary operands must have the same integer kind, including the shift count, and the result retains that kind. Context can type unsuffixed literals, so `value: u8 = 1 << 3;` is valid. Already typed values are never implicitly converted.
+
+Remainder agrees with division truncated toward zero. A nonzero remainder has the dividend's sign: `-7 % 3` is `-1`, and `7 % -3` is `1`. A zero divisor stops execution. The minimum signed value modulo `-1` is `0` and succeeds, unlike the corresponding division.
+
+Shift counts must be nonnegative and less than the original type's bit width. Even `0u8 << 8` fails. Left shift succeeds only if the mathematical product by 2 to the power b fits the original type. `128u8 << 1` fails instead of wrapping to zero. A deliberately bit-discarding left shift is a separate operation and is not implemented.
+
+Signed bit operations use two's complement semantics. Signed right shift preserves the sign: `-3i8 >> 1` is `-2i8`. Unsigned right shift fills high bits with zeros. Right shift discards low bits, and its rounding for negative values differs from integer division.
+
+These binary operations evaluate the left operand and then the right operand, each once. If the left fails, the right is not executed. `&` and `|` do not short-circuit: `0u8 & (1u8 % 0)` fails. An enclosing `&&` or `||` can still skip an entire right operand containing these operations.
+
+Comparisons bind more tightly than bit operations; write `(flags & mask) != 0` to test bits. See [bit flags](../../examples/bit_flags.prim), [ring buffer](../../examples/ring_buffer.prim), and [subset sum](../../examples/subset_sum_bits.prim).
+
+Primer IR and bytecode retain the operation and original kind, such as `rem.u8`, `bit_and.u8`, `bit_or.u8`, `bit_xor.u8`, `bit_not.u8`, `shl.checked.u8`, and `shr.u8`. VM failures retain the source `NodeId` and `Span`. Out-of-range results, invalid shift counts, and a zero remainder divisor have distinct diagnoses.
 
 ## Explicit integer conversions
 

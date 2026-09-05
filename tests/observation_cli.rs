@@ -7,6 +7,7 @@ const OBSERVATION_CASES: &[&str] = &[
     "integer-conversions",
     "fixed-width-integers",
     "small-integers",
+    "integer-bit-operations",
     "float-types",
     "mutable-assignment",
     "boolean-comparisons",

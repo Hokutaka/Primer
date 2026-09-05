@@ -40,6 +40,14 @@ pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> 
 
 fn render_message(error: &VmError) -> String {
     match error.kind() {
+        VmErrorKind::InvalidShiftCount { ty, count } => format!(
+            "shift count {count} must be between 0 and {} for {}",
+            ty.bit_width() - 1,
+            ty.name()
+        ),
+        VmErrorKind::RemainderByZero => {
+            "cannot calculate an integer remainder with a zero divisor".to_owned()
+        }
         VmErrorKind::IntegerConversionOutOfRange { from, to } => format!(
             "cannot convert {} to {}: the value is outside the supported range",
             from.name(),
@@ -121,6 +129,7 @@ fn integer_operation_name(operation: IntegerOperation) -> &'static str {
         IntegerOperation::Subtract => "subtraction",
         IntegerOperation::Multiply => "multiplication",
         IntegerOperation::Negate => "negation",
+        IntegerOperation::ShiftLeft => "left shift",
     }
 }
 

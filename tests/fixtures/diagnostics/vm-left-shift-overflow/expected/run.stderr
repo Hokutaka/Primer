@@ -1,0 +1,1 @@
+primer: left shift with u8 values produced a result outside the supported range at 1:7 (bytecode instruction 0002)

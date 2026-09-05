@@ -1,0 +1,19 @@
+// 直近4件だけを保存する箱です。末尾まで使ったら、%で先頭へ戻ります。
+samples: [i64; 6] = [10, 20, 30, 40, 50, 60];
+mut recent: [i64; 4] = [0, 0, 0, 0];
+mut next: i64 = 0;
+mut count: i64 = 0;
+mut total: i64 = 0;
+
+for (mut i: i64 = 0; i < 6; i = i + 1) {
+    total = total - recent[next] + samples[i];
+    recent[next] = samples[i];
+    next = (next + 1) % 4;
+    if count < 4 { count = count + 1; }
+    print(total / count); // その時点で保存している値の平均。
+}
+
+// 最後に残った4件を、古い順に30、40、50、60と表示します。
+for (mut i: i64 = 0; i < 4; i = i + 1) {
+    print(recent[(next + i) % 4]);
+}

@@ -26,7 +26,7 @@ pub fn emit(module: &Module) -> String {
 
     output.push_str("  movq %rsp, %rbp\n");
 
-    output.push_str(&format!("  subq ${}, %rsp\n", module.frame_size,));
+    emit_stack_allocation(module.frame_size, &mut output);
 
     for instruction in &module.instructions {
         emit_instruction(instruction, module.frame_size, "main", module, &mut output);
@@ -49,7 +49,7 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
     output.push_str(&format!("{}:\n", function_name(function)));
     output.push_str("  pushq %rbp\n");
     output.push_str("  movq %rsp, %rbp\n");
-    output.push_str(&format!("  subq ${}, %rsp\n", function.frame_size));
+    emit_stack_allocation(function.frame_size, output);
     for instruction in &function.instructions {
         emit_instruction(
             instruction,
@@ -58,6 +58,18 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
             module,
             output,
         );
+    }
+}
+
+// Windowsのガードページを飛び越さないよう、確保前に各ページを検査します。
+// __chkstkは引数レジスタとraxを保持するため、引数を保存する前でも呼び出せます。
+fn emit_stack_allocation(frame_size: usize, output: &mut String) {
+    if frame_size >= 4096 {
+        output.push_str(&format!(
+            "  movq ${frame_size}, %rax\n  callq __chkstk\n  subq %rax, %rsp\n"
+        ));
+    } else {
+        output.push_str(&format!("  subq ${frame_size}, %rsp\n"));
     }
 }
 
@@ -102,6 +114,35 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::BitNot { mask } => {
+            output.push_str(&format!("  movabsq ${mask}, %r11\n  xorq %r11, %rax\n"));
+        }
+        Instruction::IntegerBinary { op, ty, label } => {
+            use crate::codegen::IntegerBinaryOp;
+            let bad = format!(".Lprimer_{label_prefix}_integer_bad_{label}");
+            let done = format!(".Lprimer_{label_prefix}_integer_done_{label}");
+            match op {
+                IntegerBinaryOp::BitAnd => output.push_str("  andq %rcx, %rax\n"),
+                IntegerBinaryOp::BitOr => output.push_str("  orq %rcx, %rax\n"),
+                IntegerBinaryOp::BitXor => output.push_str("  xorq %rcx, %rax\n"),
+                IntegerBinaryOp::Remainder => {
+                    let divide = format!(".Lprimer_{label_prefix}_integer_rem_{label}");
+                    output.push_str(&format!("  testq %rcx, %rcx\n  je {bad}\n  cmpq $-1, %rcx\n  jne {divide}\n  xorq %rax, %rax\n  jmp {done}\n{divide}:\n  cqto\n  idivq %rcx\n  movq %rdx, %rax\n  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+                }
+                IntegerBinaryOp::ShiftLeft | IntegerBinaryOp::ShiftRight => {
+                    output.push_str(&format!(
+                        "  testq %rcx, %rcx\n  js {bad}\n  cmpq ${}, %rcx\n  jge {bad}\n",
+                        ty.bit_width()
+                    ));
+                    if *op == IntegerBinaryOp::ShiftLeft {
+                        output.push_str(&format!("  movabsq ${}, %r11\n  sarq %cl, %r11\n  cmpq %r11, %rax\n  jl {bad}\n  movabsq ${}, %r11\n  shrq %cl, %r11\n  cmpq %r11, %rax\n  jg {bad}\n  shlq %cl, %rax\n", ty.minimum(), ty.maximum()));
+                    } else {
+                        output.push_str("  sarq %cl, %rax\n");
+                    }
+                    output.push_str(&format!("  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+                }
+            }
+        }
         Instruction::CheckIntegerRange { ty, label } => {
             let bad = format!(".Lprimer_{label_prefix}_range_bad_{label}");
             let done = format!(".Lprimer_{label_prefix}_range_ok_{label}");

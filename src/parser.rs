@@ -403,10 +403,10 @@ impl Parser {
     }
 
     fn parse_logical_and(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.parse_equality()?;
+        let mut expr = self.parse_bit_or()?;
         while matches!(self.peek().kind, TokenKind::AndAnd) {
             self.advance();
-            let right = self.parse_equality()?;
+            let right = self.parse_bit_or()?;
             let span = Span::new(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Logical {
@@ -540,6 +540,86 @@ impl Parser {
         Ok((statements, closing.end()))
     }
 
+    fn parse_bit_or(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_bit_xor()?;
+        while matches!(&self.peek().kind, TokenKind::Pipe) {
+            let op = BinaryOp::BitOr;
+            self.advance();
+            let right = self.parse_bit_xor()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_bit_xor(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_bit_and()?;
+        while matches!(&self.peek().kind, TokenKind::Caret) {
+            let op = BinaryOp::BitXor;
+            self.advance();
+            let right = self.parse_bit_and()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_bit_and(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_equality()?;
+        while matches!(&self.peek().kind, TokenKind::Ampersand) {
+            let op = BinaryOp::BitAnd;
+            self.advance();
+            let right = self.parse_equality()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
+    fn parse_shift(&mut self) -> ParseResult<Expr> {
+        let mut expr = self.parse_additive()?;
+        loop {
+            let op = match &self.peek().kind {
+                TokenKind::ShiftLeft => BinaryOp::ShiftLeft,
+                TokenKind::ShiftRight => BinaryOp::ShiftRight,
+                _ => break,
+            };
+            self.advance();
+            let right = self.parse_additive()?;
+            let span = Span::new(expr.span.start(), right.span.end());
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+        Ok(expr)
+    }
+
     fn parse_equality(&mut self) -> ParseResult<Expr> {
         let mut expr = self.parse_comparison()?;
 
@@ -569,7 +649,7 @@ impl Parser {
     }
 
     fn parse_comparison(&mut self) -> ParseResult<Expr> {
-        let mut expr = self.parse_additive()?;
+        let mut expr = self.parse_shift()?;
 
         loop {
             let op = match &self.peek().kind {
@@ -582,7 +662,7 @@ impl Parser {
 
             self.advance();
 
-            let right = self.parse_additive()?;
+            let right = self.parse_shift()?;
             let span = Span::new(expr.span.start(), right.span.end());
 
             expr = Expr {
@@ -634,6 +714,7 @@ impl Parser {
             let op = match &self.peek().kind {
                 TokenKind::Star => BinaryOp::Multiply,
                 TokenKind::Slash => BinaryOp::Divide,
+                TokenKind::Percent => BinaryOp::Remainder,
                 _ => break,
             };
 
@@ -659,6 +740,7 @@ impl Parser {
         let op = match &self.peek().kind {
             TokenKind::Minus => Some(UnaryOp::Negate),
             TokenKind::Bang => Some(UnaryOp::Not),
+            TokenKind::Tilde => Some(UnaryOp::BitNot),
             _ => None,
         };
 

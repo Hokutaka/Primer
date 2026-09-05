@@ -1,6 +1,30 @@
 use primer_lang::run_vm;
 
 #[test]
+fn bit_flags_keep_switches_independent() {
+    assert_eq!(
+        run_vm(include_str!("../examples/bit_flags.prim")).unwrap(),
+        "3\ntrue\n1\n5\n2\n255\n"
+    );
+}
+
+#[test]
+fn ring_buffer_keeps_the_latest_four_samples_in_order() {
+    assert_eq!(
+        run_vm(include_str!("../examples/ring_buffer.prim")).unwrap(),
+        "10\n15\n20\n25\n35\n45\n30\n40\n50\n60\n"
+    );
+}
+
+#[test]
+fn subset_sum_bits_records_reachable_totals() {
+    assert_eq!(
+        run_vm(include_str!("../examples/subset_sum_bits.prim")).unwrap(),
+        "1\n9\n297\n19305\ntrue\ntrue\nfalse\ntrue\n"
+    );
+}
+
+#[test]
 fn color_blending_widens_before_adding_channels() {
     assert_eq!(
         run_vm(include_str!("../examples/color_blending.prim")).unwrap(),

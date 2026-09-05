@@ -152,6 +152,13 @@ pub enum InstructionKind {
     Subtract(Type),
     Multiply(Type),
     Divide(Type),
+    Remainder(IntegerType),
+    BitAnd(IntegerType),
+    BitOr(IntegerType),
+    BitXor(IntegerType),
+    ShiftLeft(IntegerType),
+    ShiftRight(IntegerType),
+    BitNot(IntegerType),
 
     Equal(Type),
     NotEqual(Type),
@@ -806,6 +813,12 @@ impl Compiler {
                             expr.span,
                         );
                     }
+                    UnaryOp::BitNot => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        self.emit_source(InstructionKind::BitNot(ty), expr.id, expr.span);
+                    }
                     UnaryOp::Not => {
                         self.emit_source(InstructionKind::Not, expr.id, expr.span);
                     }
@@ -842,6 +855,42 @@ impl Compiler {
                     BinaryOp::Subtract => InstructionKind::Subtract(expr.ty.clone().into()),
                     BinaryOp::Multiply => InstructionKind::Multiply(expr.ty.clone().into()),
                     BinaryOp::Divide => InstructionKind::Divide(expr.ty.clone().into()),
+                    BinaryOp::Remainder => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::Remainder(ty)
+                    }
+                    BinaryOp::BitAnd => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::BitAnd(ty)
+                    }
+                    BinaryOp::BitOr => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::BitOr(ty)
+                    }
+                    BinaryOp::BitXor => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::BitXor(ty)
+                    }
+                    BinaryOp::ShiftLeft => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::ShiftLeft(ty)
+                    }
+                    BinaryOp::ShiftRight => {
+                        let ir::Type::Integer(ty) = expr.ty else {
+                            unreachable!()
+                        };
+                        InstructionKind::ShiftRight(ty)
+                    }
                     BinaryOp::Equal => InstructionKind::Equal(left.ty.clone().into()),
                     BinaryOp::NotEqual => InstructionKind::NotEqual(left.ty.clone().into()),
                     BinaryOp::Less => InstructionKind::Less(left.ty.clone().into()),
@@ -1115,6 +1164,27 @@ fn format_instruction(
             writeln!(output, "neg.{}", type_name(ty, program),).unwrap();
         }
 
+        InstructionKind::Remainder(ty) => {
+            writeln!(output, "rem.{}", ty.name()).unwrap();
+        }
+        InstructionKind::BitAnd(ty) => {
+            writeln!(output, "bit_and.{}", ty.name()).unwrap();
+        }
+        InstructionKind::BitOr(ty) => {
+            writeln!(output, "bit_or.{}", ty.name()).unwrap();
+        }
+        InstructionKind::BitXor(ty) => {
+            writeln!(output, "bit_xor.{}", ty.name()).unwrap();
+        }
+        InstructionKind::ShiftLeft(ty) => {
+            writeln!(output, "shl.checked.{}", ty.name()).unwrap();
+        }
+        InstructionKind::ShiftRight(ty) => {
+            writeln!(output, "shr.{}", ty.name()).unwrap();
+        }
+        InstructionKind::BitNot(ty) => {
+            writeln!(output, "bit_not.{}", ty.name()).unwrap();
+        }
         InstructionKind::Not => {
             writeln!(output, "not.bool").unwrap();
         }

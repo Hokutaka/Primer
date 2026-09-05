@@ -1,4 +1,5 @@
 mod emit;
+mod integer;
 pub mod ir;
 mod lower;
 
