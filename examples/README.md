@@ -57,6 +57,8 @@
 
 | サンプル | 内容 |
 | --- | --- |
+| [color_blending.prim](color_blending.prim) | `u8`の色を足す前に`u16`へ広げ、平均を求めて混ぜる |
+| [sensor_calibration.prim](sensor_calibration.prim) | `i16`の測定値を`i8`の補正量で調整し、`i32`へ広げて集計する |
 | [maximum_subarray.prim](maximum_subarray.prim) | `i32`の増減から連続区間の最大合計を求める。`u32`の位置を添字へ変換する |
 | [euclidean_gcd.prim](euclidean_gcd.prim) | ユークリッドの互除法による最大公約数 |
 | [fibonacci.prim](fibonacci.prim) | Fibonacci数列と複数の値の更新順 |

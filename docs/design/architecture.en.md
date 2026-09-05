@@ -98,6 +98,10 @@ Every Primer IR expression has a resolved concrete type:
 
 ```text
 bool
+i8
+u8
+i16
+u16
 i32
 u32
 i64
@@ -109,23 +113,25 @@ fixed arrays
 
 `infer` is resolved before Primer IR is produced and therefore does not appear as a runtime or backend type.
 
-The AST, semantic model, Primer IR, and bytecode share `IntegerType`, with `I32`, `U32`, and `I64` kinds exposing names, signedness, bit widths, and bounds. VM values retain their integer kind; instructions check type agreement and result ranges.
+The AST, semantic model, Primer IR, and bytecode share `IntegerType`, with `I8`, `U8`, `I16`, `U16`, `I32`, `U32`, and `I64` kinds exposing names, signedness, bit widths, and bounds. VM values retain their integer kind; instructions check type agreement and result ranges.
 
 Unsuffixed floating-point literals are also resolved before backend lowering. A backend does not need to repeat contextual type inference.
 
 Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.
 
-The integer conversion spellings `i32(value)` and `convert<i32>(value)` resolve to the same `ConvertInteger`, with original spelling retained as `ConversionSyntax`. The destination does not retype the input, which is evaluated once. All pairs of `i32`, `u32`, and `i64` are supported. Out-of-range conversion is a distinct VM error from arithmetic overflow. Bytecode conversion instructions retain both integer kinds and source origin.
+The integer conversion spellings `i32(value)` and `convert<i32>(value)` resolve to the same `ConvertInteger`, with original spelling retained as `ConversionSyntax`. The destination does not retype the input, which is evaluated once. All pairs of the seven implemented integer types are supported. Out-of-range conversion is a distinct VM error from arithmetic overflow. Bytecode conversion instructions retain both integer kinds and source origin.
 
-Current code generation backends store all three integer kinds in 64-bit values. Since `u32` is represented as a nonnegative 64-bit value, signed 64-bit comparison and division preserve its numerical meaning. Arithmetic and conversion results of `i32` and `u32` retain explicit `CheckIntegerRange` operations in backend IR. The existing overflow checks also apply to the underlying 64-bit arithmetic.
+Current code generation backends store all seven integer kinds in 64-bit values. Since unsigned integers are represented as nonnegative 64-bit values, signed 64-bit comparison and division preserve its numerical meaning. Arithmetic and conversion results of 8-, 16-, and 32-bit integers retain explicit `CheckIntegerRange` operations in backend IR. The existing overflow checks also apply to the underlying 64-bit arithmetic.
 
-This implements numerical ranges and failure conditions, not packed 32-bit storage or external ABI support. Arrays and products also use 64-bit locations, so memory use does not yet decrease. Keep the semantic type in Primer IR distinct from the backend's chosen storage type.
+This implements numerical ranges and failure conditions, not packed 8-, 16-, or 32-bit storage or external ABI support. Arrays and products also use 64-bit locations, so memory use does not yet decrease. Keep the semantic type in Primer IR distinct from the backend's chosen storage type.
 
 Primer IR deliberately does not attempt to be a universal machine IR or prematurely impose SSA form. It represents Primer semantics closely enough to keep the frontend/backend boundary visible.
 
 Primer IR statements and expressions share one sequence of `NodeId` values. `emit-ir` renders them as `#0`, `#1`, and so on. IDs are allocated deterministically, with a parent before its children and in textual IR order, so the same Primer version and input produce the same IDs.
 
 A `NodeId` refers to an element within one compilation result. It is not stable across source edits or Primer versions. Multiple IR elements with the same `Span` can still have different `NodeId` values. This distinction provides a foundation for recording how one expression is later split into multiple backend instructions without relying on source locations as identity.
+
+Type names and suffixes resolve through `IntegerType::ALL`. C, LLVM, QBE, and WAT collect required range checks in an ordered set of integer kinds and emit each helper once. This reduces registration omissions when adding types and keeps artifact ordering deterministic.
 
 ## Backend lowering
 

@@ -1,0 +1,42 @@
+; Primer bytecode v0.1
+
+.function 0 average(0:left:u8, 1:right:u8) -> u8
+.slot 0 left u8
+.slot 1 right u8
+0000  load 0        ; left
+0001  convert.checked u8 -> u16
+0002  load 1        ; right
+0003  convert.checked u8 -> u16
+0004  add.u16
+0005  push.u16 2
+0006  div.u16
+0007  convert.checked u16 -> u8
+0008  return.value
+.end
+
+.slot 0 offset i8
+.slot 1 reading i16
+
+0000  push.i8 3
+0001  neg.i8
+0002  store 0       ; offset
+0003  push.i16 32000
+0004  neg.i16
+0005  store 1       ; reading
+0006  load 1        ; reading
+0007  load 0        ; offset
+0008  convert.checked i8 -> i16
+0009  add.i16
+0010  print.i16
+0011  push.u8 240
+0012  push.u8 80
+0013  call 0 2  ; average
+0014  print.u8
+0015  push.i8 127
+0016  push.i8 -128
+0017  gt.i8
+0018  print.bool
+0019  push.u8 255
+0020  convert.checked u8 -> u16
+0021  print.u16
+0022  halt

@@ -27,7 +27,12 @@ fn integer_range_check(expr: &crate::ir::Expr) -> Option<crate::types::IntegerTy
         return None;
     };
     match ty {
-        IntegerType::I32 | IntegerType::U32 => Some(ty),
+        IntegerType::I8
+        | IntegerType::U8
+        | IntegerType::I16
+        | IntegerType::U16
+        | IntegerType::I32
+        | IntegerType::U32 => Some(ty),
         IntegerType::I64 => None,
     }
 }

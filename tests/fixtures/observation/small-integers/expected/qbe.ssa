@@ -1,0 +1,148 @@
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+function l $primer_check_i8(l %value) {
+@start
+  %below =w csltl %value, -128
+  %above =w csgtl %value, 127
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_check_u8(l %value) {
+@start
+  %below =w csltl %value, 0
+  %above =w csgtl %value, 255
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_check_i16(l %value) {
+@start
+  %below =w csltl %value, -32768
+  %above =w csgtl %value, 32767
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_check_u16(l %value) {
+@start
+  %below =w csltl %value, 0
+  %above =w csgtl %value, 65535
+  %bad =w or %below, %above
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %value
+}
+
+function l $primer_i64_add(l %left, l %right) {
+@start
+  %result =l add %left, %right
+  %left_changed =l xor %result, %left
+  %right_changed =l xor %result, %right
+  %sign_changed =l and %left_changed, %right_changed
+  %overflow =w csltl %sign_changed, 0
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  ret %result
+}
+
+function l $primer_i64_div(l %left, l %right) {
+@start
+  %is_zero =w ceql %right, 0
+  %is_min =w ceql %left, -9223372036854775808
+  %is_negative_one =w ceql %right, -1
+  %overflows =w and %is_min, %is_negative_one
+  %invalid =w or %is_zero, %overflows
+  jnz %invalid, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l div %left, %right
+  ret %result
+}
+
+function l $primer_i64_neg(l %value) {
+@start
+  %overflow =w ceql %value, -9223372036854775808
+  jnz %overflow, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l neg %value
+  ret %result
+}
+
+function l $primer_fn_average_0(l %arg0, l %arg1) {
+@start
+  %slot_left =l alloc8 8
+  %slot_right =l alloc8 8
+  storel %arg0, %slot_left
+  storel %arg1, %slot_right
+  %tmp0 =l loadl %slot_left
+  %tmp1 =l call $primer_check_u16(l %tmp0)
+  %tmp2 =l loadl %slot_right
+  %tmp3 =l call $primer_check_u16(l %tmp2)
+  %tmp4 =l call $primer_i64_add(l %tmp1, l %tmp3)
+  %tmp5 =l call $primer_check_u16(l %tmp4)
+  %tmp6 =l call $primer_i64_div(l %tmp5, l 2)
+  %tmp7 =l call $primer_check_u16(l %tmp6)
+  %tmp8 =l call $primer_check_u8(l %tmp7)
+  ret %tmp8
+}
+
+export function w $main() {
+@start
+  %slot_offset =l alloc8 8
+  %slot_reading =l alloc8 8
+  %tmp0 =l call $primer_i64_neg(l 3)
+  %tmp1 =l call $primer_check_i8(l %tmp0)
+  storel %tmp1, %slot_offset
+  %tmp2 =l call $primer_i64_neg(l 32000)
+  %tmp3 =l call $primer_check_i16(l %tmp2)
+  storel %tmp3, %slot_reading
+  %tmp4 =l loadl %slot_reading
+  %tmp5 =l loadl %slot_offset
+  %tmp6 =l call $primer_check_i16(l %tmp5)
+  %tmp7 =l call $primer_i64_add(l %tmp4, l %tmp6)
+  %tmp8 =l call $primer_check_i16(l %tmp7)
+  %tmp9 =w call $printf(l $fmt_i64, ..., l %tmp8)
+  %tmp10 =l call $primer_fn_average_0(l 240, l 80)
+  %tmp11 =w call $printf(l $fmt_i64, ..., l %tmp10)
+  %tmp12 =w csgtl 127, -128
+  %tmp13 =l extsw %tmp12
+  %tmp14 =l mul %tmp13, 8
+  %tmp15 =l add $bool_texts, %tmp14
+  %tmp16 =l loadl %tmp15
+  %tmp17 =w call $puts(l %tmp16)
+  %tmp18 =l call $primer_check_u16(l 255)
+  %tmp19 =w call $printf(l $fmt_i64, ..., l %tmp18)
+  ret 0
+}

@@ -1,0 +1,16 @@
+// 測定値をi16、補正量をi8として、値の用途と範囲を区別します。
+fn calibrate(raw: i16, offset: i8) -> i16 {
+    return raw + i16(offset);
+}
+
+readings: [i16; 3] = [-32000, 40, 32000];
+offset: i8 = -3;
+mut total: i32 = 0;
+for (mut index: i64 = 0; index < 3; index = index + 1) {
+    corrected: i16 = calibrate(readings[index], offset);
+    print(corrected);
+    // 複数の測定値を足すときは、さらに広いi32を使います。
+    total = total + i32(corrected);
+}
+// 補正後の値-32003、37、31997の後に、整数の平均10を表示します。
+print(total / 3);
