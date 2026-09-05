@@ -14,6 +14,17 @@ From the repository root, run the following command to display each example's na
 
 Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an already built Primer executable.
 
+For WSL / Bash, use the following commands. WSL also needs its own Rust development environment.
+
+```bash
+bash scripts/run-examples.sh
+bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
+```
+
+The `.sh` script defaults to `target/unix/debug/primer`, separate from Windows artifacts. It respects `CARGO_TARGET_DIR` when set. Use `--skip-build` only after building into the same output directory.
+
+The runner checks each example's exit status. Use `cargo test --test examples` to compare expected output, or `bash scripts/test.sh` to run fmt, Clippy, and all test targets together.
+
 ## Basics
 
 | Example | Demonstrates |

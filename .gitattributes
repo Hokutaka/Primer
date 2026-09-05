@@ -1,2 +1,3 @@
 tests/fixtures/** text eol=lf
-scripts/run-examples.ps1 -linguist-detectable
+scripts/*.ps1 -linguist-detectable
+scripts/*.sh text eol=lf -linguist-detectable

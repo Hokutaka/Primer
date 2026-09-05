@@ -14,6 +14,17 @@
 
 `-Pattern "matrix*.prim"`で対象を絞れます。`-SkipBuild`を指定すると、既にbuildされているPrimerを使います。
 
+WSL / Bashでは次を使います。WSL側にもRustの開発環境が必要です。
+
+```bash
+bash scripts/run-examples.sh
+bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
+```
+
+`.sh`側は既定で`target/unix/debug/primer`を使い、Windowsの生成物と分離します。`CARGO_TARGET_DIR`を指定した場合はその出力先を使います。`--skip-build`は、同じ出力先へ一度ビルドした後に指定してください。
+
+一括実行は各サンプルの終了状態を確認します。期待する出力まで照合するには`cargo test --test examples`、fmt・clippy・全テストをまとめて実行するには`bash scripts/test.sh`を使います。
+
 ## 基本
 
 | サンプル | 内容 |
