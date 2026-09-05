@@ -118,7 +118,9 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
 
-文字列を使う2例はVM実行、C生成、明示的なターゲット付きLLVM生成に対応し、`emit-ir`と`emit-bytecode`でも変換を読めます。QBE・WAT・アセンブリへの出力にはまだ対応していません。
+文字列を使う2例は全出力経路に対応します。LLVMとQBEには明示的なターゲットを渡し、QBEはLinux x86-64、直接アセンブリはWindows x64、WATは出力用ホスト関数を備えたWebAssembly環境で検証します。`emit-ir`と`emit-bytecode`でも型と内容の変換を読めます。
+
+QBE・WAT・直接アセンブリの実行比較は`cargo test --test string_routes`で確認できます。[文字列の設計](../docs/design/strings.ja.md#検証範囲)にツールの指定と検証範囲を記載しています。
 
 例えば、文字列をキーにした検索をCへ変換できます。
 

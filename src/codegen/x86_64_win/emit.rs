@@ -4,12 +4,18 @@ use super::ir::{
 
 pub fn emit(module: &Module) -> String {
     let mut output = initial_data(uses_bool_print(module));
+    if module.uses_strings {
+        super::string::emit_data(module, &mut output);
+    }
 
     for constant in &module.float_constants {
         emit_float_constant(constant, &mut output);
     }
 
     output.push_str("\n.text\n");
+    if module.uses_strings {
+        output.push_str(super::string::SUPPORT);
+    }
 
     for function in &module.functions {
         emit_function(function, module, &mut output);
@@ -27,6 +33,12 @@ pub fn emit(module: &Module) -> String {
     output.push_str("  movq %rsp, %rbp\n");
 
     emit_stack_allocation(module.frame_size, &mut output);
+    if module.uses_strings {
+        // 固定ターゲットのWindows CRTで、最初のPrimer処理より前にLF変換を止めます。
+        output.push_str("  movl $1, %ecx\n  movl $32768, %edx\n  callq _setmode\n  cmpl $-1, %eax\n  jne .Lstdout_ready\n  movl $1, %eax\n");
+        emit_epilogue(module.frame_size, false, &mut output);
+        output.push_str(".Lstdout_ready:\n");
+    }
 
     for instruction in &module.instructions {
         emit_instruction(instruction, module.frame_size, "main", module, &mut output);
@@ -114,6 +126,20 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::LoadStringConstant(id) => {
+            output.push_str(&format!("  leaq .Lprimer_string_{id}(%rip), %rax\n"))
+        }
+        Instruction::CompareString { left_offset, equal } => {
+            output.push_str(&format!(
+                "  movq %rax, %rdx\n  movq {left_offset}(%rbp), %rcx\n  callq primer_string_equal\n"
+            ));
+            if !equal {
+                output.push_str("  xorl $1, %eax\n");
+            }
+        }
+        Instruction::PrintString => {
+            output.push_str("  movq %rax, %rcx\n  callq primer_print_string\n")
+        }
         Instruction::ConvertNumeric { conversion, label } => {
             super::conversion::emit(*conversion, *label, label_prefix, output)
         }
@@ -206,7 +232,7 @@ fn emit_instruction(
             output.push_str(&format!("  jge {trap}\n"));
             output.push_str("  negq %rax\n");
             match ty {
-                Type::Bool | Type::I64 => {
+                Type::String | Type::Bool | Type::I64 => {
                     output.push_str(&format!("  movq {base_offset}(%rbp,%rax,8), %rax\n"));
                 }
                 Type::F32 => {
@@ -528,7 +554,7 @@ fn block_label(prefix: &str, id: usize) -> String {
 
 fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut String) {
     match ty {
-        Type::Bool | Type::I64 => {
+        Type::String | Type::Bool | Type::I64 => {
             let register = integer_argument_register(index);
             output.push_str(&format!("  movq {register}, {offset}(%rbp)\n"));
         }
@@ -543,7 +569,7 @@ fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut Stri
 
 fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String) {
     match ty {
-        Type::Bool | Type::I64 => {
+        Type::String | Type::Bool | Type::I64 => {
             let register = integer_argument_register(index);
             output.push_str(&format!("  movq {offset}(%rbp), {register}\n"));
         }

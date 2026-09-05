@@ -3,7 +3,7 @@ use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
     let support = required_support(module);
-    let strings = support.strings || super::string::uses_type(module);
+    let strings = module.uses_strings || support.strings || super::string::uses_type(module);
     if !support.conversions.is_empty() {
         output.push_str("#include <math.h>\n#include <float.h>\n");
     }

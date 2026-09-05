@@ -107,6 +107,7 @@ u32
 i64
 f32
 f64
+string
 named product types
 fixed arrays
 ```
@@ -237,8 +238,8 @@ Emit commands for each output route expose the result after backend lowering and
 
 ```text
 primer emit-c <file> [-o <output.c>]
-primer emit-llvm <file> [-o <output.ll>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]

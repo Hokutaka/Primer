@@ -3,15 +3,46 @@ mod emit;
 mod integer;
 pub mod ir;
 mod lower;
+mod string;
 
 pub use emit::emit;
 use lower::lower;
 
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
+/// QBEの文字列出力で検証する実行環境です。ホストOSからは選びません。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    X86_64UnknownLinuxGnu,
+}
+
+impl Target {
+    pub const fn triple(self) -> &'static str {
+        "x86_64-unknown-linux-gnu"
+    }
+    pub fn parse(value: &str) -> Option<Self> {
+        (value == "x86_64-unknown-linux-gnu").then_some(Self::X86_64UnknownLinuxGnu)
+    }
+}
+
 pub fn emit_qbe(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    super::support::reject_strings(program, "emit-qbe")?;
-    let module = lower(program);
+    emit_qbe_with_target(program, None)
+}
+
+pub fn emit_qbe_with_target(
+    program: &primer_ir::Program,
+    target: Option<Target>,
+) -> Result<String, Diagnostic> {
+    if let Some(span) = super::support::first_string_span(program)
+        && target.is_none()
+    {
+        return Err(Diagnostic::new(
+            "QBE string values require an explicit --target: x86_64-unknown-linux-gnu",
+            span,
+        ));
+    }
+    let mut module = lower(program);
+    module.target = target;
 
     Ok(emit(&module))
 }

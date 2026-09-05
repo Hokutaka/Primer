@@ -1,21 +1,9 @@
 use crate::{
-    diagnostic::Diagnostic,
     ir::{
         AssignmentProjection, Expr, ExprKind, Program, ReturnType, Statement, StatementKind, Type,
     },
     source::Span,
 };
-
-/// 未対応の出力先へ文字列を渡さず、lowering前にソース位置付きで報告します。
-pub(super) fn reject_strings(program: &Program, route: &str) -> Result<(), Diagnostic> {
-    match first_string_span(program) {
-        Some(span) => Err(Diagnostic::new(
-            format!("string values are not supported by `{route}` yet"),
-            span,
-        )),
-        None => Ok(()),
-    }
-}
 
 /// 未使用の型や関数も含めて、文字列を必要とする最初の位置を返します。
 pub(super) fn first_string_span(program: &Program) -> Option<Span> {

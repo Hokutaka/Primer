@@ -11,6 +11,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub uses_strings: bool,
     pub temporaries: Vec<Type>,
     pub array_types: Vec<Type>,
     pub array_assignment_types: Vec<Type>,

@@ -1,5 +1,8 @@
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub target: Option<super::Target>,
+    pub uses_strings: bool,
+    pub strings: Vec<String>,
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
     pub slots: Vec<Slot>,
@@ -41,6 +44,8 @@ pub struct Slot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    /// 不変な長さ付き静的バイト列への参照です。
+    String,
     Bool,
     I64,
     Single,
@@ -54,6 +59,7 @@ pub struct Temp(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Operand {
+    String(usize),
     Boolean(bool),
     Integer(i64),
     Float32(String),
@@ -95,6 +101,9 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    PrintString {
+        value: Operand,
+    },
     ConvertNumeric {
         conversion: crate::codegen::NumericConversion,
         dest: Temp,

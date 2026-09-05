@@ -7,7 +7,18 @@ use super::ir::{
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
+    if let Some(target) = module.target {
+        writeln!(
+            output,
+            "# target: {} (qbe -t amd64_sysv)\n",
+            target.triple()
+        )
+        .unwrap();
+    }
     let i64_operations = i64_operations(module);
+    if module.uses_strings {
+        super::string::emit(module, &mut output);
+    }
 
     // printf format strings.
     //
@@ -285,6 +296,14 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::PrintString { value } => {
+            writeln!(
+                output,
+                "  call $primer_print_string(l {})",
+                operand(value, slots)
+            )
+            .unwrap();
+        }
         Instruction::ConvertNumeric {
             dest,
             value,
@@ -502,6 +521,26 @@ fn emit_instruction(
             left,
             right,
         } => {
+            if *operand_ty == Type::String {
+                let name = temp(*dest);
+                let result = if *op == CompareOp::NotEqual {
+                    format!("{name}_equal")
+                } else {
+                    assert_eq!(*op, CompareOp::Equal);
+                    name.clone()
+                };
+                writeln!(
+                    output,
+                    "  {result} =w call $primer_string_equal(l {}, l {})",
+                    operand(left, slots),
+                    operand(right, slots)
+                )
+                .unwrap();
+                if *op == CompareOp::NotEqual {
+                    writeln!(output, "  {name} =w xor {result}, 1").unwrap();
+                }
+                return;
+            }
             writeln!(
                 output,
                 "  {} =w {} {}, {}",
@@ -584,7 +623,7 @@ fn emit_instruction(
 fn type_name(ty: Type) -> &'static str {
     match ty {
         Type::Bool => "w",
-        Type::I64 => "l",
+        Type::String | Type::I64 => "l",
         Type::Single => "s",
         Type::Double => "d",
         Type::Pointer => "l",
@@ -594,7 +633,7 @@ fn type_name(ty: Type) -> &'static str {
 fn store_name(ty: Type) -> &'static str {
     match ty {
         Type::Bool => "storew",
-        Type::I64 => "storel",
+        Type::String | Type::I64 => "storel",
         Type::Single => "stores",
         Type::Double => "stored",
         Type::Pointer => unreachable!("pointers are passed without scalar stores"),
@@ -604,7 +643,7 @@ fn store_name(ty: Type) -> &'static str {
 fn load_name(ty: Type) -> &'static str {
     match ty {
         Type::Bool => "loadw",
-        Type::I64 => "loadl",
+        Type::String | Type::I64 => "loadl",
         Type::Single => "loads",
         Type::Double => "loadd",
         Type::Pointer => unreachable!("pointers are passed without scalar loads"),
@@ -643,7 +682,7 @@ fn compare_name(op: CompareOp, ty: Type) -> &'static str {
         ) => {
             unreachable!("semantic analysis rejects boolean ordering")
         }
-        (_, Type::Pointer) => unreachable!("pointers are not Primer comparison operands"),
+        (_, Type::String | Type::Pointer) => unreachable!("string comparison uses its own helper"),
     }
 }
 
@@ -682,6 +721,7 @@ fn format_name(format: PrintFormat) -> &'static str {
 
 fn operand(value: &Operand, slots: &[Slot]) -> String {
     match value {
+        Operand::String(id) => format!("$primer_string_{id}"),
         Operand::Boolean(value) => i32::from(*value).to_string(),
         Operand::Integer(value) => value.to_string(),
         Operand::Float32(text) => format!("s_{text}"),

@@ -118,7 +118,9 @@ These examples are programs expressible with numbers, booleans, strings, binding
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
 
-The two string examples support VM execution, C emission, and explicitly targeted LLVM emission, with transformations also visible through `emit-ir` and `emit-bytecode`. QBE, WAT, and assembly emission do not support them yet.
+The two string examples support every output route. LLVM and QBE require explicit targets: QBE is validated on Linux x86-64, direct assembly on Windows x64, and WAT in a WebAssembly environment providing the output host functions. `emit-ir` and `emit-bytecode` also expose type and content transformations.
+
+Run QBE, WAT, and direct assembly comparisons with `cargo test --test string_routes`. [String design](../docs/design/strings.en.md#validation-scope) documents tool selection and validation scope.
 
 For example, emit and compile the string-key lookup:
 

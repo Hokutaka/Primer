@@ -7,6 +7,7 @@ use super::ir::{
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let mut strings = Vec::new();
     let mut float_id = 0;
     let mut float_constants = Vec::new();
     let mut functions = Vec::new();
@@ -17,6 +18,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             Some(&function.return_type),
             &function.body,
             &mut float_id,
+            &mut strings,
             true,
         );
         float_constants.extend(lowered.float_constants);
@@ -34,11 +36,14 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         None,
         &program.statements,
         &mut float_id,
+        &mut strings,
         false,
     );
     float_constants.extend(lowered.float_constants);
 
     Module {
+        uses_strings: crate::codegen::support::first_string_span(program).is_some(),
+        strings,
         functions,
         explicit_main: program
             .function_definitions
@@ -63,6 +68,7 @@ fn lower_body(
     return_type: Option<&primer_ir::ReturnType>,
     statements: &[primer_ir::Statement],
     float_id: &mut usize,
+    strings: &mut Vec<String>,
     is_function: bool,
 ) -> LoweredBody {
     let (binding_slots, binding_slot_count) = assign_binding_slots(program, parameters, statements);
@@ -75,6 +81,7 @@ fn lower_body(
     let aggregate_base = scratch_base + scratch_count;
 
     let mut lowerer = Lowerer {
+        strings,
         program,
         binding_slots,
         scratch_base,
@@ -89,8 +96,8 @@ fn lower_body(
 
     for (index, parameter) in parameters.iter().enumerate() {
         match &parameter.ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
@@ -144,6 +151,7 @@ fn lower_body(
 }
 
 struct Lowerer<'a> {
+    strings: &'a mut Vec<String>,
     program: &'a primer_ir::Program,
     binding_slots: HashMap<primer_ir::BindingId, usize>,
     scratch_base: usize,
@@ -446,8 +454,11 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::String(_) => {
-                unreachable!("strings are rejected before backend lowering")
+            primer_ir::ExprKind::String(value) => {
+                let id = self.strings.len();
+                self.strings.push(value.clone());
+                self.instructions.push(Instruction::LoadStringConstant(id));
+                Value::Scalar(Type::String)
             }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
@@ -482,7 +493,9 @@ impl Lowerer<'_> {
                 match ty {
                     Type::F32 => self.instructions.push(Instruction::LoadF32Constant(id)),
                     Type::F64 => self.instructions.push(Instruction::LoadF64Constant(id)),
-                    Type::Bool | Type::I64 => unreachable!("a float literal has a float type"),
+                    Type::String | Type::Bool | Type::I64 => {
+                        unreachable!("a float literal has a float type")
+                    }
                 }
                 Value::Scalar(ty)
             }
@@ -567,6 +580,12 @@ impl Lowerer<'_> {
                 debug_assert_eq!(operand_ty, right_ty);
 
                 match operand_ty {
+                    Type::String => {
+                        self.instructions.push(Instruction::CompareString {
+                            left_offset: scratch,
+                            equal: *op == primer_ir::BinaryOp::Equal,
+                        });
+                    }
                     Type::Bool | Type::I64 => {
                         self.instructions.push(Instruction::MoveRaxToRcx);
                         self.instructions
@@ -846,11 +865,11 @@ impl Lowerer<'_> {
         }
 
         let aggregate_result = result_type.and_then(|ty| match ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 Some((ty, self.allocate_aggregate(ty)))
             }
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
@@ -865,9 +884,6 @@ impl Lowerer<'_> {
 
         if let Some((ty, base_slot)) = aggregate_result {
             return Some(match ty {
-                primer_ir::Type::String => {
-                    unreachable!("strings are rejected before backend lowering")
-                }
                 primer_ir::Type::Named(type_id) => Value::Aggregate {
                     type_id: type_id.0,
                     base_slot,
@@ -877,7 +893,8 @@ impl Lowerer<'_> {
                     length: *length,
                     base_slot,
                 },
-                primer_ir::Type::Bool
+                primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
@@ -952,8 +969,11 @@ impl Lowerer<'_> {
         pointer_offset: isize,
     ) {
         match (ty, value) {
-            (primer_ir::Type::Bool | primer_ir::Type::Integer(_), Value::Scalar(actual)) => {
-                debug_assert!(matches!(actual, Type::Bool | Type::I64));
+            (
+                primer_ir::Type::String | primer_ir::Type::Bool | primer_ir::Type::Integer(_),
+                Value::Scalar(actual),
+            ) => {
+                debug_assert!(matches!(actual, Type::String | Type::Bool | Type::I64));
                 self.instructions
                     .push(Instruction::StoreI64ToPointer(pointer_offset));
             }
@@ -1009,7 +1029,7 @@ impl Lowerer<'_> {
 
     fn load_scalar(&mut self, ty: Type, offset: isize) {
         self.instructions.push(match ty {
-            Type::Bool | Type::I64 => Instruction::LoadI64FromStack(offset),
+            Type::String | Type::Bool | Type::I64 => Instruction::LoadI64FromStack(offset),
             Type::F32 => Instruction::LoadF32FromStack(offset),
             Type::F64 => Instruction::LoadF64FromStack(offset),
         });
@@ -1017,7 +1037,7 @@ impl Lowerer<'_> {
 
     fn store_scalar(&mut self, ty: Type, offset: isize) {
         self.instructions.push(match ty {
-            Type::Bool | Type::I64 => Instruction::StoreI64ToStack(offset),
+            Type::String | Type::Bool | Type::I64 => Instruction::StoreI64ToStack(offset),
             Type::F32 => Instruction::StoreF32ToStack(offset),
             Type::F64 => Instruction::StoreF64ToStack(offset),
         });
@@ -1025,6 +1045,7 @@ impl Lowerer<'_> {
 
     fn lower_print(&mut self, ty: Type) {
         match ty {
+            Type::String => self.instructions.push(Instruction::PrintString),
             Type::Bool => self.instructions.push(Instruction::CallPrintBool),
             Type::I64 => {
                 self.instructions.push(Instruction::MoveRaxToRdx);
@@ -1071,7 +1092,9 @@ impl Lowerer<'_> {
                     bits: value.to_bits(),
                 });
             }
-            Type::Bool | Type::I64 => unreachable!("a float literal has a float type"),
+            Type::String | Type::Bool | Type::I64 => {
+                unreachable!("a float literal has a float type")
+            }
         }
 
         id
@@ -1162,8 +1185,8 @@ fn collect_binding_slots(
 
 fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-        primer_ir::Type::Bool
+        primer_ir::Type::String
+        | primer_ir::Type::Bool
         | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 1,
@@ -1226,10 +1249,8 @@ fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
 
 fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
     match &expr.kind {
-        primer_ir::ExprKind::String(_) => {
-            unreachable!("strings are rejected before backend lowering")
-        }
-        primer_ir::ExprKind::Boolean(_)
+        primer_ir::ExprKind::String(_)
+        | primer_ir::ExprKind::Boolean(_)
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
         | primer_ir::ExprKind::Variable { .. } => 1,
@@ -1302,10 +1323,8 @@ fn required_scratch_slots(statements: &[primer_ir::Statement]) -> usize {
 
 fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
     match &expr.kind {
-        primer_ir::ExprKind::String(_) => {
-            unreachable!("strings are rejected before backend lowering")
-        }
-        primer_ir::ExprKind::Boolean(_)
+        primer_ir::ExprKind::String(_)
+        | primer_ir::ExprKind::Boolean(_)
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
         | primer_ir::ExprKind::Variable { .. } => 0,
@@ -1345,7 +1364,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
 
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => Type::String,
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
@@ -1358,7 +1377,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => ArrayElement::Scalar(Type::String),
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
         primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),

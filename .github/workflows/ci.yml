@@ -5,8 +5,6 @@ on:
     branches:
       - master
   pull_request:
-    branches:
-      - master
 
 permissions:
   contents: read
@@ -19,6 +17,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.20.2"
+      - name: Install string validation tools
+        run: |
+          mkdir -p target
+          curl --fail --location https://c9x.me/compile/release/qbe-1.2.tar.xz -o target/qbe-1.2.tar.xz
+          echo 'a6d50eb952525a234bf76ba151861f73b7a382ac952d985f2b9af1df5368225d  target/qbe-1.2.tar.xz' | sha256sum --check
+          tar -xf target/qbe-1.2.tar.xz -C target
+          make -C target/qbe-1.2
+          npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39
       - name: Format
         run: cargo fmt --check
       - name: Clippy
@@ -28,6 +37,9 @@ jobs:
         env:
           PRIMER_TEST_CC: clang
           PRIMER_TEST_LLVM_CLANG: clang
+          PRIMER_TEST_QBE: ${{ github.workspace }}/target/qbe-1.2/qbe
+          PRIMER_TEST_NODE: node
+          PRIMER_TEST_WAT2WASM_JS: ${{ github.workspace }}/target/wasm-tools/node_modules/wabt/bin/wat2wasm
       - name: C string memory checks
         run: cargo test --test c_strings
         env:
@@ -39,8 +51,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.20.2"
+      - name: Install WAT validation tool
+        run: npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39
       - name: Compare string output on Windows
-        run: cargo test --test llvm_strings --test c_strings
+        run: cargo test --test llvm_strings --test c_strings --test string_routes
         env:
           PRIMER_TEST_CC: clang
           PRIMER_TEST_LLVM_CLANG: clang
+          PRIMER_TEST_ASM_CLANG: clang
+          PRIMER_TEST_NODE: node
+          PRIMER_TEST_WAT2WASM_JS: ${{ github.workspace }}/target/wasm-tools/node_modules/wabt/bin/wat2wasm

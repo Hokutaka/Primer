@@ -14,7 +14,7 @@ primer emit-ir <file> [-o <output.pir>]
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
@@ -29,7 +29,7 @@ primer check <file>
 
 `primer check` parses the input source file and performs semantic validation and type checking.
 
-A successful `check` does not guarantee that every output route supports the program. Strings work with `check`, `emit-ir`, `emit-c`, `emit-bytecode`, `run`, and `emit-llvm` with an explicit `--target`. Omitting the LLVM target, or emitting QBE, WAT, or assembly, diagnoses string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
+A successful `check` does not guarantee that every output route supports the program. Strings work through every route. Omitting the LLVM or QBE target diagnoses string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
 
 ## Primer IR emission
 
@@ -44,7 +44,7 @@ primer emit-ir <file> [-o <output.pir>]
 ```text
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
@@ -56,7 +56,7 @@ Each command emits the following artifact:
 | --- | --- | --- | --- |
 | `emit-c` | C | not selected by Primer | `.c` |
 | `emit-llvm` | LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 | `.ll` |
-| `emit-qbe` | QBE IR | not selected by Primer | `.ssa` |
+| `emit-qbe` | QBE IR | unspecified, or explicit Linux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
 | `emit-asm` | native assembly | x86-64, Windows, Windows x64 ABI | `.s` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
@@ -88,6 +88,27 @@ clang --target=x86_64-pc-windows-msvc target/string_lookup.ll -o target/string_l
 Primer only generates LLVM; it does not launch Clang or the executable. Selection is recorded in `target triple`. Pass the same target to downstream tools. Windows programs containing strings initialize standard output in binary mode to preserve NUL, CR, and LF. See [string design](../design/strings.en.md#llvm-representation-and-targets).
 
 Library callers can use `compile_to_llvm_with_target(source, Some(codegen::llvm::Target::X86_64UnknownLinuxGnu))`, or `X86_64PcWindowsMsvc`. Existing `compile_to_llvm(source)` remains the unspecified-target API.
+
+### QBE target selection
+
+QBE output containing strings requires `--target x86_64-unknown-linux-gnu`. Missing or unsupported targets and duplicate options produce diagnostics without changing existing output files. Existing numeric-only invocations may omit the target.
+
+```sh
+primer emit-qbe examples/string_lookup.prim --target x86_64-unknown-linux-gnu -o target/string_lookup.ssa
+qbe -t amd64_sysv -o target/string_lookup.s target/string_lookup.ssa
+cc target/string_lookup.s -o target/string_lookup
+./target/string_lookup
+```
+
+The artifact records the target in a comment. Invoking QBE and the C linker belongs to the consumer. Library callers use `compile_to_qbe_with_target(source, Some(codegen::qbe::Target::X86_64UnknownLinuxGnu))`.
+
+### WAT and direct assembly strings
+
+`emit-wat` and `emit-asm` retain their existing fixed targets and need no additional target selection.
+
+WAT using strings imports `primer.write_byte(i32) -> void`, passing each byte and a trailing LF without exposing memory. Alongside the existing numeric and Boolean host functions, the host implements the [string output contract](../design/strings.en.md#wat-output-and-the-external-boundary). `emit-wat` does not launch a host.
+
+Generate Windows x64 direct assembly with `primer emit-asm examples/string_lookup.prim -o target/string_lookup.s` and build it with `clang --target=x86_64-pc-windows-msvc target/string_lookup.s -o target/string_lookup.exe`. Programs using strings switch standard output to binary mode before output.
 
 ## Execution
 

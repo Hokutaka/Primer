@@ -1,0 +1,79 @@
+# target: x86_64-unknown-linux-gnu (qbe -t amd64_sysv)
+
+section ".rodata" data $primer_string_0 = align 8 { l 11, b 230, b 151, b 165, b 230, b 156, b 172, b 232, b 170, b 158, b 10, b 0 }
+section ".rodata" data $primer_string_1 = align 8 { l 7, b 99, b 104, b 97, b 110, b 103, b 101, b 100 }
+section ".rodata" data $primer_string_2 = align 8 { l 11, b 230, b 151, b 165, b 230, b 156, b 172, b 232, b 170, b 158, b 10, b 0 }
+
+function w $primer_string_equal(l %left, l %right) {
+@start
+  %length =l loadl %left
+  %right_length =l loadl %right
+  %same_length =w ceql %length, %right_length
+  jnz %same_length, @condition, @different
+@condition
+  %index =l phi @start 0, @advance %next
+  %done =w ceql %index, %length
+  jnz %done, @equal, @compare
+@compare
+  %offset =l add %index, 8
+  %lp =l add %left, %offset
+  %rp =l add %right, %offset
+  %lb =w loadub %lp
+  %rb =w loadub %rp
+  %same_byte =w ceqw %lb, %rb
+  jnz %same_byte, @advance, @different
+@advance
+  %next =l add %index, 1
+  jmp @condition
+@equal
+  ret 1
+@different
+  ret 0
+}
+
+function $primer_print_string(l %value) {
+@start
+  %length =l loadl %value
+  jmp @condition
+@condition
+  %index =l phi @start 0, @write %next
+  %done =w ceql %index, %length
+  jnz %done, @newline, @write
+@write
+  %offset =l add %index, 8
+  %address =l add %value, %offset
+  %byte =w loadub %address
+  call $putchar(w %byte)
+  %next =l add %index, 1
+  jmp @condition
+@newline
+  call $putchar(w 10)
+  ret
+}
+
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+export function w $main() {
+@start
+  %slot_text =l alloc8 8
+  %slot_saved =l alloc8 8
+  storel $primer_string_0, %slot_text
+  %tmp0 =l loadl %slot_text
+  storel %tmp0, %slot_saved
+  storel $primer_string_1, %slot_text
+  %tmp1 =l loadl %slot_saved
+  %tmp2 =w call $primer_string_equal(l %tmp1, l $primer_string_2)
+  %tmp3 =l extsw %tmp2
+  %tmp4 =l mul %tmp3, 8
+  %tmp5 =l add $bool_texts, %tmp4
+  %tmp6 =l loadl %tmp5
+  %tmp7 =w call $puts(l %tmp6)
+  %tmp8 =l loadl %slot_text
+  call $primer_print_string(l %tmp8)
+  ret 0
+}

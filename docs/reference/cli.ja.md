@@ -14,7 +14,7 @@ primer emit-ir <file> [-o <output.pir>]
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
@@ -29,7 +29,7 @@ primer check <file>
 
 `primer check`は、入力されたソースファイルの構文解析、意味検証、型検査を行います。
 
-`check`の成功は、すべての出力経路がそのプログラムに対応することを保証しません。文字列は`check`・`emit-ir`・`emit-c`・`emit-bytecode`・`run`と、明示的な`--target`付きの`emit-llvm`で使用できます。LLVMのターゲット未指定やQBE・WAT・アセンブリへの出力は、文字列を含む型定義や式をソース位置付きで診断し、成果物を生成しません。この診断では`-o`で指定した既存ファイルも変更しません。
+`check`の成功は、すべての出力経路がそのプログラムに対応することを保証しません。文字列は全経路で使用できます。LLVMとQBEのターゲットが未指定の場合は、文字列を含む型定義や式をソース位置付きで診断し、成果物を生成しません。この診断では`-o`で指定した既存ファイルも変更しません。
 
 ## Primer IRの出力
 
@@ -44,7 +44,7 @@ primer emit-ir <file> [-o <output.pir>]
 ```text
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
@@ -56,7 +56,7 @@ primer emit-bytecode <file> [-o <output.pbc>]
 | --- | --- | --- | --- |
 | `emit-c` | C | Primerでは指定しない | `.c` |
 | `emit-llvm` | LLVM IR | 未指定、または明示的なWindows x64 / Linux x86-64 | `.ll` |
-| `emit-qbe` | QBE IR | Primerでは指定しない | `.ssa` |
+| `emit-qbe` | QBE IR | 未指定、または明示的なLinux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
 | `emit-asm` | ネイティブアセンブリ | x86-64、Windows、Windows x64 ABI | `.s` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
@@ -88,6 +88,27 @@ clang --target=x86_64-pc-windows-msvc target/string_lookup.ll -o target/string_l
 PrimerはLLVMの生成だけを行い、Clangや実行ファイルを起動しません。指定は`target triple`に記録されます。下流ツールにも同じターゲットを渡します。Windowsでは文字列を含むプログラムの標準出力をバイナリモードにし、NUL・CR・LFを保持します。詳しくは[文字列の設計](../design/strings.ja.md#llvmでの表現とターゲット)を参照してください。
 
 ライブラリでは`compile_to_llvm_with_target(source, Some(codegen::llvm::Target::X86_64UnknownLinuxGnu))`、または`X86_64PcWindowsMsvc`を使います。既存の`compile_to_llvm(source)`はターゲット未指定のAPIとして残ります。
+
+### QBEのターゲット指定
+
+文字列を含むQBE出力では`--target x86_64-unknown-linux-gnu`を指定します。省略・未対応のターゲット・オプションの重複は診断し、既存の出力ファイルを変更しません。数値だけの既存の呼び出しでは省略できます。
+
+```sh
+primer emit-qbe examples/string_lookup.prim --target x86_64-unknown-linux-gnu -o target/string_lookup.ssa
+qbe -t amd64_sysv -o target/string_lookup.s target/string_lookup.ssa
+cc target/string_lookup.s -o target/string_lookup
+./target/string_lookup
+```
+
+生成物のコメントにターゲットを残します。QBEとCリンカの起動は利用側の操作です。ライブラリでは`compile_to_qbe_with_target(source, Some(codegen::qbe::Target::X86_64UnknownLinuxGnu))`を使います。
+
+### WATと直接アセンブリの文字列
+
+`emit-wat`と`emit-asm`は既存の固定ターゲットを使うため、ターゲット指定の追加はありません。
+
+文字列を使うWATは`primer.write_byte(i32) -> void`をimportし、各バイトと末尾LFを渡します。メモリは公開しません。数値・真偽値の既存のホスト関数も含め、ホストは[文字列の出力契約](../design/strings.ja.md#watの出力と外部との境界)を実装します。`emit-wat`自体はホストを起動しません。
+
+Windows x64の直接アセンブリは`primer emit-asm examples/string_lookup.prim -o target/string_lookup.s`で生成し、`clang --target=x86_64-pc-windows-msvc target/string_lookup.s -o target/string_lookup.exe`でビルドできます。文字列の出力前に標準出力をバイナリモードへ切り替えます。
 
 ## 実行
 

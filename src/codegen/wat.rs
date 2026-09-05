@@ -3,6 +3,7 @@ mod emit;
 mod integer;
 pub mod ir;
 mod lower;
+mod string;
 
 pub use emit::emit;
 use lower::lower;
@@ -10,7 +11,6 @@ use lower::lower;
 use crate::{diagnostic::Diagnostic, ir as primer_ir};
 
 pub fn emit_wat(program: &primer_ir::Program) -> Result<String, Diagnostic> {
-    super::support::reject_strings(program, "emit-wat")?;
     let module = lower(program);
 
     Ok(emit(&module))

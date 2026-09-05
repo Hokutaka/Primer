@@ -7,6 +7,9 @@ pub fn emit(module: &Module) -> String {
     let i64_operations = i64_operations(module);
 
     writeln!(output, "(module").unwrap();
+    if module.uses_strings {
+        output.push_str("  (import \"primer\" \"write_byte\" (func $write_byte (param i32)))\n");
+    }
 
     // print() is provided by the host.
     if module_uses_bool_print(module) {
@@ -39,9 +42,13 @@ pub fn emit(module: &Module) -> String {
 
     emit_i64_operation_support(i64_operations, &mut output);
 
-    if module.memory_pages > 0 {
+    if module.memory_pages > 0 || module.uses_strings {
         writeln!(output, "  (memory {})", module.memory_pages).unwrap();
         writeln!(output).unwrap();
+    }
+
+    if module.uses_strings {
+        super::string::emit(module, &mut output);
     }
 
     for function in &module.functions {
@@ -313,6 +320,10 @@ fn emit_instruction(
     let prefix = "  ".repeat(indent);
 
     match instruction {
+        Instruction::StringEqual => writeln!(output, "{prefix}call $primer_string_equal").unwrap(),
+        Instruction::StringNotEqual => {
+            writeln!(output, "{prefix}call $primer_string_equal\n{prefix}i32.eqz").unwrap()
+        }
         Instruction::ConvertNumeric { conversion } => {
             writeln!(output, "{prefix}call ${}", conversion.helper()).unwrap();
         }
@@ -474,6 +485,7 @@ fn emit_instruction(
 
         Instruction::CallPrint(ty) => {
             let function = match ty {
+                Type::String => "$primer_print_string",
                 Type::Bool => "$print_bool",
                 Type::I64 => "$print_i64",
                 Type::F32 => "$print_f32",
@@ -500,7 +512,7 @@ fn emit_memory(instruction: &str, offset: u32, prefix: &str, output: &mut String
 
 fn wat_type(ty: Type) -> &'static str {
     match ty {
-        Type::Bool => "i32",
+        Type::String | Type::Bool => "i32",
         Type::I64 => "i64",
         Type::F32 => "f32",
         Type::F64 => "f64",

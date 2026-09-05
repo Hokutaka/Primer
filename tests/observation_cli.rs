@@ -49,7 +49,7 @@ fn expected_output(case_name: &str, file_name: &str) -> String {
 fn assert_observation(case_name: &str, command: &str, expected_file: &str) {
     let mut process = Command::new(env!("CARGO_BIN_EXE_primer"));
     process.arg(command).arg(source_path(case_name));
-    if command == "emit-llvm" && case_name == "string-values" {
+    if matches!(command, "emit-llvm" | "emit-qbe") && case_name == "string-values" {
         process.args(["--target", "x86_64-unknown-linux-gnu"]);
     }
     let output = process
@@ -90,11 +90,14 @@ fn assert_observation_cases(command: &str, expected_file: &str) {
 
 #[test]
 fn string_observations_match_ir_bytecode_and_vm_output() {
-    // 文字列の対応経路だけを検証し、未対応経路の診断も別テストで確認します。
+    // 同じ文字列ソースから全経路の変換結果を固定します。
     for (command, file) in [
         ("emit-ir", "ir.pir"),
         ("emit-c", "c.c"),
         ("emit-llvm", "llvm.ll"),
+        ("emit-qbe", "qbe.ssa"),
+        ("emit-wat", "wat.wat"),
+        ("emit-asm", "asm.s"),
         ("emit-bytecode", "bytecode.pbc"),
         ("run", "run.stdout"),
     ] {
@@ -103,7 +106,7 @@ fn string_observations_match_ir_bytecode_and_vm_output() {
 }
 
 #[test]
-fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
+fn missing_string_targets_fail_without_overwriting_an_artifact() {
     let id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -120,7 +123,7 @@ fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
     use std::io::Write;
     file.write_all(b"existing artifact").unwrap();
     drop(file);
-    for command in ["emit-qbe", "emit-wat", "emit-asm"] {
+    for command in ["emit-llvm", "emit-qbe"] {
         let output = Command::new(env!("CARGO_BIN_EXE_primer"))
             .arg(command)
             .arg(source_path("string-values"))
@@ -132,9 +135,7 @@ fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
         assert!(output.stdout.is_empty());
         let message = String::from_utf8(output.stderr).unwrap();
         assert!(
-            message.contains(&format!(
-                "string values are not supported by `{command}` yet at 1:"
-            )),
+            message.contains("explicit --target") && message.contains("at 1:"),
             "{message}"
         );
         assert_eq!(fs::read(&path).unwrap(), b"existing artifact");
