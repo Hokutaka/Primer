@@ -89,6 +89,7 @@ fn lower_body(
 
     for (index, parameter) in parameters.iter().enumerate() {
         match &parameter.ty {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
@@ -445,6 +446,9 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::String(_) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
             } => {
@@ -842,6 +846,7 @@ impl Lowerer<'_> {
         }
 
         let aggregate_result = result_type.and_then(|ty| match ty {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 Some((ty, self.allocate_aggregate(ty)))
             }
@@ -860,6 +865,9 @@ impl Lowerer<'_> {
 
         if let Some((ty, base_slot)) = aggregate_result {
             return Some(match ty {
+                primer_ir::Type::String => {
+                    unreachable!("strings are rejected before backend lowering")
+                }
                 primer_ir::Type::Named(type_id) => Value::Aggregate {
                     type_id: type_id.0,
                     base_slot,
@@ -1154,6 +1162,7 @@ fn collect_binding_slots(
 
 fn type_slot_count(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool
         | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
@@ -1217,6 +1226,9 @@ fn count_statements_expr_nodes(statements: &[primer_ir::Statement]) -> usize {
 
 fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
     match &expr.kind {
+        primer_ir::ExprKind::String(_) => {
+            unreachable!("strings are rejected before backend lowering")
+        }
         primer_ir::ExprKind::Boolean(_)
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
@@ -1290,6 +1302,9 @@ fn required_scratch_slots(statements: &[primer_ir::Statement]) -> usize {
 
 fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
     match &expr.kind {
+        primer_ir::ExprKind::String(_) => {
+            unreachable!("strings are rejected before backend lowering")
+        }
         primer_ir::ExprKind::Boolean(_)
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
@@ -1330,6 +1345,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
 
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
@@ -1342,6 +1358,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
         primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),

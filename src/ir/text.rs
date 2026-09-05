@@ -270,6 +270,10 @@ fn emit_expr(expr: &Expr, program: &Program, output: &mut String) {
         ExprKind::Boolean(value) => {
             write!(output, "{value}:bool").unwrap();
         }
+        ExprKind::String(value) => {
+            // 改行や制御文字をエスケープし、一つの観測行に収めます。
+            write!(output, "{value:?}:string").unwrap();
+        }
         ExprKind::Integer(value) => {
             write!(output, "{value}{}", type_name(&expr.ty, program)).unwrap();
         }
@@ -393,6 +397,7 @@ fn emit_arguments(arguments: &[Expr], program: &Program, output: &mut String) {
 fn type_name(ty: &Type, program: &Program) -> String {
     match ty {
         Type::Bool => "bool".into(),
+        Type::String => "string".into(),
         Type::Integer(integer) => integer.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),

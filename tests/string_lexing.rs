@@ -1,5 +1,4 @@
 use primer_lang::{
-    diagnostic::render::render_compact,
     lexer::{TokenKind, lex},
     source::Span,
 };
@@ -175,15 +174,17 @@ fn all_truncated_utf8_prefixes_produce_valid_tokens_or_diagnostics() {
 }
 
 #[test]
-fn parser_reports_that_string_values_are_not_available_yet() {
+fn parser_retains_the_decoded_string_and_original_span() {
     let source = "print(\"日本語\\n\");";
-    let error = primer_lang::compile(source).unwrap_err();
-    assert_eq!(error.message(), "string values are not supported yet");
-    assert_eq!(error.primary_span(), Some(Span::new(6, source.len() - 2)));
+    let program = primer_lang::compile(source).unwrap();
+    let primer_lang::ast::StmtKind::Print { value } = &program.statement(0).kind else {
+        panic!("expected print");
+    };
     assert_eq!(
-        render_compact(&error, source),
-        "string values are not supported yet at 1:7"
+        value.kind,
+        primer_lang::ast::ExprKind::String("日本語\n".into())
     );
+    assert_eq!(value.span, Span::new(6, source.len() - 2));
 }
 
 #[test]

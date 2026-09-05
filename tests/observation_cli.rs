@@ -86,6 +86,58 @@ fn assert_observation_cases(command: &str, expected_file: &str) {
 }
 
 #[test]
+fn string_observations_match_ir_bytecode_and_vm_output() {
+    // 文字列の対応経路だけを検証し、未対応経路の診断も別テストで確認します。
+    for (command, file) in [
+        ("emit-ir", "ir.pir"),
+        ("emit-bytecode", "bytecode.pbc"),
+        ("run", "run.stdout"),
+    ] {
+        assert_observation("string-values", command, file);
+    }
+}
+
+#[test]
+fn unsupported_string_outputs_fail_without_overwriting_an_artifact() {
+    let id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "primer-string-output-{}-{id}.tmp",
+        std::process::id()
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .unwrap();
+    use std::io::Write;
+    file.write_all(b"existing artifact").unwrap();
+    drop(file);
+    for command in ["emit-c", "emit-llvm", "emit-qbe", "emit-wat", "emit-asm"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_primer"))
+            .arg(command)
+            .arg(source_path("string-values"))
+            .arg("-o")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        let message = String::from_utf8(output.stderr).unwrap();
+        assert!(
+            message.contains(&format!(
+                "string values are not supported by `{command}` yet at 1:"
+            )),
+            "{message}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"existing artifact");
+    }
+    fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn emit_ir_matches_expected_output() {
     assert_observation_cases("emit-ir", "ir.pir");
 }

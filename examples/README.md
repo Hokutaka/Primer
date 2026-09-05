@@ -30,6 +30,7 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 | サンプル | 内容 |
 | --- | --- |
 | [hello.prim](hello.prim) | 整数に名前を付け、足し算の結果を`print`で表示する最初の例 |
+| [string_values.prim](string_values.prim) | 日本語の表示、等値比較、改行、再代入しても保存済みの文字列が変わらないこと |
 | [floating_point.prim](floating_point.prim) | `f32`と`f64`の精度の違い、`infer`による型推論 |
 | [small_values.prim](small_values.prim) | 小さな数値を指数表記で観測し、表示と計算時の丸めを区別する |
 | [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
@@ -49,6 +50,7 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 | サンプル | 内容 |
 | --- | --- |
 | [ring_buffer.prim](ring_buffer.prim) | `%`で保存位置を循環させ、直近4件の値と平均を保つ |
+| [string_lookup.prim](string_lookup.prim) | 文字列をキーに構造体の配列を線形探索し、対応する表示や既定値を返す |
 | [product-point.prim](product-point.prim) | 点の座標を構造体にまとめる。フィールドの既定値と読み取り |
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列の要素を読み、合計と線形探索を行う。コピーした配列が独立した値であることも確認する |
 | [product_arrays.prim](product_arrays.prim) | 構造体を配列に並べ、最も近い点を探す。配列のコピーも確認する |
@@ -112,8 +114,10 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 ## 現在の範囲
 
-これらは、数値、真偽値、束縛、関数、条件分岐、ループ、名前付きproduct type、固定長配列で表現できるプログラムです。
+これらは、数値、真偽値、文字列、束縛、関数、条件分岐、ループ、名前付きproduct type、固定長配列で表現できるプログラムです。
 
-`mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。文字列、再帰、動的な長さのcollectionはまだありません。
+`mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
+
+文字列を使う2例は現在VM実行に対応し、`emit-ir`と`emit-bytecode`で変換も読めます。C・LLVM・QBE・WAT・アセンブリへの出力にはまだ対応していません。
 
 `xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。`linear_regression.prim`では、勾配降下法で直線の傾きと切片をデータから学びます。XORニューラルネット自体の学習はまだ含みません。

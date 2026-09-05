@@ -154,6 +154,7 @@ fn integer_operation_name(operation: IntegerOperation) -> &'static str {
 fn type_name(ty: Type) -> String {
     match ty {
         Type::Bool => "bool".into(),
+        Type::String => "string".into(),
         Type::Integer(ty) => ty.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),

@@ -177,6 +177,7 @@ impl VmError {
 #[derive(Debug, Clone)]
 enum Value {
     Bool(bool),
+    String(String),
     Integer(i64, IntegerType),
     F32(f32),
     F64(f64),
@@ -188,6 +189,7 @@ impl Value {
     fn ty(&self) -> Type {
         match self {
             Self::Bool(_) => Type::Bool,
+            Self::String(_) => Type::String,
             Self::Integer(_, ty) => Type::Integer(*ty),
             Self::F32(_) => Type::F32,
             Self::F64(_) => Type::F64,
@@ -314,6 +316,9 @@ fn execute_frame_inner(
             }
             InstructionKind::PushBool(value) => {
                 stack.push(Value::Bool(*value));
+            }
+            InstructionKind::PushString(value) => {
+                stack.push(Value::String(value.clone()));
             }
 
             InstructionKind::PushInteger(value, ty) => {
@@ -978,7 +983,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
             stack.push(Value::F64(value));
         }
 
-        Type::Named(_) | Type::Array { .. } => {
+        Type::String | Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
                 expected: Type::Integer(IntegerType::I64),
                 actual: ty,
@@ -1001,6 +1006,15 @@ enum Comparison {
 
 fn compare(ty: Type, stack: &mut Vec<Value>, comparison: Comparison) -> VmResult<()> {
     let result = match ty {
+        Type::String => {
+            let right = pop_string(stack)?;
+            let left = pop_string(stack)?;
+            match comparison {
+                Comparison::Equal => left == right,
+                Comparison::NotEqual => left != right,
+                _ => return Err(VmErrorKind::InvalidComparisonType { ty }),
+            }
+        }
         Type::Bool => {
             let right = pop_bool(stack)?;
             let left = pop_bool(stack)?;
@@ -1087,7 +1101,7 @@ fn negate(ty: Type, stack: &mut Vec<Value>) -> VmResult<()> {
             stack.push(Value::F64(-value));
         }
 
-        Type::Named(_) | Type::Array { .. } => {
+        Type::String | Type::Named(_) | Type::Array { .. } => {
             return Err(VmErrorKind::TypeMismatch {
                 expected: Type::Integer(IntegerType::I64),
                 actual: ty,
@@ -1214,6 +1228,16 @@ fn pop_bool(stack: &mut Vec<Value>) -> VmResult<bool> {
     }
 }
 
+fn pop_string(stack: &mut Vec<Value>) -> VmResult<String> {
+    match pop_value(stack)? {
+        Value::String(value) => Ok(value),
+        other => Err(VmErrorKind::TypeMismatch {
+            expected: Type::String,
+            actual: other.ty(),
+        }),
+    }
+}
+
 fn pop_f32(stack: &mut Vec<Value>) -> VmResult<f32> {
     match pop_value(stack)? {
         Value::F32(value) => Ok(value),
@@ -1239,6 +1263,7 @@ fn pop_f64(stack: &mut Vec<Value>) -> VmResult<f64> {
 fn format_value(value: Value, expected: Type) -> VmResult<String> {
     match (value, expected) {
         (Value::Bool(value), Type::Bool) => Ok(value.to_string()),
+        (Value::String(value), Type::String) => Ok(value),
 
         (Value::Integer(value, actual), Type::Integer(expected)) if actual == expected => {
             Ok(value.to_string())

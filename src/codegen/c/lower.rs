@@ -136,6 +136,7 @@ fn lower_type_definitions(program: &primer_ir::Program) -> Vec<TypeDefinition> {
 
 fn named_type_dependency(ty: &primer_ir::Type) -> Option<primer_ir::TypeId> {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Named(id) => Some(*id),
         primer_ir::Type::Array { element, .. } => named_type_dependency(element),
         primer_ir::Type::Bool
@@ -248,6 +249,9 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 
 fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
+        primer_ir::ExprKind::String(_) => {
+            unreachable!("strings are rejected before backend lowering")
+        }
         primer_ir::ExprKind::Logical { op, left, right } => ExprKind::Logical {
             op: match op {
                 primer_ir::LogicalOp::And => super::ir::LogicalOp::And,
@@ -362,6 +366,7 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
 
 fn print_format(ty: &primer_ir::Type) -> PrintFormat {
     match ty {
+        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
         primer_ir::Type::Bool => PrintFormat::Bool,
         primer_ir::Type::Integer(_) => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
@@ -375,6 +380,7 @@ fn print_format(ty: &primer_ir::Type) -> PrintFormat {
 impl From<primer_ir::Type> for Type {
     fn from(value: primer_ir::Type) -> Self {
         match value {
+            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Bool => Self::Bool,
             primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
@@ -402,6 +408,9 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     fn visit_expr(expr: &primer_ir::Expr, types: &mut Vec<Type>) {
         add(&expr.ty, types);
         match &expr.kind {
+            primer_ir::ExprKind::String(_) => {
+                unreachable!("strings are rejected before backend lowering")
+            }
             primer_ir::ExprKind::Array(values) => {
                 for value in values {
                     visit_expr(value, types);

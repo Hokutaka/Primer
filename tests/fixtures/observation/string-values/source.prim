@@ -1,0 +1,5 @@
+mut text: string = "日本語\n\0";
+saved: infer = text;
+text = "changed";
+print(saved == "\u{65e5}本語\n\0");
+print(text);

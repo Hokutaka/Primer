@@ -13,6 +13,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
+    String,
     Integer(IntegerType),
     F32,
     F64,
@@ -123,6 +124,7 @@ pub enum InstructionKind {
         to: IntegerType,
     },
     PushBool(bool),
+    PushString(String),
     PushInteger(i64, IntegerType),
     PushF32(f32),
     PushF64(f64),
@@ -280,6 +282,20 @@ pub fn lower(program: &Program) -> Result<BytecodeProgram, Diagnostic> {
     };
 
     compiler.emit_statements(&program.statements);
+
+    // 明示mainの起動は、ソースに直接書かれた呼び出しではありません。
+    if let Some(main) = program
+        .function_definitions
+        .iter()
+        .find(|function| function.name == "main")
+    {
+        compiler
+            .instructions
+            .push(Instruction::synthetic(InstructionKind::Call {
+                function_id: main.id.0,
+                argument_count: 0,
+            }));
+    }
 
     compiler
         .instructions
@@ -721,8 +737,8 @@ impl Compiler {
                 ir::Type::Bool => {
                     unreachable!("boolean cannot be emitted as float");
                 }
-                ir::Type::Named(_) | ir::Type::Array { .. } => {
-                    unreachable!("a float literal cannot have an aggregate type");
+                ir::Type::String | ir::Type::Named(_) | ir::Type::Array { .. } => {
+                    unreachable!("a float literal must have a numeric type");
                 }
             },
 
@@ -734,6 +750,14 @@ impl Compiler {
                     .expect("variable must have a bytecode slot");
 
                 self.emit_source(InstructionKind::Load(slot), expr.id, expr.span);
+            }
+
+            ExprKind::String(value) => {
+                self.emit_source(
+                    InstructionKind::PushString(value.clone()),
+                    expr.id,
+                    expr.span,
+                );
             }
 
             ExprKind::Construct {
@@ -999,6 +1023,7 @@ impl From<ir::Type> for Type {
     fn from(value: ir::Type) -> Self {
         match value {
             ir::Type::Bool => Self::Bool,
+            ir::Type::String => Self::String,
             ir::Type::Integer(ty) => Self::Integer(ty),
             ir::Type::F32 => Self::F32,
             ir::Type::F64 => Self::F64,
@@ -1020,6 +1045,9 @@ fn format_instruction(
     match instruction {
         InstructionKind::PushBool(value) => {
             writeln!(output, "push.bool {value}").unwrap();
+        }
+        InstructionKind::PushString(value) => {
+            writeln!(output, "push.string {value:?}").unwrap();
         }
 
         InstructionKind::PushInteger(value, integer) => {
@@ -1250,6 +1278,7 @@ fn array_access(projection: &ir::AssignmentProjection) -> ArrayAccess {
 fn type_name(ty: &Type, program: &BytecodeProgram) -> String {
     match ty {
         Type::Bool => "bool".into(),
+        Type::String => "string".into(),
         Type::Integer(ty) => ty.name().into(),
         Type::F32 => "f32".into(),
         Type::F64 => "f64".into(),

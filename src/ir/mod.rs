@@ -9,6 +9,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Bool,
+    String,
     Integer(IntegerType),
     F32,
     F64,
@@ -183,6 +184,8 @@ pub enum ExprKind {
         syntax: ConversionSyntax,
     },
     Boolean(bool),
+    /// 不変のUTF-8文字列値です。元の表記は式のSpanから追跡します。
+    String(String),
     Integer(i64),
     Float {
         text: String,

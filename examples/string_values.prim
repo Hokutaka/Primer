@@ -1,0 +1,10 @@
+// 再代入しても、別の変数に保存した文字列は変わりません。
+mut greeting: string = "こんにちは";
+saved: infer = greeting;
+greeting = "こんばんは";
+
+print(saved);
+print(greeting);
+print(saved == "\u{3053}んにちは");
+print(greeting != saved);
+print("一行目\n二行目");

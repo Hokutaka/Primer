@@ -6,6 +6,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     Bool,
+    String,
     Integer(IntegerType),
     F32,
     F64,
@@ -16,6 +17,7 @@ impl Type {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "bool" => Some(Self::Bool),
+            "string" => Some(Self::String),
             "f32" => Some(Self::F32),
             "f64" => Some(Self::F64),
             name => IntegerType::from_name(name).map(Self::Integer),
@@ -229,6 +231,7 @@ pub enum ExprKind {
         syntax: ConversionSyntax,
     },
     Boolean(bool),
+    String(String),
     Integer(IntegerLiteral),
     Float {
         text: String,

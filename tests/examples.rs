@@ -1,6 +1,22 @@
 use primer_lang::run_vm;
 
 #[test]
+fn string_values_preserve_copies_unicode_and_line_breaks() {
+    assert_eq!(
+        run_vm(include_str!("../examples/string_values.prim")).unwrap(),
+        "こんにちは\nこんばんは\ntrue\ntrue\n一行目\n二行目\n"
+    );
+}
+
+#[test]
+fn string_lookup_searches_product_entries_and_uses_defaults() {
+    assert_eq!(
+        run_vm(include_str!("../examples/string_lookup.prim")).unwrap(),
+        "こんにちは\nさようなら\n未登録\n見つかりません\n"
+    );
+}
+
+#[test]
 fn small_values_remain_visible_while_arithmetic_can_round() {
     let output = run_vm(include_str!("../examples/small_values.prim")).unwrap();
     let lines: Vec<_> = output.lines().collect();

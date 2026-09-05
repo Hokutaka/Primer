@@ -68,11 +68,12 @@ type_spec   := "i8"
              | "f32"
              | "f64"
              | "bool"
+             | "string"
              | fixed_array_type
              | IDENT
              | "infer"
 
-type_ref    := "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "f32" | "f64" | "bool" | fixed_array_type | IDENT
+type_ref    := "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "f32" | "f64" | "bool" | "string" | fixed_array_type | IDENT
 
 fixed_array_type := "[" type_ref ";" INTEGER "]"
 
@@ -109,6 +110,7 @@ primary     := "true"
              | "false"
              | INTEGER
              | FLOAT
+             | STRING
              | "[" expression ("," expression)* ","? "]"
              | IDENT
              | IDENT "(" arguments? ")"
@@ -132,6 +134,41 @@ value: infer = count * 2;
 ```
 
 `infer` explicitly requests type inference. It is not itself a runtime type.
+
+## Strings
+
+`string` is a UTF-8 string, written in double quotes. Empty strings (`""`) and Japanese text are supported.
+
+```primer
+mut text: string = "こんにちは";
+saved: infer = text;
+text = "こんばんは";
+print(saved);                  // こんにちは
+print(text);                   // こんばんは
+print(saved == "\u{3053}んにちは"); // true
+```
+
+String contents cannot be changed in place. `mut` permits assigning a different string to that name; previously saved values remain unchanged. Strings can be function parameters and results, struct fields and defaults, and fixed-array elements. Elements of a `mut` string array can be replaced with other strings.
+
+Supported escapes inside strings are:
+
+| Spelling | Value |
+| --- | --- |
+| `\"` | Double quote |
+| `\\` | Backslash |
+| `\n` / `\r` / `\t` | Line feed (LF) / carriage return (CR) / tab |
+| `\0` | NUL (part of the value, not a string terminator) |
+| `\u{...}` | Unicode scalar value written as 1 to 6 hexadecimal digits |
+
+`\u{...}` accepts `0` through `10FFFF`, excluding the surrogate range `D800` through `DFFF`. Invalid escapes and unclosed quotes are diagnosed at the original source location. Physical LF and CR characters are not allowed between quotes in source; use escapes such as `\n` instead.
+
+`==` and `!=` compare the entire contents. Comparison is case-sensitive and does not normalize Unicode. Visually identical text with different character sequences remains distinct. `"a\0b"` is not treated as `"a"`.
+
+Concatenation, string indexing, length queries, ordering, and numeric conversions are not implemented. Strings do not implicitly convert to or from other types.
+
+`print` writes the contents unchanged and appends LF. In contrast, textual Primer IR and bytecode escape line breaks and control characters. Decoded values are kept distinct from the UTF-8 byte range (Span) of the original quoted spelling.
+
+Supported commands are currently `check`, `emit-ir`, `emit-bytecode`, and `run`. C, LLVM, QBE, WAT, and assembly emission diagnose unsupported strings before lowering, including strings in unused type definitions, functions, and branches.
 
 ## Named product types
 
@@ -378,7 +415,7 @@ Primer IR assigns deterministic IDs to bindings so references remain unambiguous
 
 ## Types
 
-Primer v0.1 has one boolean type, nine numeric types, fixed arrays, and user-defined named product types:
+Primer v0.1 has one boolean type, nine numeric types, a string type, fixed arrays, and user-defined named product types:
 
 ```text
 bool
@@ -391,11 +428,12 @@ u32
 i64
 f32
 f64
+string
 fixed arrays
 named product types
 ```
 
-Backends map these types to their own representations during lowering.
+Backends map supported types to their own representations during lowering. Strings currently support only bytecode and the VM.
 
 For example, the C backend maps them as follows:
 
@@ -436,7 +474,7 @@ enabled: bool = true;
 disabled: bool = !enabled;
 ```
 
-`==` and `!=` compare values of the same type. Numeric types additionally support `<`, `<=`, `>`, and `>=`. A comparison always produces `bool`.
+`==` and `!=` compare numbers, booleans, or strings of the same type. Whole-array and whole-product comparison is not supported. Numeric types additionally support `<`, `<=`, `>`, and `>=`. A comparison always produces `bool`.
 
 ```primer
 same: bool = enabled == true;
@@ -660,11 +698,11 @@ Primer IR retains source/destination types, input, original spelling, and source
 
 C, LLVM, QBE, WAT, and Windows x86-64 retain integer values in 64-bit storage and check narrower integer destinations. Floating-point conversions retain a typed operation in backend IR and generate checks before accepting a changed representation. Same-type conversions need no native instruction; they remain explicit in Primer IR and bytecode. Integer-to-`i64` conversions also need no extra native operation; float-to-`i64` conversions still require checks.
 
-Functions and types cannot be defined with the built-in type names `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, or `f64`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
+Functions and types cannot be defined with the built-in type names `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, `f64`, or `string`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
 
 ## Output
 
-`print(expression);` accepts the current boolean and numeric types. Select a field of a named product or an element of a fixed array before printing it.
+`print(expression);` accepts the current boolean and numeric types, plus `string` in the VM. Select a field of a named product or an element of a fixed array before printing it.
 
 Primer keeps floating-point output precise enough to expose the behavior being observed.
 
