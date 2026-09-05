@@ -65,6 +65,7 @@ pub fn emit(module: &Module) -> String {
     for function in &module.functions {
         emit_function_signature(function, module, &mut output);
         output.push_str(" {\n");
+        emit_integer_scratch(&function.body, &mut output);
         for statement in &function.body {
             emit_statement(statement, 1, module, &mut output);
         }
@@ -72,6 +73,7 @@ pub fn emit(module: &Module) -> String {
     }
 
     output.push_str("int main(void) {\n");
+    emit_integer_scratch(&module.statements, &mut output);
 
     for statement in &module.statements {
         emit_statement(statement, 1, module, &mut output);
@@ -374,6 +376,22 @@ fn emit_print(
 
 fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     match &expr.kind {
+        ExprKind::IntegerBinary {
+            scratch,
+            op,
+            ty,
+            left,
+            right,
+        } => {
+            output.push_str(&format!("(_primer_bit_left_{scratch} = "));
+            emit_expr(left, module, output);
+            output.push_str(&format!(", _primer_bit_right_{scratch} = "));
+            emit_expr(right, module, output);
+            output.push_str(&format!(
+                ", {}(_primer_bit_left_{scratch}, _primer_bit_right_{scratch}))",
+                op.helper(*ty)
+            ));
+        }
         ExprKind::CheckIntegerRange { value, ty } => {
             output.push_str(&format!("primer_check_{}(", ty.name()));
             emit_expr(value, module, output);
@@ -546,6 +564,9 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 
 #[derive(Clone, Default)]
 struct I64Operations {
+    scratch: std::collections::BTreeSet<usize>,
+    integer_binary:
+        std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
     range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
@@ -556,7 +577,8 @@ struct I64Operations {
 
 impl I64Operations {
     fn any(&self) -> bool {
-        !self.range_checks.is_empty()
+        !self.integer_binary.is_empty()
+            || !self.range_checks.is_empty()
             || self.add
             || self.subtract
             || self.multiply
@@ -566,6 +588,18 @@ impl I64Operations {
 
     fn include_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::IntegerBinary {
+                scratch,
+                op,
+                ty,
+                left,
+                right,
+            } => {
+                self.scratch.insert(*scratch);
+                self.integer_binary.insert((*op, *ty));
+                self.include_expr(left);
+                self.include_expr(right);
+            }
             ExprKind::CheckIntegerRange { value, ty } => {
                 self.include_expr(value);
                 if *ty != crate::types::IntegerType::I64 {
@@ -685,6 +719,19 @@ impl I64Operations {
     }
 }
 
+// 一時変数は関数内に置き、短絡評価やループ内で式が実行される位置は変えません。
+fn emit_integer_scratch(statements: &[Statement], output: &mut String) {
+    let mut operations = I64Operations::default();
+    for statement in statements {
+        operations.include_statement(statement);
+    }
+    for scratch in operations.scratch {
+        output.push_str(&format!(
+            "    int64_t _primer_bit_left_{scratch}, _primer_bit_right_{scratch};\n"
+        ));
+    }
+}
+
 fn i64_operations(module: &Module) -> I64Operations {
     let mut operations = I64Operations::default();
     for statement in &module.statements {
@@ -699,6 +746,9 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for &(op, ty) in &operations.integer_binary {
+        super::integer::emit_support(op, ty, output);
+    }
     for ty in &operations.range_checks {
         output.push_str(&format!("static int64_t primer_check_{}(int64_t value) {{\n    if (value < {}LL || value > {}LL) abort();\n    return value;\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }

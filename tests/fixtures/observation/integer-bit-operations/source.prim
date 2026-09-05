@@ -1,0 +1,11 @@
+fn mark(value: u8) -> u8 { print(value); return value; }
+bits: u8 = 1 << 7;
+print(bits);
+print(bits >> 7);
+print(~0u8);
+print(mark(1) | (mark(2) ^ mark(3)));
+print(bits & 127);
+print(-7 % 3);
+print(-9223372036854775808 % -1);
+print(-3i8 >> 1);
+print(false && (bits << 1) == 0);

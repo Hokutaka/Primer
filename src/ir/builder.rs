@@ -618,6 +618,7 @@ impl From<ast::UnaryOp> for UnaryOp {
         match value {
             ast::UnaryOp::Negate => Self::Negate,
             ast::UnaryOp::Not => Self::Not,
+            ast::UnaryOp::BitNot => Self::BitNot,
         }
     }
 }
@@ -629,6 +630,12 @@ impl From<ast::BinaryOp> for BinaryOp {
             ast::BinaryOp::Subtract => Self::Subtract,
             ast::BinaryOp::Multiply => Self::Multiply,
             ast::BinaryOp::Divide => Self::Divide,
+            ast::BinaryOp::Remainder => Self::Remainder,
+            ast::BinaryOp::BitAnd => Self::BitAnd,
+            ast::BinaryOp::BitOr => Self::BitOr,
+            ast::BinaryOp::BitXor => Self::BitXor,
+            ast::BinaryOp::ShiftLeft => Self::ShiftLeft,
+            ast::BinaryOp::ShiftRight => Self::ShiftRight,
             ast::BinaryOp::Equal => Self::Equal,
             ast::BinaryOp::NotEqual => Self::NotEqual,
             ast::BinaryOp::Less => Self::Less,

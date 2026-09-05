@@ -1256,6 +1256,16 @@ fn type_of_expr_expected(
                 Ok(ty)
             }
 
+            crate::ast::UnaryOp::BitNot => {
+                let ty = type_of_expr_expected(value, bindings, expected, model)?;
+                if !matches!(ty, Type::Integer(_)) {
+                    return Err(Diagnostic::new(
+                        format!("cannot apply `~` to {}", model.type_name(ty)),
+                        expr.span,
+                    ));
+                }
+                Ok(ty)
+            }
             crate::ast::UnaryOp::Not => {
                 let ty = type_of_expr_expected(value, bindings, Some(Type::Bool), model)?;
 
@@ -1326,7 +1336,19 @@ fn type_of_expr_expected(
                 ));
             }
 
-            if is_arithmetic(*op) {
+            if is_integer_operation(*op) {
+                if !matches!(left_type, Type::Integer(_)) {
+                    return Err(Diagnostic::new(
+                        format!(
+                            "cannot apply `{}` to {}",
+                            operator_name(*op),
+                            model.type_name(left_type)
+                        ),
+                        expr.span,
+                    ));
+                }
+                Ok(left_type)
+            } else if is_arithmetic(*op) {
                 if !is_numeric(&left_type) {
                     return Err(Diagnostic::new(
                         format!(
@@ -1362,7 +1384,7 @@ fn type_of_expr_expected(
 fn integer_hint(expr: &Expr, bindings: &Bindings, model: &SemanticModel) -> Option<IntegerType> {
     match &expr.kind {
         ExprKind::Integer(literal) => literal.explicit_type(),
-        ExprKind::Binary { op, left, right } if is_arithmetic(*op) => {
+        ExprKind::Binary { op, left, right } if is_arithmetic(*op) || is_integer_operation(*op) => {
             integer_hint(left, bindings, model).or_else(|| integer_hint(right, bindings, model))
         }
         ExprKind::Unary { value, .. } => integer_hint(value, bindings, model),
@@ -1466,9 +1488,11 @@ pub(crate) fn comparison_operand_types(
         return Ok((left_type, right_type));
     }
 
-    let contextual_left = type_of_expr_expected(left, bindings, Some(right_type.clone()), model)?;
-
-    if contextual_left == right_type {
+    // 片方の期待型で失敗しても、反対側の未指定リテラルを合わせられる場合があります。
+    if let Ok(contextual_left) =
+        type_of_expr_expected(left, bindings, Some(right_type.clone()), model)
+        && contextual_left == right_type
+    {
         return Ok((contextual_left, right_type));
     }
 
@@ -1483,6 +1507,12 @@ fn operator_name(op: BinaryOp) -> &'static str {
         BinaryOp::Subtract => "-",
         BinaryOp::Multiply => "*",
         BinaryOp::Divide => "/",
+        BinaryOp::Remainder => "%",
+        BinaryOp::BitAnd => "&",
+        BinaryOp::BitOr => "|",
+        BinaryOp::BitXor => "^",
+        BinaryOp::ShiftLeft => "<<",
+        BinaryOp::ShiftRight => ">>",
         BinaryOp::Equal => "==",
         BinaryOp::NotEqual => "!=",
         BinaryOp::Less => "<",
@@ -1510,8 +1540,20 @@ const fn is_ordering(op: BinaryOp) -> bool {
     )
 }
 
+const fn is_integer_operation(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Remainder
+            | BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::ShiftLeft
+            | BinaryOp::ShiftRight
+    )
+}
+
 const fn is_comparison(op: BinaryOp) -> bool {
-    !is_arithmetic(op)
+    matches!(op, BinaryOp::Equal | BinaryOp::NotEqual) || is_ordering(op)
 }
 
 #[cfg(test)]

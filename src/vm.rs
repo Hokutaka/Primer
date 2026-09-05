@@ -10,11 +10,18 @@ pub enum IntegerOperation {
     Subtract,
     Multiply,
     Negate,
+    ShiftLeft,
 }
 
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
+    /// シフト量は0以上、左辺の型のビット数未満でなければなりません。
+    InvalidShiftCount {
+        ty: IntegerType,
+        count: i64,
+    },
+    RemainderByZero,
     /// 明示変換の入力を変換先の範囲で表せませんでした。
     IntegerConversionOutOfRange {
         from: IntegerType,
@@ -740,6 +747,47 @@ fn execute_frame_inner(
                 at_instruction(negate(ty.clone(), &mut stack), pc)?;
             }
 
+            InstructionKind::BitNot(ty) => {
+                let value = at_instruction(pop_integer(&mut stack, *ty), pc)?;
+                let mask = if ty.is_signed() { -1 } else { ty.maximum() };
+                stack.push(Value::Integer(value ^ mask, *ty));
+            }
+            InstructionKind::Remainder(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::Remainder),
+                    pc,
+                )?;
+            }
+            InstructionKind::BitAnd(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::BitAnd),
+                    pc,
+                )?;
+            }
+            InstructionKind::BitOr(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::BitOr),
+                    pc,
+                )?;
+            }
+            InstructionKind::BitXor(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::BitXor),
+                    pc,
+                )?;
+            }
+            InstructionKind::ShiftLeft(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::ShiftLeft),
+                    pc,
+                )?;
+            }
+            InstructionKind::ShiftRight(ty) => {
+                at_instruction(
+                    integer_binary(*ty, &mut stack, IntegerBinaryOperation::ShiftRight),
+                    pc,
+                )?;
+            }
             InstructionKind::Not => {
                 let value = at_instruction(pop_bool(&mut stack), pc)?;
                 stack.push(Value::Bool(!value));
@@ -788,6 +836,54 @@ fn execute_frame_inner(
     }
 
     Ok(None)
+}
+
+#[derive(Clone, Copy)]
+enum IntegerBinaryOperation {
+    Remainder,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
+}
+
+fn integer_binary(
+    ty: IntegerType,
+    stack: &mut Vec<Value>,
+    op: IntegerBinaryOperation,
+) -> VmResult<()> {
+    let right = pop_integer(stack, ty)?;
+    let left = pop_integer(stack, ty)?;
+    if matches!(
+        op,
+        IntegerBinaryOperation::ShiftLeft | IntegerBinaryOperation::ShiftRight
+    ) && (right < 0 || right >= i64::from(ty.bit_width()))
+    {
+        return Err(VmErrorKind::InvalidShiftCount { ty, count: right });
+    }
+    // 広い型で計算し、最小値 % -1と左シフトをホスト側の桁あふれから守ります。
+    let value = match op {
+        IntegerBinaryOperation::Remainder => {
+            if right == 0 {
+                return Err(VmErrorKind::RemainderByZero);
+            }
+            i128::from(left) % i128::from(right)
+        }
+        IntegerBinaryOperation::BitAnd => i128::from(left & right),
+        IntegerBinaryOperation::BitOr => i128::from(left | right),
+        IntegerBinaryOperation::BitXor => i128::from(left ^ right),
+        IntegerBinaryOperation::ShiftLeft => i128::from(left) << right,
+        IntegerBinaryOperation::ShiftRight => i128::from(left >> right),
+    };
+    if value < i128::from(ty.minimum()) || value > i128::from(ty.maximum()) {
+        return Err(VmErrorKind::IntegerOverflow {
+            operation: IntegerOperation::ShiftLeft,
+            ty: Type::Integer(ty),
+        });
+    }
+    stack.push(Value::Integer(value as i64, ty));
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

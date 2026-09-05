@@ -486,6 +486,15 @@ impl Lowerer<'_> {
                 let (ty, operand) = self.lower_scalar_expr(value);
                 let dest = self.next_temp();
                 match (op, ty) {
+                    (primer_ir::UnaryOp::BitNot, _) => {
+                        self.instructions.push(Instruction::IntegerBinary {
+                            dest,
+                            op: crate::codegen::IntegerBinaryOp::BitXor,
+                            ty: crate::codegen::integer_type(&expr.ty),
+                            left: operand,
+                            right: Operand::Integer(crate::codegen::complement_mask(&expr.ty)),
+                        })
+                    }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         self.instructions.push(Instruction::CheckedI64Negate {
                             dest,
@@ -565,7 +574,15 @@ impl Lowerer<'_> {
                 debug_assert_eq!(left_ty, right_ty);
                 let dest = self.next_temp();
 
-                if let Some(op) = compare_op(*op) {
+                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                    self.instructions.push(Instruction::IntegerBinary {
+                        dest,
+                        op,
+                        ty: crate::codegen::integer_type(&expr.ty),
+                        left,
+                        right,
+                    });
+                } else if let Some(op) = compare_op(*op) {
                     self.instructions.push(Instruction::Compare {
                         dest,
                         op,
@@ -1220,6 +1237,14 @@ impl From<primer_ir::BinaryOp> for BinaryOp {
             primer_ir::BinaryOp::Subtract => Self::Subtract,
             primer_ir::BinaryOp::Multiply => Self::Multiply,
             primer_ir::BinaryOp::Divide => Self::Divide,
+            primer_ir::BinaryOp::Remainder
+            | primer_ir::BinaryOp::BitAnd
+            | primer_ir::BinaryOp::BitOr
+            | primer_ir::BinaryOp::BitXor
+            | primer_ir::BinaryOp::ShiftLeft
+            | primer_ir::BinaryOp::ShiftRight => {
+                unreachable!("integer operation uses separate lowering")
+            }
             primer_ir::BinaryOp::Equal
             | primer_ir::BinaryOp::NotEqual
             | primer_ir::BinaryOp::Less
@@ -1237,7 +1262,13 @@ const fn compare_op(op: primer_ir::BinaryOp) -> Option<CompareOp> {
         primer_ir::BinaryOp::Add
         | primer_ir::BinaryOp::Subtract
         | primer_ir::BinaryOp::Multiply
-        | primer_ir::BinaryOp::Divide => None,
+        | primer_ir::BinaryOp::Divide
+        | primer_ir::BinaryOp::Remainder
+        | primer_ir::BinaryOp::BitAnd
+        | primer_ir::BinaryOp::BitOr
+        | primer_ir::BinaryOp::BitXor
+        | primer_ir::BinaryOp::ShiftLeft
+        | primer_ir::BinaryOp::ShiftRight => None,
         primer_ir::BinaryOp::Equal => Some(CompareOp::Equal),
         primer_ir::BinaryOp::NotEqual => Some(CompareOp::NotEqual),
         primer_ir::BinaryOp::Less => Some(CompareOp::Less),

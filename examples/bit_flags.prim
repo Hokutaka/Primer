@@ -1,0 +1,17 @@
+// 1、2、4を別々のスイッチとして使います。
+read: u8 = 1;
+write: u8 = 2;
+execute: u8 = 4;
+
+mut permissions: u8 = read | write;
+print(permissions);                // 3: 読み取りと書き込みが有効。
+print((permissions & write) != 0); // true: 書き込みができるか調べます。
+
+permissions = permissions & ~write;
+print(permissions);                // 1: 書き込みだけを無効にしました。
+permissions = permissions ^ execute;
+print(permissions);                // 5: 実行のスイッチを反転しました。
+print(permissions >> 1);            // 2: 右へ1ビット動かします。
+print(~0u8);                       // 255: u8の8ビットをすべて有効にします。
+
+// print(128u8 << 1); // 256はu8に収まらないので、黙って0にせず失敗します。

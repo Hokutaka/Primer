@@ -531,6 +531,15 @@ impl Lowerer {
                 let dest = self.next_temp();
 
                 match (*op, &value.ty) {
+                    (primer_ir::UnaryOp::BitNot, _) => {
+                        self.instructions.push(Instruction::IntegerBinary {
+                            dest,
+                            op: crate::codegen::IntegerBinaryOp::BitXor,
+                            ty: crate::codegen::integer_type(&expr.ty),
+                            left: value.operand,
+                            right: Operand::Integer(crate::codegen::complement_mask(&expr.ty)),
+                        });
+                    }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         self.instructions.push(Instruction::Binary {
                             dest,
@@ -632,7 +641,15 @@ impl Lowerer {
                 let right = self.lower_expr(right);
                 let dest = self.next_temp();
 
-                if let Some(op) = compare_op(*op) {
+                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                    self.instructions.push(Instruction::IntegerBinary {
+                        dest,
+                        op,
+                        ty: crate::codegen::integer_type(&expr.ty),
+                        left: left.operand,
+                        right: right.operand,
+                    });
+                } else if let Some(op) = compare_op(*op) {
                     self.instructions.push(Instruction::Compare {
                         dest,
                         op,
@@ -913,6 +930,15 @@ impl From<primer_ir::Type> for Type {
 
 fn binary_op(op: primer_ir::BinaryOp, ty: &Type) -> BinaryOp {
     match (op, ty) {
+        (
+            primer_ir::BinaryOp::Remainder
+            | primer_ir::BinaryOp::BitAnd
+            | primer_ir::BinaryOp::BitOr
+            | primer_ir::BinaryOp::BitXor
+            | primer_ir::BinaryOp::ShiftLeft
+            | primer_ir::BinaryOp::ShiftRight,
+            _,
+        ) => unreachable!("integer operation uses separate lowering"),
         (primer_ir::BinaryOp::Add, Type::I64) => BinaryOp::CheckedI64Add,
         (primer_ir::BinaryOp::Subtract, Type::I64) => BinaryOp::CheckedI64Sub,
         (primer_ir::BinaryOp::Multiply, Type::I64) => BinaryOp::CheckedI64Mul,
@@ -957,7 +983,13 @@ const fn compare_op(op: primer_ir::BinaryOp) -> Option<CompareOp> {
         primer_ir::BinaryOp::Add
         | primer_ir::BinaryOp::Subtract
         | primer_ir::BinaryOp::Multiply
-        | primer_ir::BinaryOp::Divide => None,
+        | primer_ir::BinaryOp::Divide
+        | primer_ir::BinaryOp::Remainder
+        | primer_ir::BinaryOp::BitAnd
+        | primer_ir::BinaryOp::BitOr
+        | primer_ir::BinaryOp::BitXor
+        | primer_ir::BinaryOp::ShiftLeft
+        | primer_ir::BinaryOp::ShiftRight => None,
         primer_ir::BinaryOp::Equal => Some(CompareOp::Equal),
         primer_ir::BinaryOp::NotEqual => Some(CompareOp::NotEqual),
         primer_ir::BinaryOp::Less => Some(CompareOp::Less),

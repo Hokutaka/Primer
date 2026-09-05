@@ -95,6 +95,13 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    IntegerBinary {
+        op: crate::codegen::IntegerBinaryOp,
+        ty: crate::types::IntegerType,
+        dest: Temp,
+        left: Operand,
+        right: Operand,
+    },
     CheckIntegerRange {
         dest: Temp,
         value: Operand,

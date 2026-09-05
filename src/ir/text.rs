@@ -390,6 +390,7 @@ fn unary_name(op: UnaryOp) -> &'static str {
     match op {
         UnaryOp::Negate => "neg",
         UnaryOp::Not => "not",
+        UnaryOp::BitNot => "bit_not",
     }
 }
 
@@ -399,6 +400,12 @@ fn binary_name(op: BinaryOp) -> &'static str {
         BinaryOp::Subtract => "sub",
         BinaryOp::Multiply => "mul",
         BinaryOp::Divide => "div",
+        BinaryOp::Remainder => "rem",
+        BinaryOp::BitAnd => "bit_and",
+        BinaryOp::BitOr => "bit_or",
+        BinaryOp::BitXor => "bit_xor",
+        BinaryOp::ShiftLeft => "shl.checked",
+        BinaryOp::ShiftRight => "shr",
         BinaryOp::Equal => "eq",
         BinaryOp::NotEqual => "ne",
         BinaryOp::Less => "lt",

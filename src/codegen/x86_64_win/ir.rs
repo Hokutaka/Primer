@@ -61,6 +61,14 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    BitNot {
+        mask: i64,
+    },
+    IntegerBinary {
+        op: crate::codegen::IntegerBinaryOp,
+        ty: crate::types::IntegerType,
+        label: usize,
+    },
     CheckIntegerRange {
         ty: crate::types::IntegerType,
         label: usize,

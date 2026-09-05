@@ -268,11 +268,35 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
 
         primer_ir::ExprKind::Variable { name, .. } => ExprKind::Variable(name.clone()),
 
+        primer_ir::ExprKind::Unary {
+            op: primer_ir::UnaryOp::BitNot,
+            value,
+        } => ExprKind::IntegerBinary {
+            scratch: expr.id.0,
+            op: crate::codegen::IntegerBinaryOp::BitXor,
+            ty: crate::codegen::integer_type(&expr.ty),
+            left: Box::new(lower_expr(value)),
+            right: Box::new(Expr {
+                ty: Type::I64,
+                kind: ExprKind::Integer(crate::codegen::complement_mask(&expr.ty)),
+            }),
+        },
         primer_ir::ExprKind::Unary { op, value } => ExprKind::Unary {
             op: lower_unary_op(*op, &expr.ty),
             value: Box::new(lower_expr(value)),
         },
 
+        primer_ir::ExprKind::Binary { op, left, right }
+            if crate::codegen::integer_binary_op(*op).is_some() =>
+        {
+            ExprKind::IntegerBinary {
+                scratch: expr.id.0,
+                op: crate::codegen::integer_binary_op(*op).unwrap(),
+                ty: crate::codegen::integer_type(&expr.ty),
+                left: Box::new(lower_expr(left)),
+                right: Box::new(lower_expr(right)),
+            }
+        }
         primer_ir::ExprKind::Binary { op, left, right } => ExprKind::Binary {
             op: lower_binary_op(*op, &left.ty),
             left: Box::new(lower_expr(left)),
@@ -478,6 +502,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
 
 fn lower_unary_op(op: primer_ir::UnaryOp, ty: &primer_ir::Type) -> UnaryOp {
     match (op, ty) {
+        (primer_ir::UnaryOp::BitNot, _) => unreachable!("bit complement uses integer lowering"),
         (primer_ir::UnaryOp::Negate, primer_ir::Type::Integer(_)) => UnaryOp::CheckedI64Negate,
         (primer_ir::UnaryOp::Negate, _) => UnaryOp::Negate,
         (primer_ir::UnaryOp::Not, _) => UnaryOp::Not,
@@ -486,6 +511,15 @@ fn lower_unary_op(op: primer_ir::UnaryOp, ty: &primer_ir::Type) -> UnaryOp {
 
 fn lower_binary_op(op: primer_ir::BinaryOp, operand_ty: &primer_ir::Type) -> BinaryOp {
     match (op, operand_ty) {
+        (
+            primer_ir::BinaryOp::Remainder
+            | primer_ir::BinaryOp::BitAnd
+            | primer_ir::BinaryOp::BitOr
+            | primer_ir::BinaryOp::BitXor
+            | primer_ir::BinaryOp::ShiftLeft
+            | primer_ir::BinaryOp::ShiftRight,
+            _,
+        ) => unreachable!("integer operation uses separate lowering"),
         (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(_)) => BinaryOp::CheckedI64Add,
         (primer_ir::BinaryOp::Subtract, primer_ir::Type::Integer(_)) => {
             BinaryOp::CheckedI64Subtract

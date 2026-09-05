@@ -1,0 +1,64 @@
+; Primer bytecode v0.1
+
+.function 0 mark(0:value:u8) -> u8
+.slot 0 value u8
+0000  load 0        ; value
+0001  print.u8
+0002  load 0        ; value
+0003  return.value
+.end
+
+.slot 0 bits u8
+
+0000  push.u8 1
+0001  push.u8 7
+0002  shl.checked.u8
+0003  store 0       ; bits
+0004  load 0        ; bits
+0005  print.u8
+0006  load 0        ; bits
+0007  push.u8 7
+0008  shr.u8
+0009  print.u8
+0010  push.u8 0
+0011  bit_not.u8
+0012  print.u8
+0013  push.u8 1
+0014  call 0 1  ; mark
+0015  push.u8 2
+0016  call 0 1  ; mark
+0017  push.u8 3
+0018  call 0 1  ; mark
+0019  bit_xor.u8
+0020  bit_or.u8
+0021  print.u8
+0022  load 0        ; bits
+0023  push.u8 127
+0024  bit_and.u8
+0025  print.u8
+0026  push.i64 7
+0027  neg.i64
+0028  push.i64 3
+0029  rem.i64
+0030  print.i64
+0031  push.i64 -9223372036854775808
+0032  push.i64 1
+0033  neg.i64
+0034  rem.i64
+0035  print.i64
+0036  push.i8 3
+0037  neg.i8
+0038  push.i8 1
+0039  shr.i8
+0040  print.i8
+0041  push.bool false
+0042  jump-if-false 0049
+0043  load 0        ; bits
+0044  push.u8 1
+0045  shl.checked.u8
+0046  push.u8 0
+0047  eq.u8
+0048  jump 0050
+0049  push.bool false
+0050  print.bool
+0051  halt

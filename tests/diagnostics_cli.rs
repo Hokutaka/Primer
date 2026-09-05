@@ -263,6 +263,21 @@ fn run_integer_overflow_matches_expected_diagnostic() {
 }
 
 #[test]
+fn run_remainder_by_zero_matches_expected_diagnostic() {
+    assert_diagnostic("vm-remainder-by-zero", "run", "run.stderr");
+}
+
+#[test]
+fn run_invalid_shift_count_matches_expected_diagnostic() {
+    assert_diagnostic("vm-invalid-shift-count", "run", "run.stderr");
+}
+
+#[test]
+fn run_left_shift_overflow_matches_expected_diagnostic() {
+    assert_diagnostic("vm-left-shift-overflow", "run", "run.stderr");
+}
+
+#[test]
 fn run_array_index_out_of_bounds_matches_expected_diagnostic() {
     assert_diagnostic("vm-array-index-out-of-bounds", "run", "run.stderr");
 }

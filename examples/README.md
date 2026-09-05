@@ -22,6 +22,7 @@
 | [floating_point.prim](floating_point.prim) | `f32`と`f64`の精度の違い、`infer`による型推論 |
 | [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
 | [integer_conversions.prim](integer_conversions.prim) | 同じ意味になる二つの変換表記で`i32`を`i64`へ広げる |
+| [bit_flags.prim](bit_flags.prim) | 8個のビットを独立したスイッチとして使い、設定・解除・反転・判定を行う |
 | [boolean_comparisons.prim](boolean_comparisons.prim) | 真偽値と比較演算 |
 | [short_circuit.prim](short_circuit.prim) | `&&`・`\|\|`で条件を組み合わせ、不要な割り算・配列参照・関数呼び出しを省略する |
 | [conditional.prim](conditional.prim) | `if` / `else`とscope |
@@ -35,6 +36,7 @@
 
 | サンプル | 内容 |
 | --- | --- |
+| [ring_buffer.prim](ring_buffer.prim) | `%`で保存位置を循環させ、直近4件の値と平均を保つ |
 | [product-point.prim](product-point.prim) | 点の座標を構造体にまとめる。フィールドの既定値と読み取り |
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列の要素を読み、合計と線形探索を行う。コピーした配列が独立した値であることも確認する |
 | [product_arrays.prim](product_arrays.prim) | 構造体を配列に並べ、最も近い点を探す。配列のコピーも確認する |
@@ -60,6 +62,7 @@
 | [color_blending.prim](color_blending.prim) | `u8`の色を足す前に`u16`へ広げ、平均を求めて混ぜる |
 | [sensor_calibration.prim](sensor_calibration.prim) | `i16`の測定値を`i8`の補正量で調整し、`i32`へ広げて集計する |
 | [maximum_subarray.prim](maximum_subarray.prim) | `i32`の増減から連続区間の最大合計を求める。`u32`の位置を添字へ変換する |
+| [subset_sum_bits.prim](subset_sum_bits.prim) | シフトとビットORで、選んだ重さから作れる合計を一度に求める |
 | [euclidean_gcd.prim](euclidean_gcd.prim) | ユークリッドの互除法による最大公約数 |
 | [fibonacci.prim](fibonacci.prim) | Fibonacci数列と複数の値の更新順 |
 | [factorial.prim](factorial.prim) | `for`による階乗 |

@@ -234,6 +234,7 @@ pub enum FieldValueOrigin {
 pub enum UnaryOp {
     Negate,
     Not,
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +243,12 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Remainder,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
     Equal,
     NotEqual,
     Less,

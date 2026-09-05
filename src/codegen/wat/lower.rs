@@ -890,6 +890,16 @@ impl LoweringContext<'_> {
             primer_ir::ExprKind::Unary { op, value } => {
                 let ty = scalar_type(&expr.ty);
                 match (*op, ty) {
+                    (primer_ir::UnaryOp::BitNot, Type::I64) => {
+                        self.lower_expr(value, instructions);
+                        instructions.push(Instruction::I64Const(crate::codegen::complement_mask(
+                            &expr.ty,
+                        )));
+                        instructions.push(Instruction::IntegerBinary {
+                            op: crate::codegen::IntegerBinaryOp::BitXor,
+                            ty: crate::codegen::integer_type(&expr.ty),
+                        });
+                    }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         instructions.push(Instruction::I64Const(0));
                         self.lower_expr(value, instructions);
@@ -933,7 +943,14 @@ impl LoweringContext<'_> {
                     unreachable!("semantic analysis rejects aggregate binary operands")
                 };
                 debug_assert_eq!(left_ty, right_ty);
-                instructions.push(lower_binary(*op, left.ty.clone()));
+                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                    instructions.push(Instruction::IntegerBinary {
+                        op,
+                        ty: crate::codegen::integer_type(&expr.ty),
+                    });
+                } else {
+                    instructions.push(lower_binary(*op, left.ty.clone()));
+                }
                 Value::Scalar(scalar_type(&expr.ty))
             }
             primer_ir::ExprKind::Call {

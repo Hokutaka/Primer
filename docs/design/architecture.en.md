@@ -145,6 +145,16 @@ C uses short-circuit logical expressions, and WAT uses a Boolean-producing `if`.
 
 These transformations can be inspected through existing observation boundaries. They do not introduce a new public observation API or runtime history.
 
+### Remainder and bit operations
+
+The AST and Primer IR distinguish remainder, AND, OR, XOR, left/right shifts, and unary complement, retaining the original integer kind. Bytecode preserves typed instructions and the expression's `NodeId` and `Span`. The VM calculates left shifts in a wider integer before checking the original range, with separate errors for invalid shift counts and zero remainder divisors.
+
+Code generation passes an integer-only `IntegerBinaryOp` and the original `IntegerType` into each backend IR's `IntegerBinary`. Unary `~` lowers to XOR with `-1` for signed types or the original type's maximum for unsigned types. Thus `~0u8` remains 255 even with 64-bit storage. Emitters do not reinterpret Primer IR or repeat type inference.
+
+C, LLVM, QBE, and WAT collect required operation/type pairs in an ordered set and emit each helper once. C uses per-expression local temporaries and the comma operator to sequence operands, without moving expressions outside short-circuit branches or loops. Windows x86-64 lowers to register operations and explicit checking branches.
+
+Shift counts are checked against the original width first. Left shift then checks the permitted input bounds before shifting, avoiding lost bits that a result-only check could miss. C uses checked multiplication rather than shifting negative signed values. Signed right shift is also independent of accidental target behavior. Signed minimum `% -1` returns zero without overflowing a division instruction.
+
 ### Target-specific lowering
 
 Each backend lowers Primer IR into a backend-specific Rust representation before emission.
