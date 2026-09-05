@@ -306,9 +306,9 @@ It should consume Primer's public CLI observations rather than duplicate compile
 
 ### Whitebase
 
-Whitebase consumes emitted artifacts as experiment inputs.
+Whitebase currently runs, measures, and compares built-in Rust, C++, and Assembly operations. It does not yet accept Primer source or artifacts and build and run them through external compilers.
 
-Its role is to route, build, run, measure, and compare them while recording the external choices that affect the experiment.
+The intended integration lets Whitebase consume emitted artifacts as experiment inputs, select build routes, build, run, measure, and compare them while recording the external choices that affect the experiment. The following diagram describes that responsibility boundary, not an existing implementation.
 
 ```text
 Primer source
@@ -326,6 +326,10 @@ Whitebase
 ```
 
 Whitebase should treat Primer as an external tool boundary rather than depending on Primer's internal Rust IR.
+
+Primer's regression tests verify that types, diagnostics, artifacts, and execution results follow language rules. Development tests using external compilers to check emitted code can belong to Primer for that purpose. User-facing selection of toolchains and conditions, experiment storage, and comparison belong to the consumer. This does not prescribe a single test storage format or comparison method.
+
+Generation support, build readiness, execution readiness, and permission to execute are separate. See [Artifact consumer boundary](targets.en.md#artifact-consumer-boundary). Clarifying this boundary does not require a new public API or make language features such as strings wait for integration to be completed.
 
 ## Reproducibility
 
