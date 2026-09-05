@@ -7,6 +7,7 @@ use super::ir::{
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     let mut module = Module {
+        uses_strings: crate::codegen::support::first_string_span(program).is_some(),
         temporaries: Vec::new(),
         array_types: collect_array_types(program),
         array_assignment_types: collect_array_assignment_types(program),

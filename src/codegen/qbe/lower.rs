@@ -8,10 +8,11 @@ use super::ir::{
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let mut strings = Vec::new();
     let functions = program
         .function_definitions
         .iter()
-        .map(|function| lower_function(program, function))
+        .map(|function| lower_function(program, function, &mut strings))
         .collect();
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
@@ -25,6 +26,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     );
 
     let mut lowerer = Lowerer {
+        strings: &mut strings,
         program,
         slots,
         instructions: Vec::new(),
@@ -38,6 +40,8 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     lowerer.lower_statements(&program.statements);
 
     Module {
+        target: None,
+        uses_strings: crate::codegen::support::first_string_span(program).is_some(),
         functions,
         explicit_main: program
             .function_definitions
@@ -46,12 +50,14 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .map(|function| function.id.0),
         slots: lowerer.slots,
         instructions: lowerer.instructions,
+        strings,
     }
 }
 
 fn lower_function(
     program: &primer_ir::Program,
     function: &primer_ir::FunctionDefinition,
+    strings: &mut Vec<String>,
 ) -> Function {
     let mut slots = Vec::new();
     let mut slot_map = HashMap::new();
@@ -70,10 +76,8 @@ fn lower_function(
             Parameter {
                 name: parameter.name.clone(),
                 passing: match &parameter.ty {
-                    primer_ir::Type::String => {
-                        unreachable!("strings are rejected before backend lowering")
-                    }
-                    primer_ir::Type::Bool
+                    primer_ir::Type::String
+                    | primer_ir::Type::Bool
                     | primer_ir::Type::Integer(_)
                     | primer_ir::Type::F32
                     | primer_ir::Type::F64 => ParameterPassing::Scalar(scalar_type(&parameter.ty)),
@@ -96,6 +100,7 @@ fn lower_function(
     );
 
     let mut lowerer = Lowerer {
+        strings,
         program,
         slots,
         instructions: Vec::new(),
@@ -117,12 +122,10 @@ fn lower_function(
         name: function.name.clone(),
         parameters,
         return_type: match &function.return_type {
-            primer_ir::ReturnType::Value(primer_ir::Type::String) => {
-                unreachable!("strings are rejected before backend lowering")
-            }
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
-                ty @ (primer_ir::Type::Bool
+                ty @ (primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
@@ -132,15 +135,13 @@ fn lower_function(
             ) => None,
         },
         aggregate_return_size: match &function.return_type {
-            primer_ir::ReturnType::Value(primer_ir::Type::String) => {
-                unreachable!("strings are rejected before backend lowering")
-            }
             primer_ir::ReturnType::Value(
                 ty @ (primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }),
             ) => Some(type_size(program, ty)),
             primer_ir::ReturnType::Void
             | primer_ir::ReturnType::Value(
-                primer_ir::Type::Bool
+                primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64,
@@ -152,6 +153,7 @@ fn lower_function(
 }
 
 struct Lowerer<'a> {
+    strings: &'a mut Vec<String>,
     program: &'a primer_ir::Program,
     slots: Vec<Slot>,
     instructions: Vec<Instruction>,
@@ -450,8 +452,13 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::String(_) => {
-                unreachable!("strings are rejected before backend lowering")
+            primer_ir::ExprKind::String(value) => {
+                let id = self.strings.len();
+                self.strings.push(value.clone());
+                Value::Scalar {
+                    ty: Type::String,
+                    operand: Operand::String(id),
+                }
             }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
@@ -971,13 +978,13 @@ impl Lowerer<'_> {
     ) -> Option<Value> {
         let mut lowered_arguments = Vec::new();
         let aggregate_result = result_type.and_then(|ty| match ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 let slot = self.allocate_aggregate(type_size(self.program, ty));
                 lowered_arguments.push((Type::Pointer, Operand::Slot(slot)));
                 Some((ty, slot))
             }
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
@@ -993,11 +1000,9 @@ impl Lowerer<'_> {
         }
 
         let (dest, return_type, scalar_result) = match result_type {
-            Some(primer_ir::Type::String) => {
-                unreachable!("strings are rejected before backend lowering")
-            }
             Some(
-                ty @ (primer_ir::Type::Bool
+                ty @ (primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
@@ -1026,7 +1031,6 @@ impl Lowerer<'_> {
         }
 
         aggregate_result.map(|(ty, slot)| match ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(id) => Value::Aggregate {
                 type_id: id.0,
                 address: Operand::Slot(slot),
@@ -1036,7 +1040,8 @@ impl Lowerer<'_> {
                 length: *length,
                 address: Operand::Slot(slot),
             },
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
@@ -1052,6 +1057,9 @@ impl Lowerer<'_> {
 
     fn lower_print(&mut self, ty: Type, operand: Operand) {
         match ty {
+            Type::String => self
+                .instructions
+                .push(Instruction::PrintString { value: operand }),
             Type::Bool => {
                 let offset = self.next_temp();
                 let scaled_offset = self.next_temp();
@@ -1212,8 +1220,8 @@ fn collect_slots(
 
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-        primer_ir::Type::Bool
+        primer_ir::Type::String
+        | primer_ir::Type::Bool
         | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 8,
@@ -1235,7 +1243,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => Type::String,
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::Single,
@@ -1248,7 +1256,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => ArrayElement::Scalar(Type::String),
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
         primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::Single),

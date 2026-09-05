@@ -168,7 +168,7 @@ Concatenation, string indexing, length queries, ordering, and numeric conversion
 
 `print` writes the contents unchanged and appends LF. In contrast, textual Primer IR and bytecode escape line breaks and control characters. Decoded values are kept distinct from the UTF-8 byte range (Span) of the original quoted spelling.
 
-Supported commands are `check`, `emit-ir`, `emit-c`, `emit-bytecode`, `run`, and `emit-llvm` with an explicit `--target`. Omitting [LLVM target selection](cli.en.md#llvm-target-selection), or emitting QBE, WAT, or assembly, produces a diagnostic before lowering, including strings in unused type definitions, functions, and branches.
+Strings are supported by every output route. LLVM and QBE require [CLI target selection](cli.en.md#llvm-target-selection); omitting it produces a source-located diagnostic before lowering, including strings in unused types, functions, and branches. Direct assembly is fixed to Windows x64; WAT uses the WebAssembly output host contract.
 
 C emission uses read-only data retained until process exit, paired with a byte count. Generated programs using strings set standard output to binary mode on Windows, preventing automatic LF or CR translation. See [String design](../design/strings.en.md) for representation and lifetime details.
 

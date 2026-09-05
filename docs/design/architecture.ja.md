@@ -107,6 +107,7 @@ u32
 i64
 f32
 f64
+string
 名前付きproduct type
 固定長配列
 ```
@@ -237,8 +238,8 @@ primer emit-ir <file> [-o <output.pir>]
 
 ```text
 primer emit-c <file> [-o <output.c>]
-primer emit-llvm <file> [-o <output.ll>]
-primer emit-qbe <file> [-o <output.ssa>]
+primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
+primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]

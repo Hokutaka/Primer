@@ -1,5 +1,7 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
+    /// 不変な長さ付き静的バイト列への参照です。
+    String,
     Bool,
     I64,
     F32,
@@ -26,6 +28,8 @@ pub enum CompareOp {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub uses_strings: bool,
+    pub strings: Vec<String>,
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
     pub frame_size: usize,
@@ -61,6 +65,12 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    LoadStringConstant(usize),
+    CompareString {
+        left_offset: isize,
+        equal: bool,
+    },
+    PrintString,
     ConvertNumeric {
         conversion: crate::codegen::NumericConversion,
         label: usize,

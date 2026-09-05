@@ -5,10 +5,16 @@ use crate::ir as primer_ir;
 use super::ir::{Function, Instruction, Local, LoopKind, Module, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    let mut strings = Vec::new();
     let mut next_address = 0;
     let mut functions = Vec::new();
     for function in &program.function_definitions {
-        functions.push(lower_function(program, function, &mut next_address));
+        functions.push(lower_function(
+            program,
+            function,
+            &mut next_address,
+            &mut strings,
+        ));
     }
 
     let mut locals = Vec::new();
@@ -24,6 +30,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     );
 
     let mut context = LoweringContext {
+        strings: &mut strings,
         program,
         locations,
         next_address,
@@ -37,6 +44,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
     context.lower_statements(&program.statements, &mut instructions);
 
     Module {
+        uses_strings: crate::codegen::support::first_string_span(program).is_some(),
         memory_pages: if context.next_address == 0 {
             0
         } else {
@@ -50,6 +58,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             .map(|function| function.id.0),
         locals,
         instructions,
+        strings,
     }
 }
 
@@ -57,21 +66,20 @@ fn lower_function(
     program: &primer_ir::Program,
     function: &primer_ir::FunctionDefinition,
     next_address: &mut usize,
+    strings: &mut Vec<(usize, String)>,
 ) -> Function {
     let mut locals = Vec::new();
     let mut locations = HashMap::new();
     let mut name_counts = HashMap::new();
     let mut parameters = Vec::new();
     let aggregate_return_type = match &function.return_type {
-        primer_ir::ReturnType::Value(primer_ir::Type::String) => {
-            unreachable!("strings are rejected before backend lowering")
-        }
         primer_ir::ReturnType::Value(
             ty @ (primer_ir::Type::Named(_) | primer_ir::Type::Array { .. }),
         ) => Some(ty),
         primer_ir::ReturnType::Void
         | primer_ir::ReturnType::Value(
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64,
@@ -90,8 +98,8 @@ fn lower_function(
     for parameter in &function.parameters {
         name_counts.insert(parameter.name.clone(), 1);
         match &parameter.ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
@@ -160,6 +168,7 @@ fn lower_function(
     );
 
     let mut context = LoweringContext {
+        strings,
         program,
         locations,
         next_address: *next_address,
@@ -199,12 +208,10 @@ fn lower_function(
         name: function.name.clone(),
         parameters,
         return_type: match &function.return_type {
-            primer_ir::ReturnType::Value(primer_ir::Type::String) => {
-                unreachable!("strings are rejected before backend lowering")
-            }
             primer_ir::ReturnType::Void => None,
             primer_ir::ReturnType::Value(
-                ty @ (primer_ir::Type::Bool
+                ty @ (primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64),
@@ -265,6 +272,7 @@ enum Address {
 }
 
 struct LoweringContext<'a> {
+    strings: &'a mut Vec<(usize, String)>,
     program: &'a primer_ir::Program,
     locations: HashMap<primer_ir::BindingId, Location>,
     next_address: usize,
@@ -522,8 +530,8 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) {
         match ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
@@ -619,8 +627,11 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) -> Value {
         match &expr.kind {
-            primer_ir::ExprKind::String(_) => {
-                unreachable!("strings are rejected before backend lowering")
+            primer_ir::ExprKind::String(value) => {
+                let address = self.allocate(8 + value.len());
+                self.strings.push((address, value.clone()));
+                instructions.push(Instruction::I32Const(address as i32));
+                Value::Scalar(Type::String)
             }
             primer_ir::ExprKind::ConvertNumeric {
                 value, from, to, ..
@@ -652,7 +663,7 @@ impl LoweringContext<'_> {
                 match ty {
                     Type::F32 => instructions.push(Instruction::F32Const(text.clone())),
                     Type::F64 => instructions.push(Instruction::F64Const(text.clone())),
-                    Type::Bool | Type::I64 | Type::Pointer => {
+                    Type::String | Type::Bool | Type::I64 | Type::Pointer => {
                         unreachable!("a float literal has a float type")
                     }
                 }
@@ -996,13 +1007,13 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) -> Option<Value> {
         let aggregate_result = result_type.and_then(|ty| match ty {
-            primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 let address = self.allocate(type_size(self.program, ty));
                 instructions.push(Instruction::I32Const(address as i32));
                 Some((ty, address))
             }
-            primer_ir::Type::Bool
+            primer_ir::Type::String
+            | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
@@ -1020,9 +1031,6 @@ impl LoweringContext<'_> {
 
         if let Some((ty, address)) = aggregate_result {
             return Some(match ty {
-                primer_ir::Type::String => {
-                    unreachable!("strings are rejected before backend lowering")
-                }
                 primer_ir::Type::Named(type_id) => Value::Aggregate {
                     type_id: type_id.0,
                     address: Address::Static(address),
@@ -1032,7 +1040,8 @@ impl LoweringContext<'_> {
                     length: *length,
                     address: Address::Static(address),
                 },
-                primer_ir::Type::Bool
+                primer_ir::Type::String
+                | primer_ir::Type::Bool
                 | primer_ir::Type::Integer(_)
                 | primer_ir::Type::F32
                 | primer_ir::Type::F64 => unreachable!("aggregate result type is checked above"),
@@ -1303,8 +1312,8 @@ fn collect_locations(
 
 fn type_size(program: &primer_ir::Program, ty: &primer_ir::Type) -> usize {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
-        primer_ir::Type::Bool
+        primer_ir::Type::String
+        | primer_ir::Type::Bool
         | primer_ir::Type::Integer(_)
         | primer_ir::Type::F32
         | primer_ir::Type::F64 => 8,
@@ -1326,7 +1335,7 @@ fn field_offset(program: &primer_ir::Program, type_id: usize, field_id: usize) -
 
 fn scalar_type(ty: &primer_ir::Type) -> Type {
     match ty {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => Type::String,
         primer_ir::Type::Bool => Type::Bool,
         primer_ir::Type::Integer(_) => Type::I64,
         primer_ir::Type::F32 => Type::F32,
@@ -1339,7 +1348,7 @@ fn scalar_type(ty: &primer_ir::Type) -> Type {
 
 fn array_element_type(element: &primer_ir::Type) -> ArrayElement {
     match element {
-        primer_ir::Type::String => unreachable!("strings are rejected before backend lowering"),
+        primer_ir::Type::String => ArrayElement::Scalar(Type::String),
         primer_ir::Type::Bool => ArrayElement::Scalar(Type::Bool),
         primer_ir::Type::Integer(_) => ArrayElement::Scalar(Type::I64),
         primer_ir::Type::F32 => ArrayElement::Scalar(Type::F32),
@@ -1364,7 +1373,7 @@ fn array_element_size(program: &primer_ir::Program, element: &ArrayElement) -> u
 
 fn load_instruction(ty: Type, offset: u32) -> Instruction {
     match ty {
-        Type::Bool => Instruction::I32Load { offset },
+        Type::String | Type::Bool => Instruction::I32Load { offset },
         Type::I64 => Instruction::I64Load { offset },
         Type::F32 => Instruction::F32Load { offset },
         Type::F64 => Instruction::F64Load { offset },
@@ -1374,7 +1383,7 @@ fn load_instruction(ty: Type, offset: u32) -> Instruction {
 
 fn store_instruction(ty: Type, offset: u32) -> Instruction {
     match ty {
-        Type::Bool => Instruction::I32Store { offset },
+        Type::String | Type::Bool => Instruction::I32Store { offset },
         Type::I64 => Instruction::I64Store { offset },
         Type::F32 => Instruction::F32Store { offset },
         Type::F64 => Instruction::F64Store { offset },
@@ -1384,6 +1393,8 @@ fn store_instruction(ty: Type, offset: u32) -> Instruction {
 
 fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
     match (op, ty) {
+        (primer_ir::BinaryOp::Equal, primer_ir::Type::String) => Instruction::StringEqual,
+        (primer_ir::BinaryOp::NotEqual, primer_ir::Type::String) => Instruction::StringNotEqual,
         (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Add,
         (primer_ir::BinaryOp::Subtract, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Sub,
         (primer_ir::BinaryOp::Multiply, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Mul,

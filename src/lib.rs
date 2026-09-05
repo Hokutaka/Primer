@@ -104,6 +104,15 @@ pub fn compile_to_qbe(source: &str) -> Result<String, Diagnostic> {
     codegen::emit_qbe(&program)
 }
 
+/// QBEの実行環境を明示します。文字列ではLinux x86-64の指定が必要です。
+pub fn compile_to_qbe_with_target(
+    source: &str,
+    target: Option<codegen::qbe::Target>,
+) -> Result<String, Diagnostic> {
+    let program = compile_to_ir(source)?;
+    codegen::qbe::emit_qbe_with_target(&program, target)
+}
+
 // Windows x86-64 Direct Assembly コンパイラ
 pub fn compile_to_x86_64_win_asm(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;

@@ -45,7 +45,7 @@
 | --- | --- | --- |
 | C | Primerでは指定しない | Cソース `.c` |
 | LLVM IR | 未指定、または明示的なWindows x64 / Linux x86-64（文字列では必須） | LLVM IR `.ll` |
-| QBE IR | Primerでは指定しない | QBE IR `.ssa` |
+| QBE IR | 未指定、または明示的なLinux x86-64（文字列では必須） | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
 | ネイティブアセンブリ | x86-64、Windows、Windows x64 ABI | GNU形式のアセンブリ `.s` |
 | Primer bytecode | Primer VM | Primer bytecode `.pbc` |
@@ -54,11 +54,13 @@
 
 ## 生成物を利用する側との境界
 
-出力経路が存在することと、その経路がすべての言語機能に対応することは別です。現在、文字列の生成先はC、明示的なターゲット付きLLVM、Primer bytecodeです。他の経路は、未使用の定義も含めて文字列をlowering前に診断します。意味検証の成功を、各経路の生成成功と混同しません。
+出力経路が存在することと、その経路がすべての言語機能に対応することは別です。文字列は現在すべての経路で生成できます。LLVMとQBEでターゲット指定がない場合は、未使用の定義も含めてlowering前に診断します。意味検証の成功を、各経路の生成成功と混同しません。
 
 LLVMの`--target`は`x86_64-unknown-linux-gnu`または`x86_64-pc-windows-msvc`を選び、成果物に`target triple`を残します。文字列がある場合、Windowsの標準出力をバイナリモードにする判断に使います。未指定で文字列を使う場合はソース位置付きで診断し、ホストから補いません。表現と初期化の詳細は[文字列の設計](strings.ja.md#llvmでの表現とターゲット)を参照してください。
 
 生成物の比較では、次の問いを分けます。ここでいう対応状況は情報であり、外部プログラムを起動する許可ではありません。
+
+QBEの文字列対応は明示的な`x86_64-unknown-linux-gnu`と下流の`amd64_sysv`を組み合わせます。直接アセンブリはWindows x64固定、WATはWebAssembly固定で、WATの文字列出力はバイト値を受け取るホスト関数との契約です。経路ごとの格納・出力の違いは[文字列の設計](strings.ja.md)に残します。
 
 | 問い | 確認する内容 | 担当 |
 | --- | --- | --- |

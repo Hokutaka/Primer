@@ -76,7 +76,13 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let (output, target) = parse_llvm_options(&rest)?;
+            let (output, target) = parse_native_options(&rest, "emit-llvm", "ll")?;
+            let target = match target.as_deref() {
+                None => None,
+                Some(value) => Some(primer_lang::codegen::llvm::Target::parse(value).ok_or_else(|| {
+                    format!("unsupported LLVM target `{value}`; expected x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc")
+                })?),
+            };
 
             let source = read_source(&input)?;
 
@@ -109,11 +115,24 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let output = parse_output_option(&rest, "primer emit-qbe <file> [-o <output.ssa>]")?;
+            let (output, target) = parse_native_options(&rest, "emit-qbe", "ssa")?;
+            let target = match target.as_deref() {
+                None => None,
+                Some(value) => Some(primer_lang::codegen::qbe::Target::parse(value).ok_or_else(
+                    || {
+                        format!(
+                            "unsupported QBE target `{value}`; expected x86_64-unknown-linux-gnu"
+                        )
+                    },
+                )?),
+            };
 
             let source = read_source(&input)?;
 
-            let qbe = render_compilation_result(primer_lang::compile_to_qbe(&source), &source)?;
+            let qbe = render_compilation_result(
+                primer_lang::compile_to_qbe_with_target(&source, target),
+                &source,
+            )?;
 
             write_or_print(output, qbe)
         }
@@ -226,9 +245,11 @@ fn parse_output_option(args: &[String], usage: &str) -> Result<Option<PathBuf>, 
     }
 }
 
-fn parse_llvm_options(
+fn parse_native_options(
     args: &[String],
-) -> Result<(Option<PathBuf>, Option<primer_lang::codegen::llvm::Target>), String> {
+    route: &str,
+    extension: &str,
+) -> Result<(Option<PathBuf>, Option<String>), String> {
     let mut output = None;
     let mut target = None;
     let mut args = args.iter();
@@ -238,14 +259,12 @@ fn parse_llvm_options(
                 output = Some(PathBuf::from(path));
             }
             ("--target", Some(value)) if target.is_none() => {
-                target = Some(primer_lang::codegen::llvm::Target::parse(value).ok_or_else(|| {
-                    format!("unsupported LLVM target `{value}`; expected x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc")
-                })?);
+                target = Some(value.clone());
             }
             _ => {
-                return Err(
-                    "usage: primer emit-llvm <file> [--target <triple>] [-o <output.ll>]".into(),
-                );
+                return Err(format!(
+                    "usage: primer {route} <file> [--target <triple>] [-o <output.{extension}>]"
+                ));
             }
         }
     }
@@ -274,7 +293,7 @@ fn print_help() {
            primer emit-c <file> [-o <output.c>]\n\
            primer emit-llvm <file> [--target <triple>] [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
-           primer emit-qbe <file> [-o <output.ssa>]\n\
+           primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]\n\
            primer emit-asm <file> [-o <output.s>]\n\
            primer emit-bytecode <file> [-o <output.pbc>]\n\
            primer run <file>\n\

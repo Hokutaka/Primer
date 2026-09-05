@@ -170,14 +170,13 @@ fn ir_and_bytecode_preserve_types_values_spans_and_node_origins() {
 }
 
 type Emitter = fn(&ir::Program) -> Result<String, Diagnostic>;
-const UNSUPPORTED: &[(&str, Emitter)] = &[
+const TARGET_REQUIRED: &[(&str, Emitter)] = &[
+    ("emit-llvm", codegen::emit_llvm),
     ("emit-qbe", codegen::emit_qbe),
-    ("emit-wat", codegen::emit_wat),
-    ("emit-asm", codegen::emit_x86_64_win_asm),
 ];
 
 #[test]
-fn every_unimplemented_backend_reports_strings_before_lowering() {
+fn strings_require_explicit_targets_where_runtime_selection_is_needed() {
     for source in [
         r#"print("text");"#,
         r#"print("left" == "right");"#,
@@ -201,15 +200,19 @@ fn every_unimplemented_backend_reports_strings_before_lowering() {
         r#"values: [bool; 1] = ["a" == "b"];"#,
     ] {
         let program = compile_to_ir(source).expect(source);
-        for &(route, emit) in UNSUPPORTED {
+        for &(route, emit) in TARGET_REQUIRED {
             let error = emit(&program).expect_err(route);
-            assert_eq!(
-                error.message(),
-                format!("string values are not supported by `{route}` yet")
-            );
+            assert!(error.message().contains("explicit --target"));
             let span = error.primary_span().unwrap();
             assert!(span.start() < span.end() && span.end() <= source.len());
         }
+        codegen::emit_wat(&program).unwrap();
+        codegen::emit_x86_64_win_asm(&program).unwrap();
+        codegen::qbe::emit_qbe_with_target(
+            &program,
+            Some(codegen::qbe::Target::X86_64UnknownLinuxGnu),
+        )
+        .unwrap();
     }
 }
 
@@ -217,7 +220,9 @@ fn every_unimplemented_backend_reports_strings_before_lowering() {
 fn numeric_only_programs_still_emit_through_every_backend() {
     let program = compile_to_ir("print(1 + 2);").unwrap();
     codegen::emit_c(&program).unwrap();
-    for &(_, emit) in UNSUPPORTED {
+    codegen::emit_wat(&program).unwrap();
+    codegen::emit_x86_64_win_asm(&program).unwrap();
+    for &(_, emit) in TARGET_REQUIRED {
         emit(&program).unwrap();
     }
 }
