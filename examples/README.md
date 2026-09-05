@@ -20,6 +20,7 @@
 | --- | --- |
 | [hello.prim](hello.prim) | 整数に名前を付け、足し算の結果を`print`で表示する最初の例 |
 | [floating_point.prim](floating_point.prim) | `f32`と`f64`の精度の違い、`infer`による型推論 |
+| [small_values.prim](small_values.prim) | 小さな数値を指数表記で観測し、表示と計算時の丸めを区別する |
 | [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
 | [integer_conversions.prim](integer_conversions.prim) | 同じ意味になる二つの変換表記で`i32`を`i64`へ広げる |
 | [bit_flags.prim](bit_flags.prim) | 8個のビットを独立したスイッチとして使い、設定・解除・反転・判定を行う |

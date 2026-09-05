@@ -679,6 +679,16 @@ f32    9 significant digits
 f64    17 significant digits
 ```
 
+Significant digits include the integer part, not just digits after the decimal point. Finite values are printed with enough precision to recover the original value when parsed as the same type. Unnecessary trailing fractional zeros are omitted.
+
+After rounding to the significant-digit limit, a decimal exponent below `-4` or at least the precision selects scientific notation using `e`. Other values use fixed notation. Exponents include a sign and at least two digits. For example, `1e-20` prints as `9.9999999999999995e-21`, not `0`. This means approximately ten to the power minus twenty; the longer digits expose the approximation stored in `f64`.
+
+Printing does not change the value. `1.0 + 1e-20 == 1.0` is `true` because of arithmetic rounding, not because printing discards small values. See the [small-values example](../../examples/small_values.prim).
+
+The VM formats values by these rules. C, LLVM, QBE, and Windows x86-64 generated code uses `printf` with `%.9g` and `%.17g`. WAT passes numeric values unchanged to host imports `primer.print_f32` and `primer.print_f64`; the host must provide the same formatting policy.
+
+The VM prints infinities as `inf` and `-inf`, and NaN as `NaN`. Generated-code spellings of special values depend on the target runtime. Decimal `print` output does not distinguish NaN payloads.
+
 For example, an `f32` calculation such as:
 
 ```primer

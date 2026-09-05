@@ -1,3 +1,4 @@
+mod float_output;
 mod numeric;
 pub mod render;
 pub use numeric::NumericConversionFailure;
@@ -1243,31 +1244,15 @@ fn format_value(value: Value, expected: Type) -> VmResult<String> {
             Ok(value.to_string())
         }
 
-        (Value::F32(value), Type::F32) => Ok(trim_decimal(format!("{value:.9}"))),
+        (Value::F32(value), Type::F32) => Ok(float_output::f32(value)),
 
-        (Value::F64(value), Type::F64) => Ok(trim_decimal(format!("{value:.17}"))),
+        (Value::F64(value), Type::F64) => Ok(float_output::f64(value)),
 
         (value, expected) => Err(VmErrorKind::TypeMismatch {
             expected,
             actual: value.ty(),
         }),
     }
-}
-
-fn trim_decimal(mut text: String) -> String {
-    if !text.contains('.') {
-        return text;
-    }
-
-    while text.ends_with('0') {
-        text.pop();
-    }
-
-    if text.ends_with('.') {
-        text.pop();
-    }
-
-    text
 }
 
 #[cfg(test)]

@@ -20,6 +20,7 @@ Use `-Pattern "matrix*.prim"` to select examples. Use `-SkipBuild` to reuse an a
 | --- | --- |
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
 | [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
+| [small_values.prim](small_values.prim) | observing small numbers in scientific notation and distinguishing display from arithmetic rounding |
 | [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
 | [integer_conversions.prim](integer_conversions.prim) | widening `i32` to `i64` with two equivalent conversion spellings |
 | [bit_flags.prim](bit_flags.prim) | setting, clearing, toggling, and testing eight independent bit switches |

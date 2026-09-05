@@ -1,6 +1,20 @@
 use primer_lang::run_vm;
 
 #[test]
+fn small_values_remain_visible_while_arithmetic_can_round() {
+    let output = run_vm(include_str!("../examples/small_values.prim")).unwrap();
+    let lines: Vec<_> = output.lines().collect();
+    assert_eq!(lines.len(), 8);
+    let mut expected = 1.0f64;
+    for line in &lines[..6] {
+        expected *= 0.0001;
+        assert_eq!(line.parse::<f64>().unwrap().to_bits(), expected.to_bits());
+        assert_ne!(*line, "0");
+    }
+    assert_eq!(&lines[6..], &["true", "true"]);
+}
+
+#[test]
 fn measurement_statistics_preserves_fractional_mean_and_variance() {
     assert_eq!(
         run_vm(include_str!("../examples/measurement_statistics.prim")).unwrap(),
@@ -187,10 +201,10 @@ fn square_root_example_runs() {
         output,
         concat!(
             "1.5\n",
-            "1.41666666666666652\n",
-            "1.41421568627450966\n",
-            "1.41421356237468987\n",
-            "1.41421356237309492\n",
+            "1.4166666666666665\n",
+            "1.4142156862745097\n",
+            "1.4142135623746899\n",
+            "1.4142135623730949\n",
         )
     );
 }
@@ -246,10 +260,10 @@ fn while_square_root_example_runs() {
         output,
         concat!(
             "1.5\n",
-            "1.41666666666666652\n",
-            "1.41421568627450966\n",
-            "1.41421356237468987\n",
-            "1.41421356237309492\n",
+            "1.4166666666666665\n",
+            "1.4142156862745097\n",
+            "1.4142135623746899\n",
+            "1.4142135623730949\n",
         )
     );
 }
