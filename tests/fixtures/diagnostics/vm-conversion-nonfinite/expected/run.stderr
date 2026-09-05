@@ -1,0 +1,1 @@
+primer: cannot convert f64 to i32: this conversion cannot preserve NaN or infinity at 1:7 (bytecode instruction 0003)

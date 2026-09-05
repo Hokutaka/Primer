@@ -46,6 +46,8 @@ These examples show how to group, access, and pass multiple values. They use str
 
 | Example | Demonstrates |
 | --- | --- |
+| [measurement_statistics.prim](measurement_statistics.prim) | computing a fractional mean and variance from integer samples, then storing them exactly as `f32` |
+| [normalized_histogram.prim](normalized_histogram.prim) | converting integer counts to probabilities and recovering the original counts |
 | [square_root.prim](square_root.prim) | unrolled square-root approximation steps |
 | [while_square_root.prim](while_square_root.prim) | repeated square-root approximation with `while` |
 | [logistic_map.prim](logistic_map.prim) | result differences between `f32` and `f64` computation |

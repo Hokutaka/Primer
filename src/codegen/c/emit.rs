@@ -3,6 +3,9 @@ use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
     let i64_operations = i64_operations(module);
+    if !i64_operations.conversions.is_empty() {
+        output.push_str("#include <math.h>\n#include <float.h>\n");
+    }
 
     if module_uses_bool(module) {
         output.push_str("#include <stdbool.h>\n");
@@ -376,6 +379,12 @@ fn emit_print(
 
 fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
     match &expr.kind {
+        ExprKind::ConvertNumeric { value, conversion } => {
+            output.push_str(&conversion.helper());
+            output.push('(');
+            emit_expr(value, module, output);
+            output.push(')');
+        }
         ExprKind::IntegerBinary {
             scratch,
             op,
@@ -564,6 +573,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
 
 #[derive(Clone, Default)]
 struct I64Operations {
+    conversions: std::collections::BTreeSet<crate::codegen::NumericConversion>,
     scratch: std::collections::BTreeSet<usize>,
     integer_binary:
         std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
@@ -577,7 +587,8 @@ struct I64Operations {
 
 impl I64Operations {
     fn any(&self) -> bool {
-        !self.integer_binary.is_empty()
+        !self.conversions.is_empty()
+            || !self.integer_binary.is_empty()
             || !self.range_checks.is_empty()
             || self.add
             || self.subtract
@@ -588,6 +599,10 @@ impl I64Operations {
 
     fn include_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::ConvertNumeric { value, conversion } => {
+                self.conversions.insert(*conversion);
+                self.include_expr(value);
+            }
             ExprKind::IntegerBinary {
                 scratch,
                 op,
@@ -746,6 +761,9 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
+    for &conversion in &operations.conversions {
+        super::conversion::emit_support(conversion, output);
+    }
     for &(op, ty) in &operations.integer_binary {
         super::integer::emit_support(op, ty, output);
     }

@@ -1,0 +1,44 @@
+; Primer bytecode v0.1
+
+.function 0 measure(0:value:i16) -> f64
+.slot 0 value i16
+0000  load 0        ; value
+0001  convert.exact i16 -> f64
+0002  push.i64 2
+0003  convert.exact i64 -> f64
+0004  div.f64
+0005  return.value
+.end
+
+.slot 0 count u32
+.slot 1 wide f64
+.slot 2 narrow f32
+
+0000  push.u32 42
+0001  store 0       ; count
+0002  load 0        ; count
+0003  convert.exact u32 -> f64
+0004  store 1       ; wide
+0005  load 1        ; wide
+0006  convert.exact f64 -> f32
+0007  store 2       ; narrow
+0008  load 2        ; narrow
+0009  convert.exact f32 -> i16
+0010  print.i16
+0011  load 1        ; wide
+0012  convert.exact f64 -> i64
+0013  print.i64
+0014  load 2        ; narrow
+0015  convert.exact f32 -> f64
+0016  print.f64
+0017  load 0        ; count
+0018  convert.exact u32 -> f32
+0019  print.f32
+0020  push.i16 3
+0021  call 0 1  ; measure
+0022  print.f64
+0023  push.f64 0
+0024  neg.f64
+0025  convert.exact f64 -> f32
+0026  print.f32
+0027  halt

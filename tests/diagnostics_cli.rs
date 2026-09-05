@@ -263,6 +263,13 @@ fn run_integer_overflow_matches_expected_diagnostic() {
 }
 
 #[test]
+fn run_numeric_conversion_failures_match_expected_diagnostics() {
+    for reason in ["inexact", "range", "negative-zero", "nonfinite", "nan"] {
+        assert_diagnostic(&format!("vm-conversion-{reason}"), "run", "run.stderr");
+    }
+}
+
+#[test]
 fn run_remainder_by_zero_matches_expected_diagnostic() {
     assert_diagnostic("vm-remainder-by-zero", "run", "run.stderr");
 }

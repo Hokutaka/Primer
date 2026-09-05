@@ -1,6 +1,22 @@
 use primer_lang::run_vm;
 
 #[test]
+fn measurement_statistics_preserves_fractional_mean_and_variance() {
+    assert_eq!(
+        run_vm(include_str!("../examples/measurement_statistics.prim")).unwrap(),
+        "12.5\n5.25\n12.5\n5.25\n"
+    );
+}
+
+#[test]
+fn normalized_histogram_preserves_probabilities_and_recovers_counts() {
+    assert_eq!(
+        run_vm(include_str!("../examples/normalized_histogram.prim")).unwrap(),
+        "0.125\n0.25\n0.375\n0.25\n1\n1\n2\n3\n2\n"
+    );
+}
+
+#[test]
 fn bit_flags_keep_switches_independent() {
     assert_eq!(
         run_vm(include_str!("../examples/bit_flags.prim")).unwrap(),

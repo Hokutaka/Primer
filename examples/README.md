@@ -46,6 +46,8 @@
 
 | サンプル | 内容 |
 | --- | --- |
+| [measurement_statistics.prim](measurement_statistics.prim) | 整数の測定値から小数の平均・分散を求め、値を変えずに`f32`へ保存する |
+| [normalized_histogram.prim](normalized_histogram.prim) | 整数の回数を小数の割合へ変換し、保存した割合から元の回数を復元する |
 | [square_root.prim](square_root.prim) | 手順を展開した平方根の近似 |
 | [while_square_root.prim](while_square_root.prim) | `while`で繰り返す平方根の近似 |
 | [logistic_map.prim](logistic_map.prim) | `f32`と`f64`で生まれる計算結果の違い |

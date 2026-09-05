@@ -445,6 +445,22 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::ConvertNumeric {
+                value, from, to, ..
+            } => {
+                self.lower_expr(value, depth);
+                if from != to {
+                    let label = self.next_label();
+                    self.instructions.push(Instruction::ConvertNumeric {
+                        conversion: crate::codegen::NumericConversion {
+                            from: *from,
+                            to: *to,
+                        },
+                        label,
+                    });
+                }
+                Value::Scalar(scalar_type(&expr.ty))
+            }
             primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value, depth),
             primer_ir::ExprKind::Boolean(value) => {
                 self.instructions
@@ -1205,7 +1221,8 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
         | primer_ir::ExprKind::Variable { .. } => 1,
-        primer_ir::ExprKind::ConvertInteger { value, .. } => count_expr_nodes(value),
+        primer_ir::ExprKind::ConvertNumeric { value, .. }
+        | primer_ir::ExprKind::ConvertInteger { value, .. } => count_expr_nodes(value),
         primer_ir::ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
         primer_ir::ExprKind::Binary { left, right, .. }
         | primer_ir::ExprKind::Logical { left, right, .. } => {
@@ -1278,6 +1295,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
         | primer_ir::ExprKind::Float { .. }
         | primer_ir::ExprKind::Variable { .. } => 0,
         primer_ir::ExprKind::Unary { value, .. }
+        | primer_ir::ExprKind::ConvertNumeric { value, .. }
         | primer_ir::ExprKind::ConvertInteger { value, .. }
         | primer_ir::ExprKind::FieldAccess { base: value, .. } => {
             required_expr_scratch(value, depth)

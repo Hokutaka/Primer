@@ -339,14 +339,20 @@ impl Builder<'_> {
         let kind = match &expr.kind {
             ast::ExprKind::Convert { value, syntax, .. } => {
                 let value = self.build_expr(value, None, bindings)?;
-                let (Type::Integer(from), semantic::Type::Integer(to)) = (&value.ty, &ty) else {
-                    unreachable!("semantic analysis checked integer conversion types");
-                };
-                ExprKind::ConvertInteger {
-                    from: *from,
-                    to: *to,
-                    value: Box::new(value),
-                    syntax: *syntax,
+                if let (Type::Integer(from), semantic::Type::Integer(to)) = (&value.ty, &ty) {
+                    ExprKind::ConvertInteger {
+                        from: *from,
+                        to: *to,
+                        value: Box::new(value),
+                        syntax: *syntax,
+                    }
+                } else {
+                    ExprKind::ConvertNumeric {
+                        from: numeric_type(&value.ty),
+                        to: numeric_type(&ir_type(ty.clone())),
+                        value: Box::new(value),
+                        syntax: *syntax,
+                    }
                 }
             }
             ast::ExprKind::Boolean(value) => ExprKind::Boolean(*value),
@@ -643,6 +649,16 @@ impl From<ast::BinaryOp> for BinaryOp {
             ast::BinaryOp::Greater => Self::Greater,
             ast::BinaryOp::GreaterEqual => Self::GreaterEqual,
         }
+    }
+}
+
+fn numeric_type(ty: &Type) -> crate::types::NumericType {
+    use crate::types::NumericType;
+    match ty {
+        Type::Integer(ty) => NumericType::Integer(*ty),
+        Type::F32 => NumericType::F32,
+        Type::F64 => NumericType::F64,
+        _ => unreachable!("semantic analysis checked numeric conversion types"),
     }
 }
 

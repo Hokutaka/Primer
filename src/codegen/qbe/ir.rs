@@ -95,6 +95,11 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    ConvertNumeric {
+        conversion: crate::codegen::NumericConversion,
+        dest: Temp,
+        value: Operand,
+    },
     IntegerBinary {
         op: crate::codegen::IntegerBinaryOp,
         ty: crate::types::IntegerType,

@@ -176,15 +176,15 @@ fn input_failures_keep_their_original_operation_and_span() {
 }
 
 #[test]
-fn conversions_reject_noninteger_inputs_without_contextual_retyping() {
+fn conversions_reject_nonnumeric_inputs_without_contextual_retyping() {
     for (spelling, _) in SPELLINGS {
-        for input in ["true", "1.0", "1.0f32", "[1, 2]"] {
+        for input in ["true", "[1, 2]"] {
             let source = format!("print({spelling}({input}));");
             let error = compile(&source).unwrap_err();
             assert!(
                 error
                     .message()
-                    .starts_with("integer conversion requires an integer value, found ")
+                    .starts_with("numeric conversion requires a numeric value, found ")
             );
             let start = source.find(input).unwrap();
             assert_eq!(
@@ -198,11 +198,11 @@ fn conversions_reject_noninteger_inputs_without_contextual_retyping() {
             "type mismatch for `result`: expected f32, found i64"
         );
     }
-    for target in ["bool", "f32", "f64", "[i64; 2]"] {
+    for target in ["bool", "[i64; 2]"] {
         let source = format!("print(convert<{target}>(1));");
         assert_eq!(
             compile(&source).unwrap_err().message(),
-            "conversion target must be an integer type"
+            "conversion target must be a numeric type"
         );
     }
     assert_eq!(

@@ -104,7 +104,7 @@ unary       := ("-" | "!" | "~") unary
 postfix     := primary (("." IDENT) | ("[" expression "]"))*
 
 primary     := "true"
-             | ("i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64") "(" expression ","? ")"
+             | ("i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "f32" | "f64") "(" expression ","? ")"
              | "convert" "<" type_ref ">" "(" expression ","? ")"
              | "false"
              | INTEGER
@@ -604,9 +604,9 @@ Comparisons bind more tightly than bit operations; write `(flags & mask) != 0` t
 
 Primer IR and bytecode retain the operation and original kind, such as `rem.u8`, `bit_and.u8`, `bit_or.u8`, `bit_xor.u8`, `bit_not.u8`, `shl.checked.u8`, and `shr.u8`. VM failures retain the source `NodeId` and `Span`. Out-of-range results, invalid shift counts, and a zero remainder divisor have distinct diagnoses.
 
-## Explicit integer conversions
+## Explicit numeric conversions
 
-Integer conversion has two equivalent spellings:
+Numeric conversion has two equivalent spellings:
 
 ```primer
 value: i64 = 42;
@@ -614,7 +614,7 @@ compact: infer = i64(value);
 explicit: infer = convert<i64>(value);
 ```
 
-All pairs among `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, and `i64` support conversion. Conversion succeeds only if the same numerical value fits the destination; otherwise execution stops. It does not truncate or wrap. Conversions involving floating-point values, `bool`, arrays, or product types are not supported.
+All pairs among `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, and `f64` support explicit conversion. Conversion succeeds only if the destination preserves the value; otherwise execution stops. It does not truncate, round, or wrap. Conversions involving `bool`, arrays, or product types are not supported.
 
 ```primer
 count: u32 = 3000000000;
@@ -625,11 +625,40 @@ back: u32 = convert<u32>(wide);
 Every `i32` fits in `i64`, but `u32` to `i32` can fail despite equal bit widths. VM conversion failures retain both source and destination types.
 `value: i32 = 2147483648;` is a compile-time literal error; `i32(2147483648)` evaluates an `i64` value and then fails conversion at runtime.
 
-Both spellings evaluate the expression inside parentheses exactly once. The destination type is not passed into the input expression to change its arithmetic. A noninteger input is a compile-time error. Exactly one argument is required; a trailing comma is allowed. Conversion produces a value and cannot be used as a standalone statement.
+Both spellings evaluate the expression inside parentheses exactly once. The destination type is not passed into the input expression to change its arithmetic. A nonnumeric input is a compile-time error. Exactly one argument is required; a trailing comma is allowed. Conversion produces a value and cannot be used as a standalone statement.
+
+### Floating-point conversions
+
+| Conversion | Success condition |
+| --- | --- |
+| Integer to float | The integer is exactly representable in the destination |
+| Float to integer | The value is finite, has no fractional part, is in range, and is not negative zero |
+| `f32` to `f64` | All values except NaN; infinity and zero signs are preserved |
+| `f64` to `f32` | The value is exactly representable and is not NaN; infinity and zero signs are preserved |
+| Same type | The original value is kept, including NaN payload and sign bits |
+
+```primer
+print(f64(1 / 2));       // 0: integer division happens first
+print(f64(1) / f64(2));  // 0.5: floating-point division
+print(i32(3.0));         // 3
+print(f32(1.5));         // 1.5
+// print(i32(3.7));      // fails: fractional part would be lost
+// print(f32(16777217)); // fails: integer precision would be lost
+// print(f32(0.1));      // fails: the input f64 value is not exactly representable as f32
+// print(i32(-0.0));     // fails: an integer cannot preserve the zero sign
+```
+
+Exactness checks apply to the already evaluated input, not to an ideal mathematical result. Ordinary floating-point arithmetic and literal parsing still use floating-point rounding. These conversions do not add arbitrary precision or rounding operations. `f32(0.1f32)` preserves its already-rounded input; `f64(0.1f32)` widens that exact value and therefore differs from the `f64` literal `0.1`.
+
+Floating-point conversion failures record source/destination types, reason, and source origin. Reasons distinguish range, precision, nonfinite input for integer conversion, NaN when changing float types, and negative zero for integer conversion. Rounding and truncation operations are not implemented.
+
+### Observing conversions
 
 If input evaluation fails, the diagnostic points to that operation. For example, `i64(1 / 0)` stops at division before conversion is reached.
 
-Primer IR retains the source and destination integer types, input, original spelling, and source location. Both spellings use the same operation kind; spelling is origin information. Bytecode emits both types, for example `convert.checked i32 -> u32`, with the corresponding Primer IR `NodeId` and `Span` as the instruction origin. C, LLVM, QBE, WAT, and Windows x86-64 retain the input in 64-bit storage and generate destination range checks for conversions to 8-, 16-, and 32-bit integers. Conversion to `i64` needs no additional execution operation, while the explicit conversion remains in Primer IR and bytecode.
+Primer IR retains source/destination types, input, original spelling, and source location. Both spellings use the same operation kind; spelling is origin information. Integer-only conversions retain `ConvertInteger` and bytecode such as `convert.checked i32 -> u32`. Conversions involving floats use `ConvertNumeric` and `convert.exact i64 -> f64`. Both instructions retain the corresponding Primer IR `NodeId` and `Span`.
+
+C, LLVM, QBE, WAT, and Windows x86-64 retain integer values in 64-bit storage and check narrower integer destinations. Floating-point conversions retain a typed operation in backend IR and generate checks before accepting a changed representation. Same-type conversions need no native instruction; they remain explicit in Primer IR and bytecode. Integer-to-`i64` conversions also need no extra native operation; float-to-`i64` conversions still require checks.
 
 Functions and types cannot be defined with the built-in type names `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, or `f64`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
 
@@ -638,6 +667,8 @@ Functions and types cannot be defined with the built-in type names `bool`, `i8`,
 `print(expression);` accepts the current boolean and numeric types. Select a field of a named product or an element of a fixed array before printing it.
 
 Primer keeps floating-point output precise enough to expose the behavior being observed.
+
+Negative zero is printed as `-0`, preserving its sign rather than normalizing it to `0`.
 
 The current formatting policy is:
 

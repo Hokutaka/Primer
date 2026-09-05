@@ -10,6 +10,19 @@ pub use qbe::emit_qbe;
 pub use wat::emit_wat;
 pub use x86_64_win::emit_x86_64_win_asm;
 
+/// 値を変えない数値変換です。Emitterがソース構文を解釈し直す必要はありません。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NumericConversion {
+    pub from: crate::types::NumericType,
+    pub to: crate::types::NumericType,
+}
+
+impl NumericConversion {
+    pub fn helper(self) -> String {
+        format!("primer_convert_{}_{}", self.from.name(), self.to.name())
+    }
+}
+
 /// 演算は64ビットで行い、値の範囲は元の整数型で検査します。
 /// 格納幅と意味上の幅を区別し、狭い整数の桁あふれを隠しません。
 fn integer_range_check(expr: &crate::ir::Expr) -> Option<crate::types::IntegerType> {

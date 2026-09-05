@@ -162,6 +162,13 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    /// 浮動小数点を含む明示変換です。値や符号を保てない場合は失敗します。
+    ConvertNumeric {
+        from: crate::types::NumericType,
+        to: crate::types::NumericType,
+        syntax: ConversionSyntax,
+        value: Box<Expr>,
+    },
     /// 左辺で結果が決まらない場合だけ右辺を評価します。
     Logical {
         op: LogicalOp,

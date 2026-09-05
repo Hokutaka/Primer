@@ -61,6 +61,10 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    ConvertNumeric {
+        conversion: crate::codegen::NumericConversion,
+        label: usize,
+    },
     BitNot {
         mask: i64,
     },

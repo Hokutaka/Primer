@@ -40,6 +40,24 @@ pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> 
 
 fn render_message(error: &VmError) -> String {
     match error.kind() {
+        VmErrorKind::NumericConversionFailed { from, to, reason } => {
+            let detail = match reason {
+                super::NumericConversionFailure::OutOfRange => {
+                    "the value is outside the supported range"
+                }
+                super::NumericConversionFailure::Inexact => "the conversion would change the value",
+                super::NumericConversionFailure::NotFinite => {
+                    "this conversion cannot preserve NaN or infinity"
+                }
+                super::NumericConversionFailure::NaN => {
+                    "NaN cannot be preserved when changing types"
+                }
+                super::NumericConversionFailure::NegativeZero => {
+                    "integers cannot preserve the sign of negative zero"
+                }
+            };
+            format!("cannot convert {} to {}: {detail}", from.name(), to.name())
+        }
         VmErrorKind::InvalidShiftCount { ty, count } => format!(
             "shift count {count} must be between 0 and {} for {}",
             ty.bit_width() - 1,

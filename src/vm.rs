@@ -1,4 +1,6 @@
+mod numeric;
 pub mod render;
+pub use numeric::NumericConversionFailure;
 
 use crate::bytecode::{ArrayAccess, BytecodeProgram, InstructionKind, ReturnType, Type};
 use crate::types::IntegerType;
@@ -16,6 +18,12 @@ pub enum IntegerOperation {
 /// Primer VMの実行中に発生した問題の種類を表します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmErrorKind {
+    /// 変換前後の型と、値を保てなかった理由を保持します。
+    NumericConversionFailed {
+        from: crate::types::NumericType,
+        to: crate::types::NumericType,
+        reason: NumericConversionFailure,
+    },
     /// シフト量は0以上、左辺の型のビット数未満でなければなりません。
     InvalidShiftCount {
         ty: IntegerType,
@@ -286,6 +294,10 @@ fn execute_frame_inner(
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match &instruction.kind {
+            InstructionKind::ConvertNumeric { from, to } => {
+                let value = at_instruction(pop_value(&mut stack), pc)?;
+                stack.push(at_instruction(numeric::convert(value, *from, *to), pc)?);
+            }
             InstructionKind::ConvertInteger { from, to } => {
                 let value = at_instruction(pop_integer(&mut stack, *from), pc)?;
                 if !to.contains(value) {
@@ -1253,10 +1265,6 @@ fn trim_decimal(mut text: String) -> String {
 
     if text.ends_with('.') {
         text.pop();
-    }
-
-    if text == "-0" {
-        return "0".to_owned();
     }
 
     text
