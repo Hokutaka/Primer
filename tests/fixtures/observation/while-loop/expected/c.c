@@ -17,16 +17,16 @@ static int64_t primer_i64_add(int64_t left, int64_t right) {
 }
 
 int main(void) {
-    int64_t primer_count = 0;
-    int64_t primer_sum = 0;
-    while (primer_count < 4) {
-        primer_sum = primer_i64_add(primer_sum, primer_count);
-        if (primer_count == 2) {
-            bool primer_marker = true;
-            printf("%s\n", (primer_marker) ? "true" : "false");
+    int64_t primer_binding_0_count = 0;
+    int64_t primer_binding_1_sum = 0;
+    while (primer_binding_0_count < 4) {
+        primer_binding_1_sum = primer_i64_add(primer_binding_1_sum, primer_binding_0_count);
+        if (primer_binding_0_count == 2) {
+            bool primer_binding_2_marker = true;
+            printf("%s\n", (primer_binding_2_marker) ? "true" : "false");
         }
-        primer_count = primer_i64_add(primer_count, 1);
+        primer_binding_0_count = primer_i64_add(primer_binding_0_count, 1);
     }
-    printf("%lld\n", (long long)(primer_sum));
+    printf("%lld\n", (long long)(primer_binding_1_sum));
     return 0;
 }

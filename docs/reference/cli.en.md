@@ -29,7 +29,7 @@ primer check <file>
 
 `primer check` parses the input source file and performs semantic validation and type checking.
 
-A successful `check` does not guarantee that every output route supports the program. Strings currently work with `check`, `emit-ir`, `emit-bytecode`, and `run`. C, LLVM, QBE, WAT, and assembly emission diagnose string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
+A successful `check` does not guarantee that every output route supports the program. Strings currently work with `check`, `emit-ir`, `emit-c`, `emit-bytecode`, and `run`. LLVM, QBE, WAT, and assembly emission diagnose string-containing type definitions or expressions at their source location without producing an artifact. This diagnostic also leaves an existing file specified by `-o` unchanged.
 
 ## Primer IR emission
 

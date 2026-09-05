@@ -168,7 +168,9 @@ Concatenation, string indexing, length queries, ordering, and numeric conversion
 
 `print` writes the contents unchanged and appends LF. In contrast, textual Primer IR and bytecode escape line breaks and control characters. Decoded values are kept distinct from the UTF-8 byte range (Span) of the original quoted spelling.
 
-Supported commands are currently `check`, `emit-ir`, `emit-bytecode`, and `run`. C, LLVM, QBE, WAT, and assembly emission diagnose unsupported strings before lowering, including strings in unused type definitions, functions, and branches.
+Supported commands are currently `check`, `emit-ir`, `emit-c`, `emit-bytecode`, and `run`. LLVM, QBE, WAT, and assembly emission diagnose unsupported strings before lowering, including strings in unused type definitions, functions, and branches.
+
+C emission uses read-only data retained until process exit, paired with a byte count. Generated programs using strings set standard output to binary mode on Windows, preventing automatic LF or CR translation. See [String design](../design/strings.en.md) for representation and lifetime details.
 
 ## Named product types
 
@@ -433,7 +435,7 @@ fixed arrays
 named product types
 ```
 
-Backends map supported types to their own representations during lowering. Strings currently support only bytecode and the VM.
+Backends map supported types to their own representations during lowering. Strings currently support C, bytecode, and the VM.
 
 For example, the C backend maps them as follows:
 
@@ -702,7 +704,7 @@ Functions and types cannot be defined with the built-in type names `bool`, `i8`,
 
 ## Output
 
-`print(expression);` accepts the current boolean and numeric types, plus `string` in the VM. Select a field of a named product or an element of a fixed array before printing it.
+`print(expression);` accepts the current boolean and numeric types, plus `string` in the VM and C emission. Select a field of a named product or an element of a fixed array before printing it.
 
 Primer keeps floating-point output precise enough to expose the behavior being observed.
 

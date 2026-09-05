@@ -17,13 +17,13 @@ static int64_t primer_i64_add(int64_t left, int64_t right) {
 }
 
 int main(void) {
-    int64_t primer_sum = 0;
-    for (int64_t primer_i = 0; (primer_i < 6); primer_i = primer_i64_add(primer_i, 1)) {
-        if (primer_i < 2) {
+    int64_t primer_binding_0_sum = 0;
+    for (int64_t primer_binding_1_i = 0; (primer_binding_1_i < 6); primer_binding_1_i = primer_i64_add(primer_binding_1_i, 1)) {
+        if (primer_binding_1_i < 2) {
             continue;
         }
-        primer_sum = primer_i64_add(primer_sum, primer_i);
+        primer_binding_0_sum = primer_i64_add(primer_binding_0_sum, primer_binding_1_i);
     }
-    printf("%lld\n", (long long)(primer_sum));
+    printf("%lld\n", (long long)(primer_binding_0_sum));
     return 0;
 }

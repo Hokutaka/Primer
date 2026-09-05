@@ -171,7 +171,6 @@ fn ir_and_bytecode_preserve_types_values_spans_and_node_origins() {
 
 type Emitter = fn(&ir::Program) -> Result<String, Diagnostic>;
 const UNSUPPORTED: &[(&str, Emitter)] = &[
-    ("emit-c", codegen::emit_c),
     ("emit-llvm", codegen::emit_llvm),
     ("emit-qbe", codegen::emit_qbe),
     ("emit-wat", codegen::emit_wat),
@@ -218,6 +217,7 @@ fn every_unimplemented_backend_reports_strings_before_lowering() {
 #[test]
 fn numeric_only_programs_still_emit_through_every_backend() {
     let program = compile_to_ir("print(1 + 2);").unwrap();
+    codegen::emit_c(&program).unwrap();
     for &(_, emit) in UNSUPPORTED {
         emit(&program).unwrap();
     }

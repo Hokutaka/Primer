@@ -52,11 +52,11 @@ static int64_t primer_i64_neg(int64_t value) {
 }
 
 int main(void) {
-    int64_t primer_value = 8;
-    printf("%lld\n", (long long)(primer_i64_add(primer_value, 1)));
-    printf("%lld\n", (long long)(primer_i64_sub(primer_value, 1)));
-    printf("%lld\n", (long long)(primer_i64_mul(primer_value, 2)));
-    printf("%lld\n", (long long)(primer_i64_div(primer_value, 2)));
-    printf("%lld\n", (long long)(primer_i64_neg(primer_value)));
+    int64_t primer_binding_0_value = 8;
+    printf("%lld\n", (long long)(primer_i64_add(primer_binding_0_value, 1)));
+    printf("%lld\n", (long long)(primer_i64_sub(primer_binding_0_value, 1)));
+    printf("%lld\n", (long long)(primer_i64_mul(primer_binding_0_value, 2)));
+    printf("%lld\n", (long long)(primer_i64_div(primer_binding_0_value, 2)));
+    printf("%lld\n", (long long)(primer_i64_neg(primer_binding_0_value)));
     return 0;
 }

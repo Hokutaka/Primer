@@ -118,6 +118,17 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
 
-文字列を使う2例は現在VM実行に対応し、`emit-ir`と`emit-bytecode`で変換も読めます。C・LLVM・QBE・WAT・アセンブリへの出力にはまだ対応していません。
+文字列を使う2例はVM実行とC生成に対応し、`emit-ir`と`emit-bytecode`でも変換を読めます。LLVM・QBE・WAT・アセンブリへの出力にはまだ対応していません。
+
+例えば、文字列をキーにした検索をCへ変換できます。
+
+```sh
+cargo run --quiet -- emit-c examples/string_lookup.prim -o target/string_lookup.c
+clang -std=c11 target/string_lookup.c -o target/string_lookup
+```
+
+生成した実行ファイルをBashでは`./target/string_lookup`、Windowsでは`.\target\string_lookup.exe`で実行します。外部のCコンパイラが必要です。
+
+`cargo test --test c_strings`はC生成物を最適化あり・なしで実行し、VMの結果と比較します。既定のCコンパイラがない環境では実行比較をスキップしますが、`PRIMER_TEST_CC`にコンパイラを指定すると検証を必須にできます。CIではClangを必須とし、AddressSanitizerとUndefinedBehaviorSanitizerでも検査します。
 
 `xor_neural_network.prim`は、あらかじめ決めた重みを使う推論の例です。`linear_regression.prim`では、勾配降下法で直線の傾きと切片をデータから学びます。XORニューラルネット自体の学習はまだ含みません。

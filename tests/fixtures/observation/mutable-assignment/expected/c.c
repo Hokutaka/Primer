@@ -16,11 +16,11 @@ static int64_t primer_i64_add(int64_t left, int64_t right) {
 }
 
 int main(void) {
-    int64_t primer_count = 40;
-    primer_count = primer_i64_add(primer_count, 2);
-    float primer_ratio = 0.25f;
-    primer_ratio = (primer_ratio * 2.0f);
-    printf("%lld\n", (long long)(primer_count));
-    printf("%.9g\n", (double)(primer_ratio));
+    int64_t primer_binding_0_count = 40;
+    primer_binding_0_count = primer_i64_add(primer_binding_0_count, 2);
+    float primer_binding_1_ratio = 0.25f;
+    primer_binding_1_ratio = (primer_binding_1_ratio * 2.0f);
+    printf("%lld\n", (long long)(primer_binding_0_count));
+    printf("%.9g\n", (double)(primer_binding_1_ratio));
     return 0;
 }

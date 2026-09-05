@@ -72,7 +72,7 @@ The public observation points are Primer IR and emitted artifacts. Backend-speci
 
 Integer overflow, invalid integer division, out-of-bounds array access, and conversions that cannot preserve the value stop execution. There are no implicit numeric conversions. Ordinary floating-point arithmetic still rounds.
 
-Strings are immutable UTF-8 values, supporting printing, equality, and use in functions and data structures. They currently work with `check`, `emit-ir`, `emit-bytecode`, and `run`. C, LLVM, QBE, WAT, and assembly emission report unsupported strings with a source location. Concatenation and string indexing are not implemented.
+Strings are immutable UTF-8 values, supporting printing, equality, and use in functions and data structures. They currently work with `check`, `emit-ir`, `emit-c`, `emit-bytecode`, and `run`. LLVM, QBE, WAT, and assembly emission report unsupported strings with a source location. Concatenation and string indexing are not implemented.
 
 `u64`, dynamically sized arrays, recursion, failure recovery, and explicit rounding/truncation operations are not implemented. Current generated targets store even small integer types in 64-bit storage and check their value ranges.
 

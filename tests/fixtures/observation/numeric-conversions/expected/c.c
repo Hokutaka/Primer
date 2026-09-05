@@ -75,20 +75,22 @@ static void primer_integer_overflow(void) {
     abort();
 }
 
-double primer_fn_measure_0(int64_t primer_value);
+double primer_fn_measure_0(int64_t primer_binding_0_value);
 
-double primer_fn_measure_0(int64_t primer_value) {
-    return (primer_convert_i16_f64(primer_value) / primer_convert_i64_f64(2));
+double primer_fn_measure_0(int64_t primer_binding_0_value) {
+    double _primer_eval_0;
+    double _primer_eval_1;
+    return (_primer_eval_0 = primer_convert_i16_f64(primer_binding_0_value), _primer_eval_1 = primer_convert_i64_f64(2), (_primer_eval_0 / _primer_eval_1));
 }
 
 int main(void) {
-    int64_t primer_count = 42;
-    double primer_wide = primer_convert_u32_f64(primer_count);
-    float primer_narrow = primer_convert_f64_f32(primer_wide);
-    printf("%lld\n", (long long)(primer_convert_f32_i16(primer_narrow)));
-    printf("%lld\n", (long long)(primer_convert_f64_i64(primer_wide)));
-    printf("%.17g\n", (double)(primer_convert_f32_f64(primer_narrow)));
-    printf("%.9g\n", (double)(primer_convert_u32_f32(primer_count)));
+    int64_t primer_binding_1_count = 42;
+    double primer_binding_2_wide = primer_convert_u32_f64(primer_binding_1_count);
+    float primer_binding_3_narrow = primer_convert_f64_f32(primer_binding_2_wide);
+    printf("%lld\n", (long long)(primer_convert_f32_i16(primer_binding_3_narrow)));
+    printf("%lld\n", (long long)(primer_convert_f64_i64(primer_binding_2_wide)));
+    printf("%.17g\n", (double)(primer_convert_f32_f64(primer_binding_3_narrow)));
+    printf("%.9g\n", (double)(primer_convert_u32_f32(primer_binding_1_count)));
     printf("%.17g\n", (double)(primer_fn_measure_0(3)));
     printf("%.9g\n", (double)(primer_convert_f64_f32((-0.0))));
     return 0;

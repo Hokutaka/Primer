@@ -25,3 +25,10 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: cargo test --all-targets
+        env:
+          PRIMER_TEST_CC: clang
+      - name: C string memory checks
+        run: cargo test --test c_strings
+        env:
+          PRIMER_TEST_CC: clang
+          PRIMER_TEST_SANITIZE: "1"
