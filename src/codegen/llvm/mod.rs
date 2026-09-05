@@ -42,6 +42,27 @@ pub fn emit_llvm_with_target(
     program: &primer_ir::Program,
     target: Option<Target>,
 ) -> Result<String, Diagnostic> {
+    emit_llvm_with_options(
+        program,
+        Options {
+            target,
+            annotate_origins: false,
+        },
+    )
+}
+
+/// 注釈は読み取り専用で、命令の選択や評価順には影響しません。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Options {
+    pub target: Option<Target>,
+    pub annotate_origins: bool,
+}
+
+pub fn emit_llvm_with_options(
+    program: &primer_ir::Program,
+    options: Options,
+) -> Result<String, Diagnostic> {
+    let target = options.target;
     let string_span = super::support::first_string_span(program);
     if let Some(span) = string_span
         && target.is_none()
@@ -55,7 +76,7 @@ pub fn emit_llvm_with_target(
     module.target = target;
     module.uses_strings = string_span.is_some();
 
-    Ok(emit(&module))
+    Ok(emit::emit_with_origins(&module, options.annotate_origins))
 }
 
 #[cfg(test)]
@@ -71,13 +92,51 @@ mod tests {
 
         assert!(module.instructions.iter().any(|instruction| {
             matches!(
-                instruction,
+                instruction.instruction,
                 Instruction::Binary {
                     op: super::ir::BinaryOp::CheckedI64Add,
                     ..
                 }
             )
         }));
+    }
+
+    #[test]
+    fn nested_expression_origins_restore_the_parent_and_mark_generated_returns() {
+        let source = "fn noop() -> void {} print(\"日\" == \"日\");";
+        let program = compile_to_ir(source).unwrap();
+        let module = lower(&program);
+        assert_eq!(
+            module.functions[0].instructions[0].origin,
+            super::ir::Origin::Synthetic
+        );
+        let comparison = module
+            .instructions
+            .iter()
+            .find(|item| matches!(item.instruction, Instruction::Compare { .. }))
+            .unwrap();
+        let super::ir::Origin::Source { node_id, span } = comparison.origin else {
+            panic!("source origin required")
+        };
+        assert_eq!(&source[span.start()..span.end()], "\"日\" == \"日\"");
+        let crate::ir::StatementKind::Print { value } = &program.statements[0].kind else {
+            panic!()
+        };
+        assert_eq!(node_id, value.id);
+        for item in module.instructions.iter().filter(|item| {
+            matches!(
+                item.instruction,
+                Instruction::SelectBoolText { .. } | Instruction::CallPuts { .. }
+            )
+        }) {
+            assert_eq!(
+                item.origin,
+                super::ir::Origin::Source {
+                    node_id: program.statements[0].id,
+                    span: program.statements[0].span
+                }
+            );
+        }
     }
 
     #[test]

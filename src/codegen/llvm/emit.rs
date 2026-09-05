@@ -1,12 +1,20 @@
 use std::fmt::Write;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, PrintFormat, Slot, SlotId,
-    Temp, Type,
+    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Origin, PrintFormat, Slot,
+    SlotId, Temp, Type,
 };
 
 pub fn emit(module: &Module) -> String {
+    emit_with_origins(module, false)
+}
+
+pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
     let mut output = String::new();
+    if annotate_origins {
+        output.push_str("; primer-origins v1: UTF-8 byte ranges, end exclusive\n");
+    }
+    emit_origin(Origin::Synthetic, annotate_origins, &mut output);
     let i64_operations = i64_operations(module);
     if let Some(target) = module.target {
         writeln!(output, "target triple = \"{}\"\n", target.triple()).unwrap();
@@ -81,10 +89,11 @@ pub fn emit(module: &Module) -> String {
     }
 
     for function in &module.functions {
-        emit_function(function, module, &mut output);
+        emit_function(function, module, annotate_origins, &mut output);
         output.push('\n');
     }
 
+    emit_origin(Origin::Synthetic, annotate_origins, &mut output);
     output.push_str("define i32 @main() {\nentry:\n");
     if module.uses_strings && module.target == Some(super::Target::X86_64PcWindowsMsvc) {
         // CRTの標準出力(記述子1)を、最初の出力より前にバイナリモードにします。
@@ -105,9 +114,11 @@ pub fn emit(module: &Module) -> String {
     }
 
     for instruction in &module.instructions {
-        emit_instruction(instruction, &module.slots, module, &mut output);
+        emit_origin(instruction.origin, annotate_origins, &mut output);
+        emit_instruction(&instruction.instruction, &module.slots, module, &mut output);
     }
 
+    emit_origin(Origin::Synthetic, annotate_origins, &mut output);
     if let Some(function_id) = module.explicit_main {
         let function = &module.functions[function_id];
         writeln!(output, "  call void @{}()", function_name(function)).unwrap();
@@ -119,7 +130,13 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-fn emit_function(function: &Function, module: &Module, output: &mut String) {
+fn emit_function(
+    function: &Function,
+    module: &Module,
+    annotate_origins: bool,
+    output: &mut String,
+) {
+    emit_origin(Origin::Synthetic, annotate_origins, output);
     write!(
         output,
         "define {} @{}(",
@@ -157,7 +174,8 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
         .unwrap();
     }
     for instruction in &function.instructions {
-        emit_instruction(instruction, &function.slots, module, output);
+        emit_origin(instruction.origin, annotate_origins, output);
+        emit_instruction(&instruction.instruction, &function.slots, module, output);
     }
     output.push_str("}\n");
 }
@@ -621,11 +639,11 @@ impl I64Operations {
 fn i64_operations(module: &Module) -> I64Operations {
     let mut operations = I64Operations::default();
     for instruction in &module.instructions {
-        operations.include(instruction);
+        operations.include(&instruction.instruction);
     }
     for function in &module.functions {
         for instruction in &function.instructions {
-            operations.include(instruction);
+            operations.include(&instruction.instruction);
         }
     }
     operations
@@ -752,7 +770,7 @@ fn uses_bool_print(module: &Module) -> bool {
                 .iter()
                 .flat_map(|function| function.instructions.iter()),
         )
-        .any(|instruction| matches!(instruction, Instruction::CallPuts { .. }))
+        .any(|instruction| matches!(instruction.instruction, Instruction::CallPuts { .. }))
 }
 
 fn array_types(module: &Module) -> Vec<Type> {
@@ -787,7 +805,7 @@ fn array_types(module: &Module) -> Vec<Type> {
             .iter()
             .flat_map(|function| function.instructions.iter()),
     ) {
-        match instruction {
+        match &instruction.instruction {
             Instruction::ArrayGet {
                 element, length, ..
             }
@@ -818,7 +836,7 @@ fn array_set_types(module: &Module) -> Vec<Type> {
     ) {
         if let Instruction::ArraySet {
             element, length, ..
-        } = instruction
+        } = &instruction.instruction
         {
             let ty = Type::Array {
                 element: Box::new(element.clone()),
@@ -927,5 +945,22 @@ fn array_element_name(element: &Type, module: &Module) -> String {
         Type::Array { element, length } => {
             format!("array.{}.{length}", array_element_name(element, module))
         }
+    }
+}
+
+fn emit_origin(origin: Origin, enabled: bool, output: &mut String) {
+    if !enabled {
+        return;
+    }
+    match origin {
+        Origin::Source { node_id, span } => writeln!(
+            output,
+            "; primer-origin: #{} bytes {}..{}",
+            node_id.0,
+            span.start(),
+            span.end()
+        )
+        .unwrap(),
+        Origin::Synthetic => output.push_str("; primer-origin: synthetic\n"),
     }
 }

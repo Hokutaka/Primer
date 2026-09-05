@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Label, Module, Operand, Parameter, PrintFormat,
-    Slot, SlotId, Temp, Type, TypeDefinition,
+    BinaryOp, CompareOp, Function, Instruction, Label, LocatedInstruction, Module, Operand, Origin,
+    Parameter, PrintFormat, Slot, SlotId, Temp, Type, TypeDefinition,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -29,6 +29,7 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         slots,
         slot_map,
         instructions: Vec::new(),
+        origin: Origin::Synthetic,
         temp: 0,
         label: 0,
         loops: Vec::new(),
@@ -93,6 +94,7 @@ fn lower_function(function: &primer_ir::FunctionDefinition, strings: &mut Vec<St
         slots,
         slot_map,
         instructions: Vec::new(),
+        origin: Origin::Synthetic,
         temp: 0,
         label: 0,
         loops: Vec::new(),
@@ -103,9 +105,7 @@ fn lower_function(function: &primer_ir::FunctionDefinition, strings: &mut Vec<St
         primer_ir::ReturnType::Value(ty) => Some(ty.clone().into()),
     };
     if !terminates {
-        lowerer
-            .instructions
-            .push(Instruction::Return { value: None });
+        lowerer.push(Instruction::Return { value: None });
     }
 
     Function {
@@ -119,10 +119,11 @@ fn lower_function(function: &primer_ir::FunctionDefinition, strings: &mut Vec<St
 }
 
 struct Lowerer<'a> {
+    origin: Origin,
     strings: &'a mut Vec<String>,
     slots: Vec<Slot>,
     slot_map: HashMap<primer_ir::BindingId, SlotId>,
-    instructions: Vec<Instruction>,
+    instructions: Vec<LocatedInstruction>,
     temp: usize,
     label: usize,
     loops: Vec<LoopContext>,
@@ -141,6 +142,35 @@ struct Value {
 }
 
 impl Lowerer<'_> {
+    fn push(&mut self, instruction: Instruction) {
+        self.instructions.push(LocatedInstruction {
+            instruction,
+            origin: self.origin,
+        });
+    }
+
+    fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
+        let previous = self.origin;
+        self.origin = Origin::Source {
+            node_id: statement.id,
+            span: statement.span,
+        };
+        let terminates = self.lower_statement_body(statement);
+        self.origin = previous;
+        terminates
+    }
+
+    fn lower_expr(&mut self, expr: &primer_ir::Expr) -> Value {
+        let previous = self.origin;
+        self.origin = Origin::Source {
+            node_id: expr.id,
+            span: expr.span,
+        };
+        let value = self.lower_expr_value(expr);
+        self.origin = previous;
+        value
+    }
+
     fn lower_statements(&mut self, statements: &[primer_ir::Statement]) -> bool {
         for statement in statements {
             if self.lower_statement(statement) {
@@ -151,7 +181,7 @@ impl Lowerer<'_> {
         false
     }
 
-    fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
+    fn lower_statement_body(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
             primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 let slot = self.slot(*id);
@@ -159,7 +189,7 @@ impl Lowerer<'_> {
 
                 let value = self.lower_expr(value);
 
-                self.instructions.push(Instruction::Store {
+                self.push(Instruction::Store {
                     ty,
                     value: value.operand,
                     slot,
@@ -172,7 +202,7 @@ impl Lowerer<'_> {
                 let root_ty: Type = target.root_ty.clone().into();
                 if target.projections.is_empty() {
                     let value = self.lower_expr(value);
-                    self.instructions.push(Instruction::Store {
+                    self.push(Instruction::Store {
                         ty: root_ty,
                         value: value.operand,
                         slot,
@@ -181,7 +211,7 @@ impl Lowerer<'_> {
                 }
 
                 let root = self.next_temp();
-                self.instructions.push(Instruction::Load {
+                self.push(Instruction::Load {
                     dest: root,
                     ty: root_ty.clone(),
                     slot,
@@ -201,7 +231,7 @@ impl Lowerer<'_> {
                     let index = self.lower_expr(index);
                     let element: Type = element.clone().into();
                     let dest = self.next_temp();
-                    self.instructions.push(Instruction::ArrayGet {
+                    self.push(Instruction::ArrayGet {
                         dest,
                         element: element.clone(),
                         length: *length,
@@ -218,7 +248,7 @@ impl Lowerer<'_> {
                 let mut updated = self.lower_expr(value).operand;
                 for (array, index, element, length) in parents.into_iter().rev() {
                     let dest = self.next_temp();
-                    self.instructions.push(Instruction::ArraySet {
+                    self.push(Instruction::ArraySet {
                         dest,
                         element: element.clone(),
                         length,
@@ -228,7 +258,7 @@ impl Lowerer<'_> {
                     });
                     updated = Operand::Temp(dest);
                 }
-                self.instructions.push(Instruction::Store {
+                self.push(Instruction::Store {
                     ty: root_ty,
                     value: updated,
                     slot,
@@ -252,7 +282,7 @@ impl Lowerer<'_> {
                 let else_label = self.next_label();
                 let end_label = self.next_label();
 
-                self.instructions.push(Instruction::Branch {
+                self.push(Instruction::Branch {
                     condition: condition.operand,
                     then_label,
                     else_label: if else_body.is_empty() {
@@ -261,37 +291,35 @@ impl Lowerer<'_> {
                         else_label
                     },
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: then_label,
                     name: "if_then",
                 });
                 let then_terminates = self.lower_statements(then_body);
                 if !then_terminates {
-                    self.instructions
-                        .push(Instruction::Jump { label: end_label });
+                    self.push(Instruction::Jump { label: end_label });
                 }
 
                 if else_body.is_empty() {
-                    self.instructions.push(Instruction::Label {
+                    self.push(Instruction::Label {
                         id: end_label,
                         name: "if_end",
                     });
                     false
                 } else {
-                    self.instructions.push(Instruction::Label {
+                    self.push(Instruction::Label {
                         id: else_label,
                         name: "if_else",
                     });
                     let else_terminates = self.lower_statements(else_body);
                     if !else_terminates {
-                        self.instructions
-                            .push(Instruction::Jump { label: end_label });
+                        self.push(Instruction::Jump { label: end_label });
                     }
 
                     if then_terminates && else_terminates {
                         true
                     } else {
-                        self.instructions.push(Instruction::Label {
+                        self.push(Instruction::Label {
                             id: end_label,
                             name: "if_end",
                         });
@@ -305,21 +333,21 @@ impl Lowerer<'_> {
                 let body_label = self.next_label();
                 let end_label = self.next_label();
 
-                self.instructions.push(Instruction::Jump {
+                self.push(Instruction::Jump {
                     label: condition_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: condition_label,
                     name: "while_condition",
                 });
 
                 let condition = self.lower_expr(condition);
-                self.instructions.push(Instruction::Branch {
+                self.push(Instruction::Branch {
                     condition: condition.operand,
                     then_label: body_label,
                     else_label: end_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: body_label,
                     name: "while_body",
                 });
@@ -332,11 +360,11 @@ impl Lowerer<'_> {
                 self.loops.pop().expect("while loop context must exist");
 
                 if !body_terminates {
-                    self.instructions.push(Instruction::Jump {
+                    self.push(Instruction::Jump {
                         label: condition_label,
                     });
                 }
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "while_end",
                 });
@@ -356,20 +384,20 @@ impl Lowerer<'_> {
                 let update_label = self.next_label();
                 let end_label = self.next_label();
 
-                self.instructions.push(Instruction::Jump {
+                self.push(Instruction::Jump {
                     label: condition_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: condition_label,
                     name: "for_condition",
                 });
                 let condition = self.lower_expr(condition);
-                self.instructions.push(Instruction::Branch {
+                self.push(Instruction::Branch {
                     condition: condition.operand,
                     then_label: body_label,
                     else_label: end_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: body_label,
                     name: "for_body",
                 });
@@ -382,19 +410,19 @@ impl Lowerer<'_> {
                 self.loops.pop().expect("for loop context must exist");
 
                 if !body_terminates {
-                    self.instructions.push(Instruction::Jump {
+                    self.push(Instruction::Jump {
                         label: update_label,
                     });
                 }
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: update_label,
                     name: "for_update",
                 });
                 self.lower_statement(update);
-                self.instructions.push(Instruction::Jump {
+                self.push(Instruction::Jump {
                     label: condition_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "for_end",
                 });
@@ -407,7 +435,7 @@ impl Lowerer<'_> {
                     .last()
                     .expect("semantic analysis rejects break outside a loop")
                     .break_label;
-                self.instructions.push(Instruction::Jump { label: target });
+                self.push(Instruction::Jump { label: target });
                 true
             }
 
@@ -417,7 +445,7 @@ impl Lowerer<'_> {
                     .last()
                     .expect("semantic analysis rejects continue outside a loop")
                     .continue_label;
-                self.instructions.push(Instruction::Jump { label: target });
+                self.push(Instruction::Jump { label: target });
                 true
             }
             primer_ir::StatementKind::Call {
@@ -432,7 +460,7 @@ impl Lowerer<'_> {
                         (value.ty, value.operand)
                     })
                     .collect();
-                self.instructions.push(Instruction::Call {
+                self.push(Instruction::Call {
                     dest: None,
                     function_id: function_id.0,
                     return_type: None,
@@ -445,17 +473,17 @@ impl Lowerer<'_> {
                     let value = self.lower_expr(value);
                     (value.ty, value.operand)
                 });
-                self.instructions.push(Instruction::Return { value });
+                self.push(Instruction::Return { value });
                 true
             }
         }
     }
 
-    fn lower_expr(&mut self, expr: &primer_ir::Expr) -> Value {
+    fn lower_expr_value(&mut self, expr: &primer_ir::Expr) -> Value {
         let value = self.lower_expr_unchecked(expr);
         if let Some(ty) = super::super::integer_range_check(expr) {
             let dest = self.next_temp();
-            self.instructions.push(Instruction::CheckIntegerRange {
+            self.push(Instruction::CheckIntegerRange {
                 dest,
                 value: value.operand,
                 ty,
@@ -490,7 +518,7 @@ impl Lowerer<'_> {
                     return value;
                 }
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::ConvertNumeric {
+                self.push(Instruction::ConvertNumeric {
                     dest,
                     value: value.operand,
                     conversion: crate::codegen::NumericConversion {
@@ -557,7 +585,7 @@ impl Lowerer<'_> {
                 let dest = self.next_temp();
                 let slot = self.slot(*id);
 
-                self.instructions.push(Instruction::Load {
+                self.push(Instruction::Load {
                     dest,
                     ty: ty.clone(),
                     slot,
@@ -575,7 +603,7 @@ impl Lowerer<'_> {
 
                 match (*op, &value.ty) {
                     (primer_ir::UnaryOp::BitNot, _) => {
-                        self.instructions.push(Instruction::IntegerBinary {
+                        self.push(Instruction::IntegerBinary {
                             dest,
                             op: crate::codegen::IntegerBinaryOp::BitXor,
                             ty: crate::codegen::integer_type(&expr.ty),
@@ -584,7 +612,7 @@ impl Lowerer<'_> {
                         });
                     }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
-                        self.instructions.push(Instruction::Binary {
+                        self.push(Instruction::Binary {
                             dest,
                             op: BinaryOp::CheckedI64Sub,
                             ty: Type::I64,
@@ -594,14 +622,14 @@ impl Lowerer<'_> {
                     }
 
                     (primer_ir::UnaryOp::Negate, Type::Float | Type::Double) => {
-                        self.instructions.push(Instruction::FNeg {
+                        self.push(Instruction::FNeg {
                             dest,
                             ty: value.ty.clone(),
                             value: value.operand,
                         });
                     }
                     (primer_ir::UnaryOp::Not, Type::Bool) => {
-                        self.instructions.push(Instruction::Binary {
+                        self.push(Instruction::Binary {
                             dest,
                             op: BinaryOp::Xor,
                             ty: Type::Bool,
@@ -640,7 +668,7 @@ impl Lowerer<'_> {
                     ty: Type::Bool,
                 });
                 // 分岐前の結果を保存し、右辺を評価した場合だけ置き換えます。
-                self.instructions.push(Instruction::Store {
+                self.push(Instruction::Store {
                     ty: Type::Bool,
                     value: left.operand,
                     slot,
@@ -649,29 +677,28 @@ impl Lowerer<'_> {
                     primer_ir::LogicalOp::And => (rhs_label, end_label),
                     primer_ir::LogicalOp::Or => (end_label, rhs_label),
                 };
-                self.instructions.push(Instruction::Branch {
+                self.push(Instruction::Branch {
                     condition: left.operand,
                     then_label,
                     else_label,
                 });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: rhs_label,
                     name: "logical_rhs",
                 });
                 let right = self.lower_expr(right);
-                self.instructions.push(Instruction::Store {
+                self.push(Instruction::Store {
                     ty: Type::Bool,
                     value: right.operand,
                     slot,
                 });
-                self.instructions
-                    .push(Instruction::Jump { label: end_label });
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Jump { label: end_label });
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "logical_end",
                 });
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::Load {
+                self.push(Instruction::Load {
                     dest,
                     ty: Type::Bool,
                     slot,
@@ -687,7 +714,7 @@ impl Lowerer<'_> {
                 let dest = self.next_temp();
 
                 if let Some(op) = crate::codegen::integer_binary_op(*op) {
-                    self.instructions.push(Instruction::IntegerBinary {
+                    self.push(Instruction::IntegerBinary {
                         dest,
                         op,
                         ty: crate::codegen::integer_type(&expr.ty),
@@ -695,7 +722,7 @@ impl Lowerer<'_> {
                         right: right.operand,
                     });
                 } else if let Some(op) = compare_op(*op) {
-                    self.instructions.push(Instruction::Compare {
+                    self.push(Instruction::Compare {
                         dest,
                         op,
                         operand_ty: left.ty.clone(),
@@ -703,7 +730,7 @@ impl Lowerer<'_> {
                         right: right.operand,
                     });
                 } else {
-                    self.instructions.push(Instruction::Binary {
+                    self.push(Instruction::Binary {
                         dest,
                         op: binary_op(*op, &left.ty),
                         ty: left.ty.clone(),
@@ -725,7 +752,7 @@ impl Lowerer<'_> {
                 for field in fields {
                     let value = self.lower_expr(&field.value);
                     let dest = self.next_temp();
-                    self.instructions.push(Instruction::InsertValue {
+                    self.push(Instruction::InsertValue {
                         dest,
                         ty: ty.clone(),
                         aggregate,
@@ -748,7 +775,7 @@ impl Lowerer<'_> {
             } => {
                 let aggregate = self.lower_expr(base);
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::ExtractValue {
+                self.push(Instruction::ExtractValue {
                     dest,
                     ty: Type::Named(type_id.0),
                     aggregate: aggregate.operand,
@@ -765,7 +792,7 @@ impl Lowerer<'_> {
                 for (index, value) in values.iter().enumerate() {
                     let value = self.lower_expr(value);
                     let dest = self.next_temp();
-                    self.instructions.push(Instruction::InsertValue {
+                    self.push(Instruction::InsertValue {
                         dest,
                         ty: ty.clone(),
                         aggregate,
@@ -787,7 +814,7 @@ impl Lowerer<'_> {
                     unreachable!("indexed expression must have an array base")
                 };
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::ArrayGet {
+                self.push(Instruction::ArrayGet {
                     dest,
                     element: (**element).clone(),
                     length: *length,
@@ -813,7 +840,7 @@ impl Lowerer<'_> {
                     .collect();
                 let ty: Type = expr.ty.clone().into();
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::Call {
+                self.push(Instruction::Call {
                     dest: Some(dest),
                     function_id: function_id.0,
                     return_type: Some(ty.clone()),
@@ -829,22 +856,22 @@ impl Lowerer<'_> {
 
     fn lower_print(&mut self, value: Value) {
         match value.ty {
-            Type::String => self.instructions.push(Instruction::PrintString {
+            Type::String => self.push(Instruction::PrintString {
                 value: value.operand,
             }),
             Type::Bool => {
                 let dest = self.next_temp();
-                self.instructions.push(Instruction::SelectBoolText {
+                self.push(Instruction::SelectBoolText {
                     dest,
                     value: value.operand,
                 });
-                self.instructions.push(Instruction::CallPuts {
+                self.push(Instruction::CallPuts {
                     value: Operand::Temp(dest),
                 });
             }
 
             Type::I64 => {
-                self.instructions.push(Instruction::CallPrintf {
+                self.push(Instruction::CallPrintf {
                     format: PrintFormat::I64,
                     arg_ty: Type::I64,
                     value: value.operand,
@@ -855,12 +882,12 @@ impl Lowerer<'_> {
                 // C varargs promote float to double.
                 let dest = self.next_temp();
 
-                self.instructions.push(Instruction::FPExt {
+                self.push(Instruction::FPExt {
                     dest,
                     value: value.operand,
                 });
 
-                self.instructions.push(Instruction::CallPrintf {
+                self.push(Instruction::CallPrintf {
                     format: PrintFormat::F32,
                     arg_ty: Type::Double,
                     value: Operand::Temp(dest),
@@ -868,7 +895,7 @@ impl Lowerer<'_> {
             }
 
             Type::Double => {
-                self.instructions.push(Instruction::CallPrintf {
+                self.push(Instruction::CallPrintf {
                     format: PrintFormat::F64,
                     arg_ty: Type::Double,
                     value: value.operand,

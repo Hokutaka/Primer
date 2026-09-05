@@ -90,6 +90,15 @@ pub fn compile_to_llvm_with_target(
     codegen::llvm::emit_llvm_with_target(&program, target)
 }
 
+/// LLVMのターゲットと出自注釈を明示して生成します。
+pub fn compile_to_llvm_with_options(
+    source: &str,
+    options: codegen::llvm::Options,
+) -> Result<String, Diagnostic> {
+    let program = compile_to_ir(source)?;
+    codegen::llvm::emit_llvm_with_options(&program, options)
+}
+
 // Wasm コンパイラ
 pub fn compile_to_wat(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
