@@ -1,5 +1,7 @@
 use crate::{diagnostic::Diagnostic, source::Span};
 
+mod string;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Type,
@@ -21,6 +23,8 @@ pub enum TokenKind {
 
     Integer(String),
     Float(String),
+    /// エスケープを解釈した値。ソース上の表記はTokenのSpanで保持します。
+    String(String),
 
     Equal,
     EqualEqual,
@@ -94,6 +98,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
         let offset = i;
 
         let kind = match b {
+            b'"' => {
+                let (value, end) = string::lex_string(source, offset)?;
+                i = end;
+                TokenKind::String(value)
+            }
             b'&' if bytes.get(i + 1) == Some(&b'&') => {
                 i += 2;
                 TokenKind::AndAnd

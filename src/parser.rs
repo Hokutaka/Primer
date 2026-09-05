@@ -828,6 +828,10 @@ impl Parser {
 
             TokenKind::Float(text) => Ok(parse_float_literal(text, span)),
 
+            TokenKind::String(_) => {
+                Err(Diagnostic::new("string values are not supported yet", span))
+            }
+
             TokenKind::Identifier(name) => {
                 if name == "convert" && self.starts_explicit_conversion() {
                     self.expect_simple(TokenKind::Less)?;
