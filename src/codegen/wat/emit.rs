@@ -87,10 +87,9 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct I64Operations {
-    check_i32: bool,
-    check_u32: bool,
+    range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -99,11 +98,11 @@ struct I64Operations {
 impl I64Operations {
     fn include(&mut self, instruction: &Instruction) {
         match instruction {
-            Instruction::CheckIntegerRange(ty) => match ty {
-                crate::types::IntegerType::I32 => self.check_i32 = true,
-                crate::types::IntegerType::U32 => self.check_u32 = true,
-                crate::types::IntegerType::I64 => {}
-            },
+            Instruction::CheckIntegerRange(ty) => {
+                if *ty != crate::types::IntegerType::I64 {
+                    self.range_checks.insert(*ty);
+                }
+            }
             Instruction::CheckedI64Add => self.add = true,
             Instruction::CheckedI64Sub => self.subtract = true,
             Instruction::CheckedI64Mul => self.multiply = true,
@@ -152,13 +151,8 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
-    for (enabled, ty) in [
-        (operations.check_i32, crate::types::IntegerType::I32),
-        (operations.check_u32, crate::types::IntegerType::U32),
-    ] {
-        if enabled {
-            output.push_str(&format!("  (func $primer_check_{} (param $value i64) (result i64)\n    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n    if\n      unreachable\n    end\n    local.get $value\n  )\n\n", ty.name(), ty.minimum(), ty.maximum()));
-        }
+    for ty in &operations.range_checks {
+        output.push_str(&format!("  (func $primer_check_{} (param $value i64) (result i64)\n    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n    if\n      unreachable\n    end\n    local.get $value\n  )\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     if operations.add {

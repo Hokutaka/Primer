@@ -8,7 +8,7 @@ use primer_lang::{
 
 #[test]
 fn widths_ranges_and_literal_types_are_preserved() {
-    for ty in [IntegerType::I32, IntegerType::U32, IntegerType::I64] {
+    for ty in IntegerType::ALL {
         for value in [ty.minimum(), 0, ty.maximum()] {
             let source = format!("value: infer = {value}{}; print(value);", ty.name());
             assert_eq!(run_vm(&source).unwrap(), format!("{value}\n"));
@@ -165,7 +165,7 @@ fn arithmetic_reports_the_original_integer_type() {
 
 #[test]
 fn both_conversion_spellings_agree_for_all_supported_type_pairs() {
-    let types = [IntegerType::I32, IntegerType::U32, IntegerType::I64];
+    let types = IntegerType::ALL;
     for from in types {
         for to in types {
             let values = [

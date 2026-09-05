@@ -1,6 +1,22 @@
 use primer_lang::run_vm;
 
 #[test]
+fn color_blending_widens_before_adding_channels() {
+    assert_eq!(
+        run_vm(include_str!("../examples/color_blending.prim")).unwrap(),
+        "160\n120\n140\n"
+    );
+}
+
+#[test]
+fn sensor_calibration_preserves_signed_small_values() {
+    assert_eq!(
+        run_vm(include_str!("../examples/sensor_calibration.prim")).unwrap(),
+        "-32003\n37\n31997\n10\n"
+    );
+}
+
+#[test]
 fn short_circuit_guards_division_and_array_access() {
     assert_eq!(
         run_vm(include_str!("../examples/short_circuit.prim")).unwrap(),

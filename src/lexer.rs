@@ -265,11 +265,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                     i += 3;
                 }
                 if !is_float
-                    && [b"i32", b"u32", b"i64"]
-                        .iter()
-                        .any(|suffix| bytes[i..].starts_with(*suffix))
+                    && let Some(ty) = crate::types::IntegerType::ALL
+                        .into_iter()
+                        .find(|ty| bytes[i..].starts_with(ty.name().as_bytes()))
                 {
-                    i += 3;
+                    i += ty.name().len();
                 }
 
                 // Prevent things such as:

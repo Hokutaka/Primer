@@ -58,10 +58,9 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct I64Operations {
-    check_i32: bool,
-    check_u32: bool,
+    range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -72,11 +71,11 @@ struct I64Operations {
 impl I64Operations {
     fn include(&mut self, instruction: &Instruction) {
         match instruction {
-            Instruction::CheckIntegerRange { ty, .. } => match ty {
-                crate::types::IntegerType::I32 => self.check_i32 = true,
-                crate::types::IntegerType::U32 => self.check_u32 = true,
-                crate::types::IntegerType::I64 => {}
-            },
+            Instruction::CheckIntegerRange { ty, .. } => {
+                if *ty != crate::types::IntegerType::I64 {
+                    self.range_checks.insert(*ty);
+                }
+            }
             Instruction::CheckedI64Negate { .. } => self.negate = true,
             Instruction::Binary { op, .. } => match op {
                 BinaryOp::CheckedI64Add => self.add = true,
@@ -104,13 +103,8 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
-    for (enabled, ty) in [
-        (operations.check_i32, crate::types::IntegerType::I32),
-        (operations.check_u32, crate::types::IntegerType::U32),
-    ] {
-        if enabled {
-            output.push_str(&format!("function l $primer_check_{}(l %value) {{\n@start\n  %below =w csltl %value, {}\n  %above =w csgtl %value, {}\n  %bad =w or %below, %above\n  jnz %bad, @trap, @ok\n@trap\n  call $abort()\n  hlt\n@ok\n  ret %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
-        }
+    for ty in &operations.range_checks {
+        output.push_str(&format!("function l $primer_check_{}(l %value) {{\n@start\n  %below =w csltl %value, {}\n  %above =w csgtl %value, {}\n  %bad =w or %below, %above\n  jnz %bad, @trap, @ok\n@trap\n  call $abort()\n  hlt\n@ok\n  ret %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     for (enabled, name, operation, check) in [

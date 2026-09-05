@@ -731,17 +731,13 @@ impl Parser {
             }),
 
             TokenKind::Integer(text) => {
-                let literal = [
-                    crate::types::IntegerType::I32,
-                    crate::types::IntegerType::U32,
-                    crate::types::IntegerType::I64,
-                ]
-                .into_iter()
-                .find_map(|ty| {
-                    text.strip_suffix(ty.name())
-                        .map(|digits| crate::ast::IntegerLiteral::with_type(digits, ty))
-                })
-                .unwrap_or_else(|| crate::ast::IntegerLiteral::decimal(text));
+                let literal = crate::types::IntegerType::ALL
+                    .into_iter()
+                    .find_map(|ty| {
+                        text.strip_suffix(ty.name())
+                            .map(|digits| crate::ast::IntegerLiteral::with_type(digits, ty))
+                    })
+                    .unwrap_or_else(|| crate::ast::IntegerLiteral::decimal(text));
                 Ok(Expr {
                     kind: ExprKind::Integer(literal),
                     span,

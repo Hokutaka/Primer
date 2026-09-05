@@ -1,0 +1,10 @@
+fn average(left: u8, right: u8) -> u8 {
+    return u8((u16(left) + u16(right)) / 2);
+}
+
+offset: i8 = -3;
+reading: i16 = -32000;
+print(reading + i16(offset));
+print(average(240, 80));
+print(127i8 > -128i8);
+print(convert<u16>(255u8));

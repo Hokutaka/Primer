@@ -16,12 +16,9 @@ impl Type {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "bool" => Some(Self::Bool),
-            "i64" => Some(Self::Integer(IntegerType::I64)),
-            "i32" => Some(Self::Integer(IntegerType::I32)),
-            "u32" => Some(Self::Integer(IntegerType::U32)),
             "f32" => Some(Self::F32),
             "f64" => Some(Self::F64),
-            _ => None,
+            name => IntegerType::from_name(name).map(Self::Integer),
         }
     }
 }

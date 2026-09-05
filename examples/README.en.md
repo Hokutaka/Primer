@@ -57,6 +57,8 @@ These examples show how to group, access, and pass multiple values. They use str
 
 | Example | Demonstrates |
 | --- | --- |
+| [color_blending.prim](color_blending.prim) | widening `u8` color channels to `u16` before adding and averaging them |
+| [sensor_calibration.prim](sensor_calibration.prim) | correcting `i16` readings with an `i8` offset, then aggregating in `i32` |
 | [maximum_subarray.prim](maximum_subarray.prim) | maximum sum of a contiguous `i32` subarray, converting a `u32` position to an index |
 | [euclidean_gcd.prim](euclidean_gcd.prim) | greatest common divisor with the Euclidean algorithm |
 | [fibonacci.prim](fibonacci.prim) | the Fibonacci sequence and update order for multiple values |

@@ -1,0 +1,24 @@
+// 色の強さを0から255のu8で表します。
+type Color { red: u8, green: u8, blue: u8, }
+
+fn average(left: u8, right: u8) -> u8 {
+    // 合計は255を超える場合があるので、足す前にu16へ広げます。
+    total: u16 = u16(left) + convert<u16>(right);
+    return u8(total / 2);
+}
+
+fn blend(left: Color, right: Color) -> Color {
+    return Color {
+        red: average(left.red, right.red),
+        green: average(left.green, right.green),
+        blue: average(left.blue, right.blue),
+    };
+}
+
+first: Color = Color { red: 240, green: 40, blue: 100, };
+second: Color = Color { red: 80, green: 200, blue: 180, };
+mixed: Color = blend(first, second);
+// 混ぜた色の赤160、緑120、青140を表示します。
+print(mixed.red);
+print(mixed.green);
+print(mixed.blue);

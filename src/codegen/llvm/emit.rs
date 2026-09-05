@@ -498,10 +498,9 @@ fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct I64Operations {
-    check_i32: bool,
-    check_u32: bool,
+    range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
     add: bool,
     subtract: bool,
     multiply: bool,
@@ -509,22 +508,15 @@ struct I64Operations {
 }
 
 impl I64Operations {
-    const fn any(self) -> bool {
-        self.check_i32
-            || self.check_u32
-            || self.add
-            || self.subtract
-            || self.multiply
-            || self.divide
+    fn any(&self) -> bool {
+        !self.range_checks.is_empty() || self.add || self.subtract || self.multiply || self.divide
     }
 
     fn include(&mut self, instruction: &Instruction) {
-        if let Instruction::CheckIntegerRange { ty, .. } = instruction {
-            match ty {
-                crate::types::IntegerType::I32 => self.check_i32 = true,
-                crate::types::IntegerType::U32 => self.check_u32 = true,
-                crate::types::IntegerType::I64 => {}
-            }
+        if let Instruction::CheckIntegerRange { ty, .. } = instruction
+            && *ty != crate::types::IntegerType::I64
+        {
+            self.range_checks.insert(*ty);
         }
         let Instruction::Binary { op, .. } = instruction else {
             return;
@@ -553,13 +545,8 @@ fn i64_operations(module: &Module) -> I64Operations {
 }
 
 fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
-    for (enabled, ty) in [
-        (operations.check_i32, crate::types::IntegerType::I32),
-        (operations.check_u32, crate::types::IntegerType::U32),
-    ] {
-        if enabled {
-            output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @llvm.trap()\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
-        }
+    for ty in &operations.range_checks {
+        output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @llvm.trap()\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     for (enabled, name, intrinsic) in [
