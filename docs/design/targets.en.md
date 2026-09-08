@@ -12,7 +12,7 @@ This distinction is necessary to identify observations from the same Primer prog
 
 An output route describes which kind of representation is produced from Primer IR.
 
-The current output routes are C, LLVM IR, QBE IR, WebAssembly Text, native assembly, and Primer bytecode.
+The current output routes are C, LLVM IR, QBE IR, WebAssembly Text, native assembly, native objects, and Primer bytecode.
 
 ### Target
 
@@ -48,6 +48,7 @@ The current outputs can be described as follows:
 | QBE IR | unspecified, or explicit Linux x86-64 (required for strings) | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
 | Native assembly | x86-64, Windows / Linux, respective calling conventions | GNU-style assembly `.s` |
+| Native object | explicit Windows x64 / Linux x86-64 | COFF `.obj` / ELF64 `.o` |
 | Primer bytecode | Primer VM | Primer bytecode `.pbc` |
 
 "Not selected by Primer" does not mean inferred implicitly from the host environment. It means that Primer does not include target-specific decisions in that observation and that the caller of a downstream tool selects the target.

@@ -87,6 +87,7 @@ primer emit-c examples/floating_point.prim
 | `emit-qbe` | QBE IR（`.ssa`） | QBEで処理 |
 | `emit-wat` | WebAssembly Text（`.wat`） | WebAssembly用ツールとホストで実行 |
 | `emit-asm` | Windows/Linux x86-64アセンブリ（`.s`） | アセンブル・リンク |
+| `emit-obj` | 自前符号化したELF/COFF（`.o` / `.obj`） | 外部リンカでリンク。`--target`と`-o`は必須 |
 | `emit-bytecode` | Primer bytecode（`.pbc`） | 命令列を確認。VM実行はソースに対する`run`を使用 |
 
 Primerは成果物の生成までを担当します。外部ツールの選択、対象CPUや最適化設定、測定方法は呼び出す側が決定します。詳細は[出力経路とターゲット](docs/design/targets.ja.md)を参照してください。

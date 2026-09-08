@@ -27,7 +27,7 @@ The runner checks each example's exit status. Use `cargo test --test examples` t
 
 ## Find examples by type
 
-Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays, and products. All seven existing routes (VM, C, LLVM, QBE, WAT, direct Windows x64 assembly, and direct Linux x86-64 assembly) implement `u64`. The `u64_values.prim` example is compared against known output across all seven. [native_values.prim](native_values.prim) exercises mixed arguments and value passing on Windows/Linux. Use [explicit external tools](../docs/design/native-code.en.md) to generate, execute, and inspect machine-code objects and executables. A Primer-owned instruction encoder remains future work.
+Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays, and products. All seven existing routes (VM, C, LLVM, QBE, WAT, direct Windows x64 assembly, and direct Linux x86-64 assembly) implement `u64`. The `u64_values.prim` example is compared against known output across all seven. [native_values.prim](native_values.prim) exercises mixed arguments and value passing on Windows/Linux. Use [explicit external tools](../docs/design/native-code.en.md) to generate, execute, and inspect machine-code objects and executables. The [Primer encoder](../docs/design/native-encoder.en.md) also executes the same language features.
 
 ### Signed integers: negative and positive values
 
@@ -45,7 +45,7 @@ Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays
 | `u8` | 0 through 255 | [color_blending.prim](color_blending.prim), [bit_flags.prim](bit_flags.prim) | color channels and setting, clearing, or toggling eight bits |
 | `u16` | 0 through 65535 | [color_blending.prim](color_blending.prim) | widening `u8` colors before addition, then converting the average back |
 | `u32` | 0 through 4294967295 | [population_statistics.prim](population_statistics.prim) | values around three billion, widened to `i64` for aggregation |
-| `u64` | 0 through 18446744073709551615 | [u64_values.prim](u64_values.prim) | maximum, high bit, unsigned comparison/division, functions, arrays, copies, and exact conversions |
+| `u64` | 0 through 18446744073709551615 | [u64_values.prim](u64_values.prim), [packet_counter.prim](packet_counter.prim) | maximum, high bit, unsigned comparison/division, functions, arrays, copies, and exact conversions |
 
 Run the u64 example with:
 
@@ -108,6 +108,7 @@ These examples show how to group, access, and pass multiple values. They use str
 | [fixed_arrays.prim](fixed_arrays.prim) | indexing, summation, and linear search in fixed arrays, and independent values after copying |
 | [product_arrays.prim](product_arrays.prim) | arrays of structs, nearest-point search, and array value copies |
 | [function_values.prim](function_values.prim) | passing and returning structs and nested fixed arrays as values |
+| [packet_counter.prim](packet_counter.prim) | Pass a high-bit u64 sequence, u8 flags, and immutable text in a product; run with the Primer encoder |
 | [native_values.prim](native_values.prim) | Pass u64, integers, floats, strings, and structures through four mixed arguments; follow execution and machine code on Windows/Linux |
 
 ## Numerical computation

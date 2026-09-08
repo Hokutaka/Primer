@@ -18,13 +18,13 @@ Strings remain immutable static length-prefixed data. Linux passes byte values t
 Primer source → Primer IR → shared x86-64 instructions
                                        ↓
                            assembly with source origins
-                                       ↓ explicit external assembler
+                                       ↓ Primer encoder or explicit external assembler
                            ELF/COFF object, bytes, relocations
                                        ↓ explicit external linker
                            executable machine code → comparison
 ```
 
-Machine artifacts reuse the same assembly rather than reimplementing language semantics. Encoding, object generation, and linking currently use external tools. This does not introduce a Primer-owned instruction encoder or linker. The `emit-*` commands still return artifacts; only the explicitly invoked script starts external tools.
+Machine artifacts reuse the same assembly rather than reimplementing language semantics. Select the [Primer encoder](native-encoder.en.md) for encoding and object generation with `--encoder primer`, or keep the default `--encoder external`. Linking uses an explicitly selected external tool. The `emit-*` commands still return artifacts; only the explicitly invoked script starts external tools.
 
 `--annotate-origins` adds `# primer-asm-origins v1`, `# primer-origin: #N bytes start..end`, and `primer_origin_nN_...` labels. Lowering retains NodeId and UTF-8 byte ranges. Constants, helpers, and startup are synthetic. Object symbols connect disassembly offsets to IR expressions. Removing annotations and origin labels restores ordinary assembly text. Observation exposes no memory mutation interface.
 

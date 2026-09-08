@@ -14,7 +14,7 @@ function parse(args) {
     if (key === '--run' || key === '--expect-trap') {
       if (options[key]) throw new Error('duplicate option: ' + key);
       options[key] = true;
-    } else if (['--source', '--target', '--primer', '--cc', '--objdump', '--output-dir'].includes(key)) {
+    } else if (['--source', '--target', '--primer', '--cc', '--objdump', '--output-dir', '--encoder'].includes(key)) {
       if (options[key] || !args[index + 1] || args[index + 1].startsWith('--')) throw new Error('missing or duplicate value: ' + key);
       options[key] = args[++index];
     } else {
@@ -26,6 +26,8 @@ function parse(args) {
   }
   if (!['x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc'].includes(options['--target'])) throw new Error('unsupported target');
   if (options['--expect-trap'] && !options['--run']) throw new Error('--expect-trap requires --run');
+  options['--encoder'] ||= 'external';
+  if (!['external', 'primer'].includes(options['--encoder'])) throw new Error('unsupported encoder');
   return options;
 }
 
@@ -43,7 +45,7 @@ function observe(options) {
   const primer = resolveTool(options['--primer']);
   const cc = resolveTool(options['--cc']);
   const objdump = resolveTool(options['--objdump']);
-  const report = { schema: 'primer-native-observation-v1', target, sourceSha256: hash(sourceBytes), tools: {}, steps: [], artifacts: {}, status: 'building' };
+  const report = { schema: 'primer-native-observation-v1', target, encoder: options['--encoder'] || 'external', sourceSha256: hash(sourceBytes), tools: {}, steps: [], artifacts: {}, status: 'building' };
   let created = false;
   const save = () => { if (created) fs.writeFileSync(path.join(directory, 'manifest.json'), JSON.stringify(report, null, 2) + '\n'); };
   const run = (stage, tool, args, allowFailure = false) => {
@@ -76,7 +78,11 @@ function observe(options) {
     const object = windows ? 'program.obj' : 'program.o';
     const executable = windows ? 'program.exe' : 'program';
     const flags = windows ? ['--target=' + target] : ['-m64'];
-    run('assemble', cc, [...flags, '-c', 'program.s', '-o', object]);
+    if (report.encoder === 'primer') {
+      run('encode-object', primer, ['emit-obj', 'source.prim', '--target', target, '--annotate-origins', '-o', object]);
+    } else {
+      run('assemble', cc, [...flags, '-c', 'program.s', '-o', object]);
+    }
     const header = run('object-format', objdump, ['-f', object]).stdout;
     const expectedFormat = windows ? /file format (coff-x86-64|pe-x86-64)/ : /file format elf64-x86-64/;
     if (!expectedFormat.test(header.toString('utf8'))) throw new Error('assembler produced an object for a different target');
@@ -129,7 +135,7 @@ function hash(bytes) { return crypto.createHash('sha256').update(bytes).digest('
 
 if (require.main === module) {
   if (process.argv.length === 3 && process.argv[2] === '--help') {
-    console.log('Usage: node scripts/observe-native.cjs --source <file> --target <triple> --primer <tool> --cc <tool> --objdump <tool> --output-dir <new-directory> [--run [--expect-trap]]');
+    console.log('Usage: node scripts/observe-native.cjs --source <file> --target <triple> --primer <tool> --cc <tool> --objdump <tool> --output-dir <new-directory> [--encoder external|primer] [--run [--expect-trap]]');
     process.exit(0);
   }
   try {

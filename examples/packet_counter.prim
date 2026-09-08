@@ -1,0 +1,32 @@
+// 上位ビットを持つ番号、フラグ、文字列を一つの値として受け渡します。
+// 元のパケットを保ちながら、コピーの番号とフラグだけを更新します。
+type Packet {
+    sequence: u64,
+    flags: u8,
+    payload: string,
+}
+
+fn acknowledge(packet: Packet) -> Packet {
+    return Packet {
+        sequence: packet.sequence + 1,
+        flags: packet.flags | 2,
+        payload: packet.payload,
+    };
+}
+
+packet: Packet = Packet {
+    sequence: 9223372036854775808,
+    flags: 1,
+    payload: "受信\0\r\n",
+};
+mut next: Packet = packet;
+next = acknowledge(next);
+print("packet counter");
+print(packet.sequence);
+print(next.sequence);
+print(packet.flags);
+print(next.flags);
+print((next.sequence >> 63) == 1);
+print(byte_len(next.payload));
+print(packet.payload == next.payload);
+print(next.payload);

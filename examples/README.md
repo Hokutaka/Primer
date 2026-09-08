@@ -27,7 +27,7 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 
 ## 型から探す
 
-8種類の整数型、`f32`・`f64`、`bool`、`string`、固定長配列、構造体を使えます。既存7経路（VM・C・LLVM・QBE・WAT・Windows x64直接アセンブリ・Linux x86-64直接アセンブリ）に`u64`まで実装しています。`u64_values.prim`は全7経路で既知の期待出力と比較しています。[native_values.prim](native_values.prim)はWindows/Linuxの混在引数と値の受け渡しを確認する例です。機械語を含むオブジェクトと実行ファイルの生成・実行・観測には、[明示した外部ツールを使う手順](../docs/design/native-code.ja.md)を用意しています。機械語の符号化そのものの自前実装は今後の対象です。
+8種類の整数型、`f32`・`f64`、`bool`、`string`、固定長配列、構造体を使えます。既存7経路（VM・C・LLVM・QBE・WAT・Windows x64直接アセンブリ・Linux x86-64直接アセンブリ）に`u64`まで実装しています。`u64_values.prim`は全7経路で既知の期待出力と比較しています。[native_values.prim](native_values.prim)はWindows/Linuxの混在引数と値の受け渡しを確認する例です。機械語を含むオブジェクトと実行ファイルの生成・実行・観測には、[明示した外部ツールを使う手順](../docs/design/native-code.ja.md)を用意しています。[自前エンコーダ](../docs/design/native-encoder.ja.md)でも同じ言語機能を実行できます。
 
 ### 符号付き整数：負数と正数
 
@@ -45,7 +45,7 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 | `u8` | 0〜255 | [color_blending.prim](color_blending.prim)、[bit_flags.prim](bit_flags.prim) | 色の値と、8個のビットの設定・解除・反転 |
 | `u16` | 0〜65535 | [color_blending.prim](color_blending.prim) | `u8`の色を加算前に広げ、平均を求めて戻す |
 | `u32` | 0〜4294967295 | [population_statistics.prim](population_statistics.prim) | 30億前後の値を保持し、集計時には`i64`へ広げる |
-| `u64` | 0〜18446744073709551615 | [u64_values.prim](u64_values.prim) | 最大値、最上位ビット、符号なし比較・除算、関数・配列・コピー、正確な変換 |
+| `u64` | 0〜18446744073709551615 | [u64_values.prim](u64_values.prim), [packet_counter.prim](packet_counter.prim) | 最大値、最上位ビット、符号なし比較・除算、関数・配列・コピー、正確な変換 |
 
 u64の例は次のコマンドで実行できます。
 
@@ -108,6 +108,7 @@ cargo run -- run examples/u64_values.prim
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列の要素を読み、合計と線形探索を行う。コピーした配列が独立した値であることも確認する |
 | [product_arrays.prim](product_arrays.prim) | 構造体を配列に並べ、最も近い点を探す。配列のコピーも確認する |
 | [function_values.prim](function_values.prim) | 構造体と入れ子の固定長配列を、関数へ値として渡して受け取る |
+| [packet_counter.prim](packet_counter.prim) | u64の最上位ビット、u8のフラグ、不変の文字列を構造体で渡し、自前エンコーダで実行する |
 | [native_values.prim](native_values.prim) | u64・整数・小数・文字列・構造体を混在する4引数で渡し、Windows/Linuxの実行と機械語までを辿る |
 
 ## 数値計算

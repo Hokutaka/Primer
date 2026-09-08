@@ -87,6 +87,7 @@ Dynamically sized arrays, recursion, failure recovery, and explicit rounding/tru
 | `emit-qbe` | QBE IR (`.ssa`) | Process with QBE |
 | `emit-wat` | WebAssembly Text (`.wat`) | Run using WebAssembly tools and a host |
 | `emit-asm` | Windows/Linux x86-64 assembly (`.s`) | Assemble and link |
+| `emit-obj` | Primer-encoded ELF/COFF (`.o` / `.obj`) | Link externally; `--target` and `-o` are required |
 | `emit-bytecode` | Primer bytecode (`.pbc`) | Inspect instructions; use `run` on source for VM execution |
 
 Primer handles artifact generation. External tool selection, CPU targets, optimization settings, and measurement policy belong to the caller. See [output routes and targets](docs/design/targets.en.md) for details.
