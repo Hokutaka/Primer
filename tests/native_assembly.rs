@@ -16,14 +16,49 @@ struct Workspace(PathBuf);
 impl Workspace {
     fn new() -> Self {
         crash_dialogs::suppress();
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("primer-native-{}-{stamp}", std::process::id()));
-        fs::create_dir(&path).unwrap();
-        Self(path)
+        // Windowsの時計の分解能だけに依存せず、同時実行するテストを分離します。
+        loop {
+            let id = NEXT.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("primer-native-{}-{stamp}-{id}", std::process::id()));
+            match fs::create_dir(&path) {
+                Ok(()) => return Self(path),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("create test workspace: {error}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn concurrent_test_workspaces_are_independent() {
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(16));
+    let handles: Vec<_> = (0..16)
+        .map(|index| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                let workspace = Workspace::new();
+                fs::write(workspace.0.join("marker"), index.to_string()).unwrap();
+                (workspace, index)
+            })
+        })
+        .collect();
+    let workspaces: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let paths: std::collections::BTreeSet<_> =
+        workspaces.iter().map(|(w, _)| w.0.clone()).collect();
+    assert_eq!(paths.len(), 16);
+    for (workspace, index) in &workspaces {
+        assert_eq!(
+            fs::read_to_string(workspace.0.join("marker")).unwrap(),
+            index.to_string()
+        );
     }
 }
 impl Drop for Workspace {
