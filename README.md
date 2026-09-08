@@ -57,7 +57,7 @@ primer emit-c examples/floating_point.prim
 
 `emit-ir`では解決済みの型と演算を、`emit-c`ではそれらをCでどう表現したかを読めます。バックエンドは共通のPrimer IRを受け取り、ソースの意味を解釈し直しません。
 
-`emit-*`は標準出力へ書き出します。ファイルに残す場合は、例えば`primer emit-c examples/floating_point.prim -o floating_point.c`と指定します。構文や型の検証だけなら`primer check examples/floating_point.prim`を使います。
+テキストを生成する`emit-*`は標準出力へ書き出します。ファイルに残す場合は、例えば`primer emit-c examples/floating_point.prim -o floating_point.c`と指定します。バイナリを生成する`emit-obj`は`--target`と`-o`が必須です。構文や型の検証だけなら`primer check examples/floating_point.prim`を使います。
 
 公開している観測点はPrimer IRと出力成果物です。バックエンド固有のRust IRは内部の変換境界として扱います。詳しくは[コンパイラ設計](docs/design/architecture.ja.md)と[可観測性の契約](docs/design/observability.ja.md)を参照してください。
 
@@ -123,6 +123,7 @@ bash scripts/test.sh
 `.sh`側のビルド先は既定で`target/unix`です。Windowsの生成物とは分離し、`CARGO_TARGET_DIR`が指定されていればそちらを使います。
 
 - [言語リファレンス](docs/reference/language.ja.md): 現在の構文、型、演算、変換の規則。
+- [言語機能と今後の順序](docs/design/language-roadmap.ja.md): 実装済み機能、追加候補、GPU計算を検討する際の契約。
 - [CLIリファレンス](docs/reference/cli.ja.md): コマンドとオプション。
 - [文書一覧](docs/README.md): 設計判断を記録する`docs/design/`と、現在の仕様を記録する`docs/reference/`の日英索引。
 

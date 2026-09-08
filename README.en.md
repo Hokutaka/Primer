@@ -57,7 +57,7 @@ primer emit-c examples/floating_point.prim
 
 `emit-ir` shows resolved types and operations; `emit-c` shows how they are represented in C. Backends consume the shared Primer IR instead of interpreting the source semantics again.
 
-`emit-*` writes to standard output. To keep an artifact, use, for example, `primer emit-c examples/floating_point.prim -o floating_point.c`. To check syntax and types without running, use `primer check examples/floating_point.prim`.
+Text-producing `emit-*` commands write to standard output. To keep an artifact, use, for example, `primer emit-c examples/floating_point.prim -o floating_point.c`. Binary `emit-obj` requires both `--target` and `-o`. To check syntax and types without running, use `primer check examples/floating_point.prim`.
 
 The public observation points are Primer IR and emitted artifacts. Backend-specific Rust IR remains an internal lowering boundary. See the [compiler design](docs/design/architecture.en.md) and [observability contract](docs/design/observability.en.md) for details.
 
@@ -123,6 +123,7 @@ bash scripts/test.sh
 The `.sh` scripts default to `target/unix`, keeping Linux build output separate from Windows artifacts. They respect an existing `CARGO_TARGET_DIR` setting.
 
 - [Language reference](docs/reference/language.en.md): current syntax, types, operators, and conversion rules.
+- [Language capabilities and roadmap](docs/design/language-roadmap.en.md): implemented features, proposed additions, and contracts for exploring GPU computation.
 - [CLI reference](docs/reference/cli.en.md): commands and options.
 - [Documentation index](docs/README.md): Japanese and English guides, with design decisions in `docs/design/` and current specifications in `docs/reference/`.
 
