@@ -162,7 +162,25 @@ fn native_process_deadline_reports_output_and_stops_an_infinite_loop() {
 }
 impl Drop for Workspace {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        use std::io::Write;
+        let trace = std::env::var_os("PRIMER_TEST_TRACE").is_some();
+        let start = Instant::now();
+        if trace {
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "[native-workspace] cleanup start {}",
+                self.0.display()
+            );
+        }
+        let result = fs::remove_dir_all(&self.0);
+        if trace {
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "[native-workspace] cleanup end {}: {result:?} in {:?}",
+                self.0.display(),
+                start.elapsed()
+            );
+        }
     }
 }
 
@@ -407,6 +425,10 @@ fn runtime_failures_match_vm_codes_origins_and_prior_output() {
                 format!("primer: {}\n", failure.record()),
                 "{encoder}: {body}"
             );
+            if std::env::var_os("PRIMER_TEST_TRACE").is_some() {
+                use std::io::Write;
+                let _ = writeln!(std::io::stderr().lock(), "[native-case] verified {label}");
+            }
         }
     }
 }

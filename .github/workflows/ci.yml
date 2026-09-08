@@ -35,8 +35,12 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
         run: |
-          set -o pipefail
-          timeout --kill-after=10s 8m cargo test --all-targets 2>&1 | tee target/ci-tests.log
+          # 意図したtrapをOSのクラッシュ収集へ送らず、終了状態と診断を検証します。
+          # pipe型のcore_patternではulimitだけでは収集を止められません。
+          sysctl kernel.core_pattern
+          sudo sysctl -w kernel.core_pattern=core
+          ulimit -c 0
+          timeout --kill-after=10s 8m bash -o pipefail -c 'cargo test --all-targets 2>&1 | tee target/ci-tests.log'
         env:
           PRIMER_TEST_TRACE: "1"
           PRIMER_TEST_CC: clang
