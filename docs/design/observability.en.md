@@ -59,4 +59,4 @@ LLVM is the first supported route. This uses the existing IR/artifact observatio
 
 `emit-asm --annotate-origins` also preserves NodeId and UTF-8 byte ranges. Comments and `primer_origin_nN_...` labels connect object symbols and disassembly to Primer IR. Paired IR/ASM fixtures for both targets live in `tests/fixtures/observation/native-values/expected/`. Tests compare annotation-stripped ASM with ordinary output and compare instruction bytes with and without annotations.
 
-Explicit external tools encode and link machine code. Generation, expected traps, successful execution, and failures are recorded separately. See [Following ASM into machine code](native-code.en.md) for the mapping contract, address interpretation, and execution commands.
+Encoding can use the [Primer encoder](native-encoder.en.md) or an external assembler; linking uses an explicit external tool. Generation, expected traps, successful execution, and failures are recorded separately. See [Following ASM into machine code](native-code.en.md) for the mapping contract, address interpretation, and execution commands.

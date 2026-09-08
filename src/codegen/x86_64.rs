@@ -2,6 +2,7 @@ mod conversion;
 mod emit;
 pub mod ir;
 mod lower;
+mod object;
 mod string;
 mod unsigned;
 
@@ -40,6 +41,17 @@ impl Target {
 
 pub fn emit_asm(program: &primer_ir::Program, target: Target) -> Result<String, Diagnostic> {
     Ok(emit(&lower::lower_with_target(program, target)))
+}
+
+/// 自前の符号化・オブジェクト生成です。リンクや外部プロセス起動は行いません。
+pub fn emit_object(
+    program: &primer_ir::Program,
+    target: Target,
+    annotate_origins: bool,
+) -> Result<Vec<u8>, Diagnostic> {
+    let assembly =
+        emit::emit_with_origins(&lower::lower_with_target(program, target), annotate_origins);
+    object::assemble(&assembly, target)
 }
 
 pub fn emit_asm_with_origins(

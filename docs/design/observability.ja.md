@@ -68,4 +68,4 @@ Lowererは各命令の本体と別に`Source { NodeId, Span }`または`Syntheti
 
 `emit-asm --annotate-origins`もNodeIdとUTF-8バイト範囲を保持します。コメントと`primer_origin_nN_...`ラベルを加え、オブジェクトのシンボル・逆アセンブルからIRへ辿れます。両ターゲットのIR/ASMの対は`tests/fixtures/observation/native-values/expected/`に固定しています。注釈を除いたASMの一致と、注釈の有無による命令バイトの一致をテストします。
 
-機械語の符号化・リンクは明示した外部ツールが担当し、生成、想定した停止、正常実行、失敗を記録します。出自の範囲とアドレスの意味、実行手順は[ASMから機械語までを辿る](native-code.ja.md)を参照してください。
+機械語の符号化は[自前エンコーダ](native-encoder.ja.md)と外部アセンブラから選び、リンクは明示した外部ツールが担当します。生成、想定した停止、正常実行、失敗を記録します。出自の範囲とアドレスの意味、実行手順は[ASMから機械語までを辿る](native-code.ja.md)を参照してください。

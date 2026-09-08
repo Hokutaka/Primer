@@ -88,6 +88,7 @@ fn cases() -> Vec<(&'static str, String)> {
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),
         include_str!("../examples/native_values.prim"),
+        include_str!("../examples/packet_counter.prim"),
     ] {
         cases.push((source, run_vm(source).unwrap()));
     }

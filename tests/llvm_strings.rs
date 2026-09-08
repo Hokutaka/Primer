@@ -293,6 +293,7 @@ fn bytes_equality_and_mixed_output_match_vm_and_c() {
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),
         include_str!("../examples/native_values.prim"),
+        include_str!("../examples/packet_counter.prim"),
     ] {
         native.matches(source, &run_vm(source).unwrap());
     }

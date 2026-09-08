@@ -177,6 +177,7 @@ The current output routes and implementation boundaries are:
 | QBE | QBE IR representation | `.ssa` |
 | WebAssembly | WAT-oriented instruction IR | `.wat` |
 | Direct x86-64 Windows/Linux assembly | assembly IR | `.s` |
+| Native object | shared ASM reader, instruction encoding, ELF/COFF writer | `.o` / `.obj` |
 | Primer bytecode | `BytecodeProgram` | `.pbc` |
 
 Backend IR is allowed to encode decisions that do not belong in Primer IR.
@@ -242,6 +243,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 

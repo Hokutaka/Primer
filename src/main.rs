@@ -170,6 +170,24 @@ fn run() -> Result<(), String> {
             write_or_print(output, asm)
         }
 
+        // バイナリは出力先とターゲットを必須にし、端末へ暗黙に書き出しません。
+        "emit-obj" => {
+            let input = required_path(args.next(), "missing input file")?;
+            let rest: Vec<String> = args.collect();
+            let (output, target, origins) = parse_native_options(&rest, "emit-obj", "o")?;
+            let output = output.ok_or("emit-obj requires -o <output.o>")?;
+            let target = target.ok_or("emit-obj requires an explicit --target")?;
+            let target = primer_lang::codegen::x86_64::Target::parse(&target)
+                .ok_or("unsupported native object target")?;
+            let source = read_source(&input)?;
+            let bytes = render_compilation_result(
+                primer_lang::compile_to_native_object(&source, target, origins),
+                &source,
+            )?;
+            fs::write(&output, bytes)
+                .map_err(|e| format!("failed to write {}: {e}", output.display()))
+        }
+
         // Primer Bytecode 生成
         "emit-bytecode" => {
             let input = required_path(args.next(), "missing input file")?;
@@ -271,7 +289,7 @@ fn parse_native_options(
     let mut args = args.iter();
     while let Some(flag) = args.next() {
         if flag == "--annotate-origins"
-            && matches!(route, "emit-llvm" | "emit-asm")
+            && matches!(route, "emit-llvm" | "emit-asm" | "emit-obj")
             && !annotate_origins
         {
             annotate_origins = true;
@@ -318,6 +336,7 @@ fn print_help() {
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]\n\
            primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]\n\
+           primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>\n\
            primer emit-bytecode <file> [-o <output.pbc>]\n\
            primer run <file>\n\
            primer --version\n",

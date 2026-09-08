@@ -12,7 +12,7 @@
 
 出力経路は、Primer IRからどの種類の表現を生成するかを示します。
 
-現在の出力経路には、C、LLVM IR、QBE IR、WebAssembly Text、ネイティブアセンブリ、Primer bytecodeがあります。
+現在の出力経路には、C、LLVM IR、QBE IR、WebAssembly Text、ネイティブアセンブリ、ネイティブオブジェクト、Primer bytecodeがあります。
 
 ### ターゲット
 
@@ -48,6 +48,7 @@
 | QBE IR | 未指定、または明示的なLinux x86-64（文字列では必須） | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
 | ネイティブアセンブリ | x86-64、Windows / Linux、各OSの呼出規約 | GNU形式のアセンブリ `.s` |
+| ネイティブオブジェクト | 明示的なWindows x64 / Linux x86-64 | COFF `.obj` / ELF64 `.o` |
 | Primer bytecode | Primer VM | Primer bytecode `.pbc` |
 
 「Primerでは指定しない」は、実行中のホスト環境から暗黙に推測することを意味しません。Primerの観測結果にターゲット固有の決定を含めず、後続ツールを呼び出す側がターゲットを決めることを意味します。

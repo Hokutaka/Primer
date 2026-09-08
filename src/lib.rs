@@ -136,6 +136,14 @@ pub fn compile_to_asm_with_target(
     codegen::x86_64::emit_asm(&compile_to_ir(source)?, target)
 }
 
+pub fn compile_to_native_object(
+    source: &str,
+    target: codegen::x86_64::Target,
+    annotate_origins: bool,
+) -> Result<Vec<u8>, Diagnostic> {
+    codegen::x86_64::emit_object(&compile_to_ir(source)?, target, annotate_origins)
+}
+
 pub fn compile_to_asm_with_origins(
     source: &str,
     target: codegen::x86_64::Target,

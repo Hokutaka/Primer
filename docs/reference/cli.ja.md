@@ -16,6 +16,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
 primer --version
@@ -47,6 +48,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 
@@ -59,9 +61,10 @@ primer emit-bytecode <file> [-o <output.pbc>]
 | `emit-qbe` | QBE IR | 未指定、または明示的なLinux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
 | `emit-asm` | ネイティブアセンブリ | x86-64、Windows / Linux、各OSの呼出規約 | `.s` |
+| `emit-obj` | 自前のネイティブオブジェクト | 明示的なWindows x64 / Linux x86-64 | `.obj` / `.o` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
 
-`emit-*`コマンドは、`-o`を指定しない場合、観測結果を標準出力へ書き出します。`-o`を指定した場合は、利用者が出力先のパスを決定します。
+テキストを出力する`emit-*`コマンドは、`-o`を指定しない場合、観測結果を標準出力へ書き出します。`-o`を指定した場合は、利用者が出力先のパスを決定します。バイナリの`emit-obj`では`-o`が必須です。
 
 `emit-asm --target x86_64-unknown-linux-gnu`でLinux、`--target x86_64-pc-windows-msvc`でWindows向けのアセンブリを生成します。省略時は互換性のためWindows固定で、ホストOSから推測しません。`--annotate-origins`で式と命令の対応を注釈とラベルとして残せます。[機械語までの観測](../design/native-code.ja.md)も参照してください。
 
@@ -162,3 +165,7 @@ Windows向けには`--target x86_64-pc-windows-msvc`を指定します。`--anno
 ## WATのu64出力
 
 `u64`を表示する成果物は`primer.print_u64(i64) -> void`をimportします。ホストは符号なし64ビットの十進数とLFを出力します。JavaScriptでは`BigInt.asUintN(64, value).toString()`を使います。[u64の設計](../design/u64.ja.md)を参照してください。
+
+## 自前オブジェクトの生成
+
+`emit-obj`は`--target x86_64-pc-windows-msvc`または`x86_64-unknown-linux-gnu`と`-o`を必須とします。外部ツールなしでCOFF/ELFを生成し、標準出力へバイナリは書きません。`--annotate-origins`で出自ラベルを残せます。誤ったオプションやコンパイル診断では既存出力を変更しません。リンク・実行は別の明示操作です。[自前エンコーダ](../design/native-encoder.ja.md)を参照してください。ライブラリでは`compile_to_native_object(source, target, annotate_origins)`が`Vec<u8>`を返します。

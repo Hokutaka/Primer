@@ -177,6 +177,7 @@ Primer IRで一つの整数演算として見える式は、backend loweringで�
 | QBE | QBE IR表現 | `.ssa` |
 | WebAssembly | WAT指向の命令IR | `.wat` |
 | Windows/Linux x86-64直接アセンブリ | アセンブリIR | `.s` |
+| ネイティブオブジェクト | 共通ASMの読み取り・命令符号化・ELF/COFF生成 | `.o` / `.obj` |
 | Primer bytecode | `BytecodeProgram` | `.pbc` |
 
 バックエンドIRには、Primer IRに含めるべきでない決定を表現できます。
@@ -242,6 +243,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 

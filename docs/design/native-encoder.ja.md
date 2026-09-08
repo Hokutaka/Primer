@@ -1,0 +1,63 @@
+# 自前のx86-64エンコーダ
+
+[English](native-encoder.en.md)
+
+## 担当する範囲
+
+`emit-obj`はPrimer自身でx86-64命令を符号化し、LinuxのELF64またはWindowsのCOFFオブジェクトを返します。外部アセンブラ、JIT、実行ファイルの起動は不要です。リンクは明示した外部リンカの担当です。
+
+```text
+Primer IR → 共通x86-64命令表現 → Primer内部のASM
+                                  ├→ emit-asm → 外部アセンブラ
+                                  └→ 限定的なASMの読み取り → 自前の命令符号化 → ELF/COFF
+```
+
+言語の意味と命令選択は既存の経路と共有します。今回の境界は、内部で生成済みのASMを読む小さなアセンブラです。公開の汎用アセンブラではなく、任意のASMを受け取るCLIも設けません。型推論、演算の失敗条件、評価順、コピーの規則をここで実装し直しません。将来、命令選択後の表現を型付き機械命令IRへ置き換える場合も、この境界から改善できます。
+
+現在の言語機能を通すため、整数8型、f32/f64、真偽値、文字列、配列・構造体、関数、制御構文に必要な命令形式を実装しています。汎用x86-64命令全体、AVX、短い分岐への最適化、自前リンカは対象外です。新しい命令形式を生成する変更は、エンコーダが未対応なら診断で停止します。外部アセンブラへの自動フォールバックはありません。
+
+## 符号化と再配置
+
+- レガシープレフィックス、REX、ModR/M、SIB、変位、即値を命令形式に従って書きます。レジスタの種別・幅、アドレスの倍率、即値の範囲を検査します。
+- ローカル分岐は32ビット相対変位で固定します。`.text`内のラベル参照は解決し、範囲外の変位は拒否します。
+- 定数・文字列は読み取り専用セクションへ置きます。RIP相対参照はELFのPC32、外部呼び出しはPLT32、COFFではREL32として残します。変位の後ろに即値がある形式も、命令末尾を基準にaddendを計算します。
+- ELFには空の`.note.GNU-stack`を設け、実行スタックを要求しません。COFFのタイムスタンプは0固定です。シンボルとセクションの順序も固定します。
+- COFFの再配置は65,535件までです。セクション位置、数値、変位を狭いフィールドへ黙って切り捨てません。
+
+自前版は即値や分岐の長い形式と単一バイトNOPによる整列を使う場合があります。外部アセンブラと命令バイトやアドレスが同じとは限りません。同じ言語の意味と実行結果を比較します。自前版同士では同じ入力・ターゲット・オプションから同じオブジェクトを得られます。
+
+`--annotate-origins`は既存の出自ラベルをシンボルとして残します。有無によって`.text`、定数・文字列、再配置の意味は変わりません。オブジェクトのシンボル表自体は変わります。生成物は観測用データであり、外部からコンパイラ内部を変更する口にはしません。
+
+## 使用例
+
+バイナリを端末へ暗黙に出さないため、`--target`と`-o`は必須です。出力はリンク前のオブジェクトです。
+
+```powershell
+cargo build
+target/debug/primer.exe emit-obj examples/packet_counter.prim --target x86_64-pc-windows-msvc --annotate-origins -o target/packet.obj
+clang target/packet.obj -o target/packet.exe
+target/packet.exe
+```
+
+```sh
+cargo build
+target/debug/primer emit-obj examples/packet_counter.prim --target x86_64-unknown-linux-gnu --annotate-origins -o target/packet.o
+cc target/packet.o -o target/packet
+target/packet
+```
+
+WSLで`CARGO_TARGET_DIR=target/unix`を使う場合は`target/unix/debug/primer`を指定します。エンコードだけなら、実行中のOSと生成先は一致しなくても構いません。実行する環境とリンク時のライブラリは生成先に合わせます。
+
+観測スクリプトでは`--encoder primer`を明示します。既定の`external`は比較対象として残ります。
+
+```powershell
+node scripts/observe-native.cjs --source examples/packet_counter.prim --target x86_64-pc-windows-msvc --primer target/debug/primer.exe --cc clang --objdump llvm-objdump --output-dir target/packet-own-windows --encoder primer --run
+```
+
+`manifest.json`は`encoder: primer`と`encode-object`工程を記録します。Cドライバはリンクだけに使います。IR、対応するASM、自前オブジェクト、逆アセンブル、VMとの出力比較は[ネイティブコードの観測](native-code.ja.md)と同じ手順で保存します。
+
+## 検証
+
+全サンプル、u64・文字列の境界値、大きな配列の引数と戻り値をWindows/Linuxでリンク・実行し、VMと外部アセンブラ版に照合します。期待する不正命令停止も両エンコーダで確認します。低レベルではREX/SIB、変位の境界、SSE2、ローカル分岐、RIP相対addendを検証し、命令バイトは独立したLLVMアセンブラで照合した期待値を保持します。PATHを空にしたCLIテストにより、オブジェクト生成が外部ツールを要求しないことも確認します。
+
+形式の参照先は[Intelの命令セット仕様](https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html)、[MicrosoftのPE/COFF仕様](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)、[ELF64形式](https://uclibc.org/docs/elf-64-gen.pdf)、[x86-64 psABI](https://gitlab.com/x86-psABIs/x86-64-ABI)です。

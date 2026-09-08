@@ -304,6 +304,9 @@ fn all_current_examples_run_as_generated_c() {
     for path in paths {
         let source = fs::read_to_string(&path).unwrap();
         let expected = run_vm(&source).unwrap();
+        let uses_strings = compile_to_c(&source)
+            .unwrap()
+            .contains("typedef struct primer_string {");
         for optimization in ["-O0", "-O2"] {
             let actual = c.run(&source, optimization);
             assert!(
@@ -319,13 +322,8 @@ fn all_current_examples_run_as_generated_c() {
                 String::from_utf8_lossy(&actual.stderr)
             );
             let mut output = String::from_utf8(actual.stdout).unwrap();
-            // 文字列の2例は別テストでも改行を含めて完全一致を検証します。
-            if !path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .starts_with("string_")
-            {
+            // ファイル名ではなく生成物で判定し、文字列中のCR/LFを保存します。
+            if cfg!(windows) && !uses_strings {
                 output = output.replace("\r\n", "\n");
             }
             assert_eq!(output, expected, "{} {optimization}", path.display());

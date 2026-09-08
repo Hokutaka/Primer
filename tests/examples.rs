@@ -1,6 +1,14 @@
 use primer_lang::run_vm;
 
 #[test]
+fn packet_counter_keeps_high_bits_and_independent_copies() {
+    assert_eq!(
+        run_vm(include_str!("../examples/packet_counter.prim")).unwrap(),
+        "packet counter\n9223372036854775808\n9223372036854775809\n1\n3\ntrue\n9\ntrue\n受信\0\r\n\n"
+    );
+}
+
+#[test]
 fn native_values_keep_mixed_arguments_and_aggregate_copies() {
     assert_eq!(
         run_vm(include_str!("../examples/native_values.prim")).unwrap(),

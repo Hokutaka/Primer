@@ -177,7 +177,7 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
     } else {
         Target::X86_64UnknownLinuxGnu
     };
-    let invoke = |source: &str, name: &str, failure: bool| {
+    let invoke = |source: &str, name: &str, failure: bool, encoder: &str| {
         fs::write(&source_path, source).unwrap();
         let directory = workspace.0.join(name);
         let mut command = Command::new(&node);
@@ -197,6 +197,7 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
             .arg(&objdump)
             .arg("--output-dir")
             .arg(&directory)
+            .args(["--encoder", encoder])
             .arg("--run");
         if failure {
             command.arg("--expect-trap");
@@ -218,7 +219,14 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
         directory
     };
     for (index, (source, expected)) in cases().into_iter().enumerate() {
-        let directory = invoke(&source, &format!("success-{index}"), false);
+        let directory = invoke(&source, &format!("success-{index}"), false, "external");
+        let own = invoke(&source, &format!("encoded-{index}"), false, "primer");
+        assert_eq!(
+            fs::read(own.join("native.stdout")).unwrap(),
+            fs::read(directory.join("native.stdout")).unwrap()
+        );
+        let own_manifest = fs::read_to_string(own.join("manifest.json")).unwrap();
+        assert!(own_manifest.contains("encode-object") && !own_manifest.contains("\"assemble\""));
         assert_eq!(
             fs::read(directory.join("vm.stdout")).unwrap(),
             expected.as_bytes()
@@ -275,8 +283,65 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
         .chain(string_cases::OUT_OF_BOUNDS)
         .enumerate()
     {
-        invoke(source, &format!("failure-{index}"), true);
+        invoke(source, &format!("failure-{index}"), true, "external");
+        invoke(source, &format!("encoded-failure-{index}"), true, "primer");
     }
+}
+
+#[test]
+fn object_cli_requires_explicit_target_and_output_and_never_runs_an_assembler() {
+    let workspace = Workspace::new();
+    let input = workspace.0.join("source.prim");
+    let output = workspace.0.join("program.o");
+    let source = include_str!("../examples/native_values.prim");
+    fs::write(&input, source).unwrap();
+    for target in [Target::X86_64PcWindowsMsvc, Target::X86_64UnknownLinuxGnu] {
+        let result = Command::new(env!("CARGO_BIN_EXE_primer"))
+            .arg("emit-obj")
+            .arg(&input)
+            .args(["--target", target.triple(), "--annotate-origins", "-o"])
+            .arg(&output)
+            .env("PATH", "")
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{:?}", result.stderr);
+        assert!(result.stdout.is_empty() && result.stderr.is_empty());
+        assert_eq!(
+            fs::read(&output).unwrap(),
+            primer_lang::compile_to_native_object(source, target, true).unwrap()
+        );
+    }
+    for options in [
+        vec![],
+        vec!["--target", "unknown"],
+        vec![
+            "--target",
+            "x86_64-unknown-linux-gnu",
+            "--annotate-origins",
+            "--annotate-origins",
+        ],
+    ] {
+        fs::write(&output, "existing output").unwrap();
+        let result = Command::new(env!("CARGO_BIN_EXE_primer"))
+            .arg("emit-obj")
+            .arg(&input)
+            .args(options)
+            .arg("-o")
+            .arg(&output)
+            .output()
+            .unwrap();
+        assert!(!result.status.success());
+        assert!(result.stdout.is_empty());
+        assert_eq!(fs::read_to_string(&output).unwrap(), "existing output");
+    }
+    let missing_output = Command::new(env!("CARGO_BIN_EXE_primer"))
+        .arg("emit-obj")
+        .arg(&input)
+        .args(["--target", "x86_64-unknown-linux-gnu"])
+        .output()
+        .unwrap();
+    assert!(!missing_output.status.success() && missing_output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&missing_output.stderr).contains("requires -o"));
 }
 
 #[test]

@@ -16,6 +16,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
 primer --version
@@ -47,6 +48,7 @@ primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
+primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 
@@ -59,9 +61,10 @@ Each command emits the following artifact:
 | `emit-qbe` | QBE IR | unspecified, or explicit Linux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
 | `emit-asm` | native assembly | x86-64, Windows / Linux, respective calling conventions | `.s` |
+| `emit-obj` | Native object encoded by Primer | explicit Windows x64 / Linux x86-64 | `.obj` / `.o` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
 
-Each `emit-*` command writes its observation to standard output by default. With `-o`, the caller chooses the output path.
+Text-producing `emit-*` commands write their observations to standard output by default. With `-o`, the caller chooses the output path. Binary `emit-obj` requires `-o`.
 
 `emit-asm --target x86_64-unknown-linux-gnu` selects Linux; `--target x86_64-pc-windows-msvc` selects Windows. Omission preserves the fixed Windows default without inferring the host OS. `--annotate-origins` adds source comments and labels. See [native code observation](../design/native-code.en.md).
 
@@ -158,3 +161,7 @@ Run `cargo run -- emit-ir examples/string_origins.prim`, then `cargo run -- emit
 ## WAT u64 output
 
 Artifacts printing `u64` import `primer.print_u64(i64) -> void`. The host writes unsigned 64-bit decimal digits followed by LF. JavaScript hosts use `BigInt.asUintN(64, value).toString()`. See the [u64 design](../design/u64.en.md).
+
+## Primer object generation
+
+`emit-obj` requires `--target x86_64-pc-windows-msvc` or `x86_64-unknown-linux-gnu` and `-o`. It generates COFF/ELF without external tools and never writes binary data to stdout. `--annotate-origins` retains origin labels. Invalid options and compilation diagnostics preserve existing output. Linking and execution remain separate explicit operations. See the [native encoder](../design/native-encoder.en.md). The library API `compile_to_native_object(source, target, annotate_origins)` returns `Vec<u8>`.
