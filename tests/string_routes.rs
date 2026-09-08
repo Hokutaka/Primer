@@ -1,3 +1,8 @@
+#[path = "support/crash_dialogs.rs"]
+mod crash_dialogs;
+#[path = "support/u64_cases.rs"]
+mod u64_cases;
+
 #[path = "support/string_cases.rs"]
 mod string_cases;
 
@@ -10,6 +15,7 @@ use std::{ffi::OsString, fs, path::PathBuf, process::Command};
 struct Workspace(PathBuf);
 impl Workspace {
     fn new() -> Self {
+        crash_dialogs::suppress();
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -82,6 +88,8 @@ fn cases() -> Vec<(&'static str, String)> {
     ] {
         cases.push((source, run_vm(source).unwrap()));
     }
+    cases.push((u64_cases::EXAMPLE.0, u64_cases::EXAMPLE.1.into()));
+    cases.push((u64_cases::BOUNDARIES.0, u64_cases::BOUNDARIES.1.into()));
     cases
 }
 
@@ -179,7 +187,10 @@ fn direct_assembly_matches_known_bytes_and_vm_on_windows() {
             "{source}"
         );
     }
-    for source in string_cases::OUT_OF_BOUNDS {
+    for source in string_cases::OUT_OF_BOUNDS
+        .iter()
+        .chain(u64_cases::FAILURES)
+    {
         assert!(run_vm(source).is_err());
         fs::write(&assembly, compile_to_x86_64_win_asm(source).unwrap()).unwrap();
         run_success(
@@ -238,7 +249,10 @@ fn qbe_matches_known_bytes_and_vm_on_linux() {
             "{source}"
         );
     }
-    for source in string_cases::OUT_OF_BOUNDS {
+    for source in string_cases::OUT_OF_BOUNDS
+        .iter()
+        .chain(u64_cases::FAILURES)
+    {
         assert!(run_vm(source).is_err());
         fs::write(
             &input,
@@ -301,7 +315,10 @@ fn wat_matches_known_bytes_and_vm_without_exposing_memory() {
             "{source}"
         );
     }
-    for source in string_cases::OUT_OF_BOUNDS {
+    for source in string_cases::OUT_OF_BOUNDS
+        .iter()
+        .chain(u64_cases::FAILURES)
+    {
         assert!(run_vm(source).is_err());
         fs::write(&wat, compile_to_wat(source).unwrap()).unwrap();
         run_success(

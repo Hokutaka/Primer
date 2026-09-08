@@ -242,7 +242,17 @@ impl Lowerer<'_> {
                 let Value::Scalar { ty, operand } = self.lower_expr(value) else {
                     unreachable!("semantic analysis rejects aggregate printing")
                 };
-                self.lower_print(ty, operand);
+                if crate::codegen::is_u64(&value.ty) {
+                    let dest = self.next_temp();
+                    self.instructions.push(Instruction::CallPrintf {
+                        dest,
+                        format: PrintFormat::U64,
+                        arg_ty: Type::I64,
+                        value: operand,
+                    });
+                } else {
+                    self.lower_print(ty, operand);
+                }
                 false
             }
 
@@ -451,6 +461,20 @@ impl Lowerer<'_> {
     }
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
+        if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
+            let (_, value) = self.lower_scalar_expr(value);
+            let dest = self.next_temp();
+            self.instructions.push(Instruction::ConvertNumeric {
+                dest,
+                value,
+                conversion,
+            });
+            return Value::Scalar {
+                ty: Type::I64,
+                operand: Operand::Temp(dest),
+            };
+        }
+
         match &expr.kind {
             primer_ir::ExprKind::StringByteLength { value } => {
                 let value = self.lower_expr(value);
@@ -509,7 +533,7 @@ impl Lowerer<'_> {
             },
             primer_ir::ExprKind::Integer(value) => Value::Scalar {
                 ty: Type::I64,
-                operand: Operand::Integer(*value),
+                operand: Operand::Integer(*value as i64),
             },
             primer_ir::ExprKind::Float { text } => Value::Scalar {
                 ty: scalar_type(&expr.ty),
@@ -630,12 +654,13 @@ impl Lowerer<'_> {
                 }
             }
             primer_ir::ExprKind::Binary { op, left, right } => {
+                let source_operand_ty = left.ty.clone();
                 let (left_ty, left) = self.lower_scalar_expr(left);
                 let (right_ty, right) = self.lower_scalar_expr(right);
                 debug_assert_eq!(left_ty, right_ty);
                 let dest = self.next_temp();
 
-                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                if let Some(op) = crate::codegen::integer_binary_op(*op, &source_operand_ty) {
                     self.instructions.push(Instruction::IntegerBinary {
                         dest,
                         op,
@@ -645,6 +670,7 @@ impl Lowerer<'_> {
                     });
                 } else if let Some(op) = compare_op(*op) {
                     self.instructions.push(Instruction::Compare {
+                        unsigned: crate::codegen::is_u64(&source_operand_ty),
                         dest,
                         op,
                         operand_ty: left_ty,
@@ -935,6 +961,7 @@ impl Lowerer<'_> {
         let out_of_bounds = self.next_label();
         let is_negative = self.next_temp();
         self.instructions.push(Instruction::Compare {
+            unsigned: false,
             dest: is_negative,
             op: CompareOp::Less,
             operand_ty: Type::I64,
@@ -952,6 +979,7 @@ impl Lowerer<'_> {
         });
         let is_too_large = self.next_temp();
         self.instructions.push(Instruction::Compare {
+            unsigned: false,
             dest: is_too_large,
             op: CompareOp::GreaterEqual,
             operand_ty: Type::I64,

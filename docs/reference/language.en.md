@@ -73,7 +73,7 @@ type_spec   := "i8"
              | IDENT
              | "infer"
 
-type_ref    := "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "f32" | "f64" | "bool" | "string" | fixed_array_type | IDENT
+type_ref    := "i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" | "f32" | "f64" | "bool" | "string" | fixed_array_type | IDENT
 
 fixed_array_type := "[" type_ref ";" INTEGER "]"
 
@@ -105,7 +105,7 @@ unary       := ("-" | "!" | "~") unary
 postfix     := primary (("." IDENT) | ("[" expression "]"))*
 
 primary     := "true"
-             | ("i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "f32" | "f64") "(" expression ","? ")"
+             | ("i8" | "u8" | "i16" | "u16" | "i32" | "u32" | "i64" | "u64" | "f32" | "f64") "(" expression ","? ")"
              | "convert" "<" type_ref ">" "(" expression ","? ")"
              | "false"
              | INTEGER
@@ -256,7 +256,7 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-An element type may be `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, `f64`, a named product type, or another fixed array. A fixed array may also be used as a field of a product type.
+An element type may be `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, a named product type, or another fixed array. A fixed array may also be used as a field of a product type.
 
 ```primer
 type Point {
@@ -323,7 +323,7 @@ Function names are resolved across the whole file, so a call may precede its def
 
 Top-level executable statements receive a compiler-generated entrypoint. A program may instead define `fn main() -> void`, but an explicit `main` cannot be combined with top-level executable statements. `main` takes no parameters.
 
-Function parameters and results may use `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, `f64`, named product types, and fixed arrays. Products and arrays are passed as values, so the received value and the caller's value do not share a mutable location. Functions accept at most four parameters. Recursion and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
+Function parameters and results may use `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, named product types, and fixed arrays. Products and arrays are passed as values, so the received value and the caller's value do not share a mutable location. Functions accept at most four parameters. Recursion and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
 
 Primer IR and bytecode expose function IDs, parameter binding IDs, calls, and returns. Backend artifacts expose how those entities become function symbols, arguments, local storage, and ABI registers or memory. See [Function design](../design/functions.en.md) for details.
 
@@ -467,6 +467,7 @@ u16       int64_t
 i32       int64_t
 u32       int64_t
 i64       int64_t
+u64       uint64_t
 f32       float
 f64       double
 ```
@@ -482,8 +483,9 @@ Integer ranges are:
 | `i32` | -2147483648 | 2147483647 |
 | `u32` | 0 | 4294967295 |
 | `i64` | -9223372036854775808 | 9223372036854775807 |
+| `u64` | 0 | 18446744073709551615 |
 
-Range and storage width are separate. All integer types currently use 64-bit locations in generated targets. Arrays and products do not pack them into 8, 16, or 32 bits, so changing from `i64` to a smaller type does not reduce memory use. `u64` and direct external byte I/O are not implemented.
+Range and storage width are separate. All integer types currently use 64-bit locations in generated targets. Arrays and products do not pack them into 8, 16, or 32 bits, so changing from `i64` to a smaller type does not reduce memory use. Direct external byte I/O is not implemented.
 
 ## Booleans and comparisons
 
@@ -543,7 +545,7 @@ x: i64 = 42;
 
 An integer literal remains a sequence of decimal digits until its type is known. Once its type is resolved, that type's range is checked and an out-of-range value is a compilation error. The sign is parsed as unary `-`, but `-9223372036854775808` is accepted as the minimum `i64` value.
 
-Integer suffixes are `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, and `i64`. Unsuffixed numbers receive expected types from declarations, assignments, arguments, returns, fields, and array elements. Without an outer expected type, already typed values in the same arithmetic expression supply the type.
+Integer suffixes are `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, and `u64`. Unsuffixed numbers receive expected types from declarations, assignments, arguments, returns, fields, and array elements. Without an outer expected type, already typed values in the same arithmetic expression supply the type.
 
 ```primer
 count: i32 = 4;
@@ -636,7 +638,7 @@ Comparison operands must also have the same type. Primer IR exposes the operand 
 
 ## Remainder and bit operations
 
-Bits are the zeros and ones that represent a number. A `u8` can be viewed as eight switches. Remainder and bit operations support all seven implemented integer kinds, not Boolean or floating-point values.
+Bits are the zeros and ones that represent a number. A `u8` can be viewed as eight switches. Remainder and bit operations support all eight implemented integer kinds, not Boolean or floating-point values.
 
 | Operation | Meaning | Example |
 | --- | --- | --- |
@@ -672,7 +674,7 @@ compact: infer = i64(value);
 explicit: infer = convert<i64>(value);
 ```
 
-All pairs among `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, and `f64` support explicit conversion. Conversion succeeds only if the destination preserves the value; otherwise execution stops. It does not truncate, round, or wrap. Conversions involving `bool`, arrays, or product types are not supported.
+All pairs among `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, and `f64` support explicit conversion. Conversion succeeds only if the destination preserves the value; otherwise execution stops. It does not truncate, round, or wrap. Conversions involving `bool`, arrays, or product types are not supported.
 
 ```primer
 count: u32 = 3000000000;
@@ -718,7 +720,7 @@ Primer IR retains source/destination types, input, original spelling, and source
 
 C, LLVM, QBE, WAT, and Windows x86-64 retain integer values in 64-bit storage and check narrower integer destinations. Floating-point conversions retain a typed operation in backend IR and generate checks before accepting a changed representation. Same-type conversions need no native instruction; they remain explicit in Primer IR and bytecode. Integer-to-`i64` conversions also need no extra native operation; float-to-`i64` conversions still require checks.
 
-Functions and types cannot be defined with the built-in type names `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`, `f64`, or `string`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
+Functions and types cannot be defined with the built-in type names `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, or `string`; these are diagnosed at the definition. `convert` is not a keyword: ordinary calls such as `convert(value)` and comparisons such as `convert < limit` remain available. The `convert<type>(expression)` form is a built-in conversion whose meaning does not change when a user function named `convert` exists. This form does not introduce user-defined generic functions.
 
 ## Output
 
@@ -732,7 +734,7 @@ The current formatting policy is:
 
 ```text
 bool   `true` or `false`
-i8 / u8 / i16 / u16 / i32 / u32 / i64    integer output
+i8 / u8 / i16 / u16 / i32 / u32 / i64 / u64    integer output
 f32    9 significant digits
 f64    17 significant digits
 ```

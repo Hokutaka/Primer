@@ -4,6 +4,7 @@ mod integer;
 pub mod ir;
 mod lower;
 mod string;
+mod unsigned;
 
 pub use emit::emit;
 use lower::lower;

@@ -1,0 +1,69 @@
+data $fmt_u64 = { b "%llu", b 10, b 0 }
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+data $bool_false = { b "false", b 0 }
+data $bool_true = { b "true", b 0 }
+data $bool_texts = align 8 { l $bool_false, l $bool_true }
+
+function l $primer_convert_i64_u64(l %value) {
+@start
+  %bad =w csltl %value, 0
+  jnz %bad, @trap, @ok
+@ok
+  ret %value
+@trap
+  call $abort()
+  hlt
+}
+
+function l $primer_u64_div(l %left, l %right) {
+@start
+  %bad =w ceql %right, 0
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l udiv %left, %right
+  ret %result
+}
+
+function l $primer_u64_shr(l %left, l %right) {
+@start
+  %wide =w cugel %right, 64
+  jnz %wide, @trap, @bounds
+@bounds
+  %bad =w copy 0
+  jnz %bad, @trap, @ok
+@trap
+  call $abort()
+  hlt
+@ok
+  %result =l shr %left, %right
+  ret %result
+}
+
+export function w $main() {
+@start
+  %slot_maximum =l alloc8 8
+  storel -1, %slot_maximum
+  %tmp0 =l loadl %slot_maximum
+  %tmp1 =w call $printf(l $fmt_u64, ..., l %tmp0)
+  %tmp2 =l loadl %slot_maximum
+  %tmp3 =w cugtl %tmp2, 0
+  %tmp4 =l extsw %tmp3
+  %tmp5 =l mul %tmp4, 8
+  %tmp6 =l add $bool_texts, %tmp5
+  %tmp7 =l loadl %tmp6
+  %tmp8 =w call $puts(l %tmp7)
+  %tmp9 =l loadl %slot_maximum
+  %tmp10 =l call $primer_u64_div(l %tmp9, l 2)
+  %tmp11 =w call $printf(l $fmt_u64, ..., l %tmp10)
+  %tmp12 =l loadl %slot_maximum
+  %tmp13 =l call $primer_u64_shr(l %tmp12, l 63)
+  %tmp14 =w call $printf(l $fmt_u64, ..., l %tmp13)
+  %tmp15 =l call $primer_convert_i64_u64(l 42)
+  %tmp16 =w call $printf(l $fmt_u64, ..., l %tmp15)
+  ret 0
+}

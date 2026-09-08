@@ -10,6 +10,9 @@ pub(super) fn type_name(ty: NumericType) -> &'static str {
 }
 
 pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
+    if conversion.uses_u64() {
+        return super::unsigned::emit_conversion(conversion, output);
+    }
     let NumericConversion { from, to } = conversion;
     let result_ty = type_name(to);
     writeln!(
@@ -39,7 +42,7 @@ pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
                 "%value"
             };
             let lower = (ty.minimum() as f64).to_bits();
-            let upper = ((i128::from(ty.maximum()) + 1) as f64).to_bits();
+            let upper = ((ty.maximum() + 1) as f64).to_bits();
             writeln!(output, "  %below = fcmp ult double {number}, 0x{lower:016X}\n  %above = fcmp uge double {number}, 0x{upper:016X}\n  %outside = or i1 %below, %above\n  %bits = bitcast double {number} to i64\n  %negative_zero = icmp eq i64 %bits, -9223372036854775808\n  %bad = or i1 %outside, %negative_zero\n  br i1 %bad, label %trap, label %convert\nconvert:\n  %result = fptosi double {number} to i64\n  %back = sitofp i64 %result to double\n  %changed = fcmp one double %back, {number}\n  br i1 %changed, label %trap, label %ok").unwrap();
         }
         (NumericType::F32, NumericType::F64) => {

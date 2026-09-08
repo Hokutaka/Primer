@@ -267,8 +267,17 @@ impl Lowerer<'_> {
             }
 
             primer_ir::StatementKind::Print { value } => {
+                let unsigned = crate::codegen::is_u64(&value.ty);
                 let value = self.lower_expr(value);
-                self.lower_print(value);
+                if unsigned {
+                    self.push(Instruction::CallPrintf {
+                        format: PrintFormat::U64,
+                        arg_ty: Type::I64,
+                        value: value.operand,
+                    });
+                } else {
+                    self.lower_print(value);
+                }
                 false
             }
 
@@ -497,6 +506,20 @@ impl Lowerer<'_> {
     }
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
+        if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
+            let value = self.lower_expr(value);
+            let dest = self.next_temp();
+            self.push(Instruction::ConvertNumeric {
+                dest,
+                value: value.operand,
+                conversion,
+            });
+            return Value {
+                ty: Type::I64,
+                operand: Operand::Temp(dest),
+            };
+        }
+
         match &expr.kind {
             primer_ir::ExprKind::StringByteLength { value } => {
                 let value = self.lower_expr(value);
@@ -553,7 +576,7 @@ impl Lowerer<'_> {
 
             primer_ir::ExprKind::Integer(value) => Value {
                 ty: Type::I64,
-                operand: Operand::Integer(*value),
+                operand: Operand::Integer(*value as i64),
             },
 
             primer_ir::ExprKind::Float { text } => match expr.ty {
@@ -723,11 +746,12 @@ impl Lowerer<'_> {
                 }
             }
             primer_ir::ExprKind::Binary { op, left, right } => {
+                let source_operand_ty = left.ty.clone();
                 let left = self.lower_expr(left);
                 let right = self.lower_expr(right);
                 let dest = self.next_temp();
 
-                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                if let Some(op) = crate::codegen::integer_binary_op(*op, &source_operand_ty) {
                     self.push(Instruction::IntegerBinary {
                         dest,
                         op,
@@ -737,6 +761,7 @@ impl Lowerer<'_> {
                     });
                 } else if let Some(op) = compare_op(*op) {
                     self.push(Instruction::Compare {
+                        unsigned: crate::codegen::is_u64(&source_operand_ty),
                         dest,
                         op,
                         operand_ty: left.ty.clone(),

@@ -85,7 +85,7 @@ WAT puts data in private linear memory and uses 32-bit addresses. Its eight-byte
 
 ### WAT output and the external boundary
 
-WAT programs using strings import `primer.write_byte(i32) -> void`. Generated code reads each content byte, passes its value in 0–255, and finally passes LF (10). The host must preserve these bytes in order without character encoding or line-ending translation. Numbers and Booleans retain the existing `print_i64`, `print_f32`, `print_f64`, and `print_bool` contracts.
+WAT programs using strings import `primer.write_byte(i32) -> void`. Generated code reads each content byte, passes its value in 0–255, and finally passes LF (10). The host must preserve these bytes in order without character encoding or line-ending translation. Numbers and Booleans retain the existing `print_i64`, `print_u64`, `print_f32`, `print_f64`, and `print_bool` contracts.
 
 Memory is neither exported nor imported for output. Passing byte values instead of string storage references adds no output interface for modifying contents. This is a runtime output contract, not a compiler observation API or a way for observations to control compilation.
 

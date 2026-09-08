@@ -10,6 +10,9 @@ pub(super) fn type_name(ty: NumericType) -> &'static str {
 }
 
 pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
+    if conversion.uses_u64() {
+        return super::unsigned::emit_conversion(conversion, output);
+    }
     let NumericConversion { from, to } = conversion;
     let result_ty = type_name(to);
     writeln!(
@@ -37,7 +40,7 @@ pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
             } else {
                 "%value"
             };
-            writeln!(output, "  %nan =w cuod {number}, {number}\n  %below =w cltd {number}, d_{}\n  %above =w cged {number}, d_{}\n  %outside =w or %below, %above\n  %bits =l cast {number}\n  %negative_zero =w ceql %bits, -9223372036854775808\n  %special =w or %nan, %negative_zero\n  %bad =w or %outside, %special\n  jnz %bad, @trap, @convert\n@convert\n  %result =l dtosi {number}\n  %back =d sltof %result\n  %changed =w cned %back, {number}\n  jnz %changed, @trap, @ok", ty.minimum(), i128::from(ty.maximum()) + 1).unwrap();
+            writeln!(output, "  %nan =w cuod {number}, {number}\n  %below =w cltd {number}, d_{}\n  %above =w cged {number}, d_{}\n  %outside =w or %below, %above\n  %bits =l cast {number}\n  %negative_zero =w ceql %bits, -9223372036854775808\n  %special =w or %nan, %negative_zero\n  %bad =w or %outside, %special\n  jnz %bad, @trap, @convert\n@convert\n  %result =l dtosi {number}\n  %back =d sltof %result\n  %changed =w cned %back, {number}\n  jnz %changed, @trap, @ok", ty.minimum(), ty.maximum() + 1).unwrap();
         }
         (NumericType::F32, NumericType::F64) => {
             output.push_str("  %nan =w cuos %value, %value\n  jnz %nan, @trap, @convert\n@convert\n  %result =d exts %value\n  jmp @ok\n");

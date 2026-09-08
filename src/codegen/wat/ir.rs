@@ -45,6 +45,11 @@ pub enum LoopKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CallPrintU64,
+    I64LtU,
+    I64LeU,
+    I64GtU,
+    I64GeU,
     StringEqual,
     StringNotEqual,
     ConvertNumeric {

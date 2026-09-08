@@ -158,3 +158,7 @@ cargo run -- run examples/string_origins.prim
 ```
 
 Windows向けには`--target x86_64-pc-windows-msvc`を指定します。`--annotate-origins`はLLVMだけの任意指定です。通常の出力は従来どおりです。APIでは`compile_to_llvm_with_options(source, llvm::Options { target, annotate_origins: true })`を使います。コメントの意味と対応範囲は[可観測性の契約](../design/observability.ja.md#llvmの出自注釈)を参照してください。
+
+## WATのu64出力
+
+`u64`を表示する成果物は`primer.print_u64(i64) -> void`をimportします。ホストは符号なし64ビットの十進数とLFを出力します。JavaScriptでは`BigInt.asUintN(64, value).toString()`を使います。[u64の設計](../design/u64.ja.md)を参照してください。

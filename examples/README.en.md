@@ -146,3 +146,7 @@ For LLVM, use the Windows/Linux command examples in the [CLI reference](../docs/
 Run `cargo run -- run examples/string_byte_length.prim` and inspect `emit-ir` or `emit-llvm --target x86_64-unknown-linux-gnu --annotate-origins` for the same input.
 
 Output lines are `0, 9, 3, 2, 3, 4, 7, 3, 9, left, right, 9, false, false, 6, 10`, each followed by LF. The example exercises UTF-8 lengths, saved copies, calls, arrays, defaults, and evaluation order. Each of `left` and `right` is printed once; `skipped` is never printed. C, LLVM, QBE, WAT, and direct assembly are also executed against known expected bytes. See the [small observation fixture](../tests/fixtures/observation/string-byte-length/) for representations in every route.
+
+## Unsigned 64-bit integers
+
+Run `cargo run -- run examples/u64_values.prim` to try a 64-bit set of flags, the maximum value, value copies, and exact conversions. Output starts with `u64`, `18446744073709551615`, `9223372036854775808`, and `0`. Reassigning the original binding preserves its earlier copy.

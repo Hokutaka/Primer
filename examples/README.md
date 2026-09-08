@@ -154,3 +154,7 @@ cargo run -- emit-llvm examples/string_byte_length.prim --target x86_64-unknown-
 ```
 
 出力は順に`0, 9, 3, 2, 3, 4, 7, 3, 9, left, right, 9, false, false, 6, 10`で、各値の後にLFが付きます。`left`と`right`は各一回だけ出力され、`skipped`は出力されません。C・LLVM・QBE・WAT・直接アセンブリも実行して既知の期待バイト列と比較します。小さい入力と各経路の表現は[観測fixture](../tests/fixtures/observation/string-byte-length/)で読めます。
+
+## 64ビットの符号なし整数
+
+`cargo run -- run examples/u64_values.prim`で、64個の状態を持つビット列、最大値、値コピー、正確な変換を試せます。先頭の出力は`u64`、`18446744073709551615`、`9223372036854775808`、`0`です。元の束縛を再代入しても、コピーした値は保持されます。

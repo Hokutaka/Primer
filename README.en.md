@@ -63,7 +63,7 @@ The public observation points are Primer IR and emitted artifacts. Backend-speci
 
 ## Current Capabilities
 
-- **Types and variables:** static typing; `bool`; `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`; `f32`, `f64`; `string`. Type declarations, `infer`, immutable bindings, and mutable bindings with `mut`.
+- **Types and variables:** static typing; `bool`; `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`; `f32`, `f64`; `string`. Type declarations, `infer`, immutable bindings, and mutable bindings with `mut`.
 - **Data structures:** named structs (product types), default field values and field access, and nestable fixed arrays. Value copies and array-element updates.
 - **Functions and control flow:** typed functions, `void`, and explicit `return`. Top-level executable statements or `fn main() -> void`. `if` / `else`, `while`, `for`, and `break` / `continue`.
 - **Operators:** arithmetic, integer remainder and bit operations, comparisons, `!`, and short-circuiting `&&` and `||`.
@@ -74,7 +74,9 @@ Integer overflow, invalid integer division, out-of-bounds array access, and conv
 
 Strings are immutable UTF-8 values, supporting printing, equality, UTF-8 byte-length queries, and use in functions and data structures. They work through every output route. LLVM and QBE require an explicit runtime `--target`. [LLVM target selection](docs/reference/cli.en.md#llvm-target-selection) supports Windows x64 and Linux x86-64. QBE targets Linux x86-64, direct assembly targets Windows x64, and WAT uses a WebAssembly output host function. See [string design](docs/design/strings.en.md) for representation differences. Concatenation and string indexing are not implemented.
 
-`u64`, dynamically sized arrays, recursion, failure recovery, and explicit rounding/truncation operations are not implemented. Current generated targets store even small integer types in 64-bit storage and check their value ranges.
+Dynamically sized arrays, recursion, failure recovery, and explicit rounding/truncation operations are not implemented. Current generated targets store even small integer types in 64-bit storage and check their value ranges.
+
+`u64` covers 0 through 18446744073709551615. See the [design and target representations](docs/design/u64.en.md) and [example](examples/u64_values.prim).
 
 ### Output Targets
 

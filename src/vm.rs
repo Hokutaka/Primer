@@ -28,7 +28,7 @@ pub enum VmErrorKind {
     /// シフト量は0以上、左辺の型のビット数未満でなければなりません。
     InvalidShiftCount {
         ty: IntegerType,
-        count: i64,
+        count: i128,
     },
     RemainderByZero,
     /// 明示変換の入力を変換先の範囲で表せませんでした。
@@ -178,7 +178,7 @@ impl VmError {
 enum Value {
     Bool(bool),
     String(String),
-    Integer(i64, IntegerType),
+    Integer(i128, IntegerType),
     F32(f32),
     F64(f64),
     Aggregate { type_id: usize, fields: Vec<Value> },
@@ -300,7 +300,7 @@ fn execute_frame_inner(
             InstructionKind::StringByteLength => {
                 let value = at_instruction(pop_string(&mut stack), pc)?;
                 // 対応する32/64ビット環境のRust文字列はisize::MAXを超えません。
-                stack.push(Value::Integer(value.len() as i64, IntegerType::I64));
+                stack.push(Value::Integer(value.len() as i128, IntegerType::I64));
             }
             InstructionKind::ConvertNumeric { from, to } => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
@@ -881,7 +881,7 @@ fn integer_binary(
     if matches!(
         op,
         IntegerBinaryOperation::ShiftLeft | IntegerBinaryOperation::ShiftRight
-    ) && (right < 0 || right >= i64::from(ty.bit_width()))
+    ) && (right < 0 || right >= i128::from(ty.bit_width()))
     {
         return Err(VmErrorKind::InvalidShiftCount { ty, count: right });
     }
@@ -891,21 +891,21 @@ fn integer_binary(
             if right == 0 {
                 return Err(VmErrorKind::RemainderByZero);
             }
-            i128::from(left) % i128::from(right)
+            left % right
         }
-        IntegerBinaryOperation::BitAnd => i128::from(left & right),
-        IntegerBinaryOperation::BitOr => i128::from(left | right),
-        IntegerBinaryOperation::BitXor => i128::from(left ^ right),
-        IntegerBinaryOperation::ShiftLeft => i128::from(left) << right,
-        IntegerBinaryOperation::ShiftRight => i128::from(left >> right),
+        IntegerBinaryOperation::BitAnd => left & right,
+        IntegerBinaryOperation::BitOr => left | right,
+        IntegerBinaryOperation::BitXor => left ^ right,
+        IntegerBinaryOperation::ShiftLeft => left << right,
+        IntegerBinaryOperation::ShiftRight => left >> right,
     };
-    if value < i128::from(ty.minimum()) || value > i128::from(ty.maximum()) {
+    if value < ty.minimum() || value > ty.maximum() {
         return Err(VmErrorKind::IntegerOverflow {
             operation: IntegerOperation::ShiftLeft,
             ty: Type::Integer(ty),
         });
     }
-    stack.push(Value::Integer(value as i64, ty));
+    stack.push(Value::Integer(value, ty));
     Ok(())
 }
 
@@ -932,7 +932,13 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
             let value = match operation {
                 BinaryOperation::Add => left + right,
                 BinaryOperation::Subtract => left - right,
-                BinaryOperation::Multiply => left * right,
+                BinaryOperation::Multiply => {
+                    left.checked_mul(right)
+                        .ok_or_else(|| VmErrorKind::IntegerOverflow {
+                            operation: IntegerOperation::Multiply,
+                            ty: ty.clone(),
+                        })?
+                }
                 BinaryOperation::Divide => {
                     if right == 0 {
                         return Err(VmErrorKind::DivisionByZero);
@@ -940,7 +946,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
                     left / right
                 }
             };
-            if value < integer.minimum() as i128 || value > integer.maximum() as i128 {
+            if value < integer.minimum() || value > integer.maximum() {
                 let operation = match operation {
                     BinaryOperation::Add => IntegerOperation::Add,
                     BinaryOperation::Subtract => IntegerOperation::Subtract,
@@ -949,7 +955,7 @@ fn binary(ty: Type, stack: &mut Vec<Value>, operation: BinaryOperation) -> VmRes
                 };
                 return Err(VmErrorKind::IntegerOverflow { operation, ty });
             }
-            stack.push(Value::Integer(value as i64, integer));
+            stack.push(Value::Integer(value, integer));
         }
 
         Type::F32 => {
@@ -1122,10 +1128,10 @@ fn pop_value(stack: &mut Vec<Value>) -> VmResult<Value> {
 }
 
 fn pop_i64(stack: &mut Vec<Value>) -> VmResult<i64> {
-    pop_integer(stack, IntegerType::I64)
+    pop_integer(stack, IntegerType::I64).map(|value| value as i64)
 }
 
-fn pop_integer(stack: &mut Vec<Value>, ty: IntegerType) -> VmResult<i64> {
+fn pop_integer(stack: &mut Vec<Value>, ty: IntegerType) -> VmResult<i128> {
     match pop_value(stack)? {
         Value::Integer(value, actual) if actual == ty => Ok(value),
 
@@ -1215,7 +1221,7 @@ fn check_array_path(current: &Value, path: &[ArrayAccess], indices: &[Value]) ->
             .ok()
             .and_then(|index| values.get(index))
             .ok_or(VmErrorKind::ArrayIndexOutOfBounds {
-                index: *index,
+                index: *index as i64,
                 length: access.length,
             })?;
     }
@@ -1324,7 +1330,10 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(
+                    i64::MIN as i128,
+                    IntegerType::I64,
+                )),
                 Instruction::synthetic(InstructionKind::PushInteger(-1, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Divide(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
@@ -1360,7 +1369,10 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(
+                    i64::MIN as i128,
+                    IntegerType::I64,
+                )),
                 Instruction::synthetic(InstructionKind::PushInteger(1, IntegerType::I64)),
                 Instruction::synthetic(InstructionKind::Subtract(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
@@ -1402,7 +1414,10 @@ mod tests {
             functions: Vec::new(),
             slots: Vec::new(),
             instructions: vec![
-                Instruction::synthetic(InstructionKind::PushInteger(i64::MIN, IntegerType::I64)),
+                Instruction::synthetic(InstructionKind::PushInteger(
+                    i64::MIN as i128,
+                    IntegerType::I64,
+                )),
                 Instruction::synthetic(InstructionKind::Negate(Type::Integer(IntegerType::I64))),
                 Instruction::synthetic(InstructionKind::Halt),
             ],

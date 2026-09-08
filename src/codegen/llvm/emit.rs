@@ -19,6 +19,22 @@ pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
     if let Some(target) = module.target {
         writeln!(output, "target triple = \"{}\"\n", target.triple()).unwrap();
     }
+    if module
+        .instructions
+        .iter()
+        .chain(module.functions.iter().flat_map(|f| f.instructions.iter()))
+        .any(|i| {
+            matches!(
+                i.instruction,
+                Instruction::CallPrintf {
+                    format: PrintFormat::U64,
+                    ..
+                }
+            )
+        })
+    {
+        output.push_str("@.fmt_u64 = private unnamed_addr constant [6 x i8] c\"%llu\\0A\\00\"\n");
+    }
     if module.uses_strings {
         super::string::emit_data(module, &mut output);
     }
@@ -445,6 +461,7 @@ fn emit_instruction(
         }
 
         Instruction::Compare {
+            unsigned,
             dest,
             op,
             operand_ty,
@@ -469,7 +486,11 @@ fn emit_instruction(
                 output,
                 "  {} = {} {} {}, {}",
                 temp(*dest),
-                compare_name(*op, operand_ty),
+                if *unsigned {
+                    unsigned_compare(*op)
+                } else {
+                    compare_name(*op, operand_ty)
+                },
                 type_name(operand_ty, module),
                 operand(*left),
                 operand(*right),
@@ -731,6 +752,7 @@ fn compare_name(op: CompareOp, ty: &Type) -> &'static str {
 
 fn format_name(format: PrintFormat) -> &'static str {
     match format {
+        PrintFormat::U64 => "@.fmt_u64",
         PrintFormat::I64 => "@.fmt_i64",
         PrintFormat::F32 => "@.fmt_f32",
         PrintFormat::F64 => "@.fmt_f64",
@@ -962,5 +984,16 @@ fn emit_origin(origin: Origin, enabled: bool, output: &mut String) {
         )
         .unwrap(),
         Origin::Synthetic => output.push_str("; primer-origin: synthetic\n"),
+    }
+}
+
+fn unsigned_compare(op: CompareOp) -> &'static str {
+    match op {
+        CompareOp::Equal => "icmp eq",
+        CompareOp::NotEqual => "icmp ne",
+        CompareOp::Less => "icmp ult",
+        CompareOp::LessEqual => "icmp ule",
+        CompareOp::Greater => "icmp ugt",
+        CompareOp::GreaterEqual => "icmp uge",
     }
 }

@@ -1415,7 +1415,7 @@ pub(crate) fn resolve_integer_literal(
     ty: IntegerType,
     negative: bool,
     span: Span,
-) -> SemanticResult<i64> {
+) -> SemanticResult<i128> {
     if negative && !ty.is_signed() {
         return Err(Diagnostic::new(
             format!("cannot apply `-` to {}", ty.name()),
@@ -1434,10 +1434,10 @@ pub(crate) fn resolve_integer_literal(
     } else {
         magnitude as i128
     };
-    if value < ty.minimum() as i128 || value > ty.maximum() as i128 {
+    if value < ty.minimum() || value > ty.maximum() {
         return Err(range_error());
     }
-    Ok(value as i64)
+    Ok(value)
 }
 
 fn check_call(

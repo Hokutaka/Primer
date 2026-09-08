@@ -120,7 +120,7 @@ Unsuffixed floating-point literals are also resolved before backend lowering. A 
 
 Integer literals retain their decimal digits in lexer tokens and the AST. Semantic analysis checks the range against the expected integer type, and construction of Primer IR converts the literal into a resolved value. This prevents the lexer's `i64` range from constraining future integer types.
 
-The integer conversion spellings `i32(value)` and `convert<i32>(value)` resolve to the same `ConvertInteger`, with original spelling retained as `ConversionSyntax`. The destination does not retype the input, which is evaluated once. All pairs of the seven implemented integer types are supported. Out-of-range conversion is a distinct VM error from arithmetic overflow. Bytecode conversion instructions retain both integer kinds and source origin.
+The integer conversion spellings `i32(value)` and `convert<i32>(value)` resolve to the same `ConvertInteger`, with original spelling retained as `ConversionSyntax`. The destination does not retype the input, which is evaluated once. All pairs of the eight implemented integer types are supported. Out-of-range conversion is a distinct VM error from arithmetic overflow. Bytecode conversion instructions retain both integer kinds and source origin.
 
 Explicit conversions involving floats resolve to `ConvertNumeric`. Shared `NumericType` distinguishes integer kinds, `f32`, and `f64`; Primer IR and bytecode retain both source and destination types. Backend IR retains both in `NumericConversion`, so emitters do not infer input types again. Existing integer-only observation forms are unchanged.
 
@@ -128,7 +128,7 @@ Conversion succeeds only if it preserves the already evaluated input exactly. Ra
 
 Float width changes preserve infinity and zero signs and reject NaN. Conversion to integers rejects infinity, NaN, and negative zero. Same-type conversion returns the original value, including NaN payloads, unchanged. Lowering omits the execution operation in this case while retaining explicit conversion in Primer IR and bytecode. These conversion rules do not prohibit rounding in ordinary floating-point arithmetic.
 
-Current code generation backends store all seven integer kinds in 64-bit values. Since unsigned integers are represented as nonnegative 64-bit values, signed 64-bit comparison and division preserve their numerical meaning. Arithmetic and integer-to-integer conversion results of 8-, 16-, and 32-bit integers retain explicit `CheckIntegerRange` operations in backend IR. Float-to-integer range checks are part of `ConvertNumeric`. The existing overflow checks also apply to the underlying 64-bit arithmetic.
+Current code generation backends store all eight integer kinds in 64-bit values. For `u64`, the high bit is part of the positive value: lowering selects unsigned comparison, division, and right shift. C uses `uint64_t`; other targets use 64-bit storage with unsigned instructions. Arithmetic and integer-to-integer conversion results of 8-, 16-, and 32-bit integers retain explicit `CheckIntegerRange` operations in backend IR. Float-to-integer range checks are part of `ConvertNumeric`. The existing overflow checks also apply to the underlying 64-bit arithmetic.
 
 This implements numerical ranges and failure conditions, not packed 8-, 16-, or 32-bit storage or external ABI support. Arrays and products also use 64-bit locations, so memory use does not yet decrease. Keep the semantic type in Primer IR distinct from the backend's chosen storage type.
 

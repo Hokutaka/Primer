@@ -24,8 +24,12 @@ fn failure(expression: &str, expected: Failure) {
 
 #[test]
 fn every_numeric_pair_supports_both_spellings() {
-    for from in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "f32", "f64"] {
-        for to in ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "f32", "f64"] {
+    for from in [
+        "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "f32", "f64",
+    ] {
+        for to in [
+            "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "f32", "f64",
+        ] {
             let value = if from.starts_with('f') { "42.0" } else { "42" };
             for spelling in [to.to_owned(), format!("convert<{to}>")] {
                 let source = format!("value: {from} = {value}; print(i64({spelling}(value)));");
@@ -103,13 +107,13 @@ fn float_to_integer_checks_every_destination_range() {
             );
         }
         failure(
-            &format!("{name}({}.0)", i128::from(ty.maximum()) + 1),
+            &format!("{name}({}.0)", ty.maximum() + 1),
             Failure::OutOfRange,
         );
         let below = if ty == IntegerType::I64 {
             -9223372036854777856i128
         } else {
-            i128::from(ty.minimum()) - 1
+            ty.minimum() - 1
         };
         failure(&format!("{name}({below}.0)"), Failure::OutOfRange);
         for float in ["f32", "f64"] {

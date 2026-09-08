@@ -11,6 +11,9 @@ pub fn emit(module: &Module) -> String {
         output.push_str("  (import \"primer\" \"write_byte\" (func $write_byte (param i32)))\n");
     }
 
+    if module_uses_u64_print(module) {
+        output.push_str("  (import \"primer\" \"print_u64\" (func $print_u64 (param i64)))\n");
+    }
     // print() is provided by the host.
     if module_uses_bool_print(module) {
         writeln!(
@@ -320,6 +323,11 @@ fn emit_instruction(
     let prefix = "  ".repeat(indent);
 
     match instruction {
+        Instruction::CallPrintU64 => writeln!(output, "{prefix}call $print_u64").unwrap(),
+        Instruction::I64LtU => writeln!(output, "{prefix}i64.lt_u").unwrap(),
+        Instruction::I64LeU => writeln!(output, "{prefix}i64.le_u").unwrap(),
+        Instruction::I64GtU => writeln!(output, "{prefix}i64.gt_u").unwrap(),
+        Instruction::I64GeU => writeln!(output, "{prefix}i64.ge_u").unwrap(),
         Instruction::StringEqual => writeln!(output, "{prefix}call $primer_string_equal").unwrap(),
         Instruction::StringNotEqual => {
             writeln!(output, "{prefix}call $primer_string_equal\n{prefix}i32.eqz").unwrap()
@@ -565,4 +573,42 @@ fn loop_name(kind: LoopKind) -> &'static str {
         LoopKind::While => "while",
         LoopKind::For => "for",
     }
+}
+
+fn instruction_uses_u64_print(instruction: &Instruction) -> bool {
+    match instruction {
+        Instruction::CallPrintU64 => true,
+        Instruction::If {
+            then_instructions,
+            else_instructions,
+        }
+        | Instruction::IfBool {
+            then_instructions,
+            else_instructions,
+        } => {
+            then_instructions.iter().any(instruction_uses_u64_print)
+                || else_instructions.iter().any(instruction_uses_u64_print)
+        }
+        Instruction::Loop {
+            condition_instructions,
+            body_instructions,
+            update_instructions,
+            ..
+        } => {
+            condition_instructions
+                .iter()
+                .any(instruction_uses_u64_print)
+                || body_instructions.iter().any(instruction_uses_u64_print)
+                || update_instructions.iter().any(instruction_uses_u64_print)
+        }
+        _ => false,
+    }
+}
+
+fn module_uses_u64_print(module: &Module) -> bool {
+    module.instructions.iter().any(instruction_uses_u64_print)
+        || module
+            .functions
+            .iter()
+            .any(|function| function.instructions.iter().any(instruction_uses_u64_print))
 }

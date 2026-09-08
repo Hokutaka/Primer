@@ -1,6 +1,6 @@
 use crate::{codegen::NumericConversion, types::NumericType};
 
-fn type_name(ty: NumericType) -> &'static str {
+pub(super) fn type_name(ty: NumericType) -> &'static str {
     match ty {
         NumericType::Integer(_) => "i64",
         NumericType::F32 => "f32",
@@ -9,6 +9,9 @@ fn type_name(ty: NumericType) -> &'static str {
 }
 
 pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
+    if conversion.uses_u64() {
+        return super::unsigned::emit_conversion(conversion, output);
+    }
     let NumericConversion { from, to } = conversion;
     output.push_str(&format!(
         "  (func ${} (param $value {}) (result {})\n    (local $result {})\n    (local $number f64)\n",
@@ -28,7 +31,7 @@ pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
                 output.push_str("    f64.promote_f32\n");
             }
             // 順序比較の両方を満たす必要があるため、NaNも変換前に拒否します。
-            output.push_str(&format!("    local.set $number\n    local.get $number\n    f64.const {}\n    f64.ge\n    local.get $number\n    f64.const {}\n    f64.lt\n    i32.and\n    i32.eqz\n    if\n      unreachable\n    end\n", ty.minimum(), i128::from(ty.maximum()) + 1));
+            output.push_str(&format!("    local.set $number\n    local.get $number\n    f64.const {}\n    f64.ge\n    local.get $number\n    f64.const {}\n    f64.lt\n    i32.and\n    i32.eqz\n    if\n      unreachable\n    end\n", ty.minimum(), ty.maximum() + 1));
             output.push_str("    local.get $number\n    i64.reinterpret_f64\n    i64.const -9223372036854775808\n    i64.eq\n    if\n      unreachable\n    end\n    local.get $number\n    i64.trunc_f64_s\n    local.set $result\n    local.get $result\n    f64.convert_i64_s\n    local.get $number\n    f64.ne\n    if\n      unreachable\n    end\n");
         }
         (NumericType::F32, NumericType::F64) => {

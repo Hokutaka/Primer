@@ -343,7 +343,11 @@ impl LoweringContext<'_> {
                 let Value::Scalar(ty) = self.lower_expr(value, instructions) else {
                     unreachable!("semantic analysis rejects aggregate printing")
                 };
-                instructions.push(Instruction::CallPrint(ty));
+                instructions.push(if crate::codegen::is_u64(&value.ty) {
+                    Instruction::CallPrintU64
+                } else {
+                    Instruction::CallPrint(ty)
+                });
             }
 
             primer_ir::StatementKind::If {
@@ -626,6 +630,11 @@ impl LoweringContext<'_> {
         expr: &primer_ir::Expr,
         instructions: &mut Vec<Instruction>,
     ) -> Value {
+        if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
+            self.lower_expr(value, instructions);
+            instructions.push(Instruction::ConvertNumeric { conversion });
+            return Value::Scalar(Type::I64);
+        }
         match &expr.kind {
             primer_ir::ExprKind::StringByteLength { value } => {
                 self.lower_expr(value, instructions);
@@ -660,7 +669,7 @@ impl LoweringContext<'_> {
                 Value::Scalar(Type::Bool)
             }
             primer_ir::ExprKind::Integer(value) => {
-                instructions.push(Instruction::I64Const(*value));
+                instructions.push(Instruction::I64Const(*value as i64));
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::Float { text } => {
@@ -984,7 +993,7 @@ impl LoweringContext<'_> {
                     unreachable!("semantic analysis rejects aggregate binary operands")
                 };
                 debug_assert_eq!(left_ty, right_ty);
-                if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                if let Some(op) = crate::codegen::integer_binary_op(*op, &left.ty) {
                     instructions.push(Instruction::IntegerBinary {
                         op,
                         ty: crate::codegen::integer_type(&expr.ty),
@@ -1398,6 +1407,21 @@ fn store_instruction(ty: Type, offset: u32) -> Instruction {
 
 fn lower_binary(op: primer_ir::BinaryOp, ty: primer_ir::Type) -> Instruction {
     match (op, ty) {
+        (primer_ir::BinaryOp::Less, primer_ir::Type::Integer(crate::types::IntegerType::U64)) => {
+            Instruction::I64LtU
+        }
+        (
+            primer_ir::BinaryOp::LessEqual,
+            primer_ir::Type::Integer(crate::types::IntegerType::U64),
+        ) => Instruction::I64LeU,
+        (
+            primer_ir::BinaryOp::Greater,
+            primer_ir::Type::Integer(crate::types::IntegerType::U64),
+        ) => Instruction::I64GtU,
+        (
+            primer_ir::BinaryOp::GreaterEqual,
+            primer_ir::Type::Integer(crate::types::IntegerType::U64),
+        ) => Instruction::I64GeU,
         (primer_ir::BinaryOp::Equal, primer_ir::Type::String) => Instruction::StringEqual,
         (primer_ir::BinaryOp::NotEqual, primer_ir::Type::String) => Instruction::StringNotEqual,
         (primer_ir::BinaryOp::Add, primer_ir::Type::Integer(_)) => Instruction::CheckedI64Add,

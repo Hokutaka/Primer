@@ -787,7 +787,7 @@ mod tests {
             panic!("expected binding")
         };
 
-        assert_eq!(value.kind, ExprKind::Integer(i64::MIN));
+        assert_eq!(value.kind, ExprKind::Integer(i64::MIN as i128));
         assert_eq!(value.span, Span::new(9, 29));
     }
 

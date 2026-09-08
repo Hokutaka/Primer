@@ -15,7 +15,7 @@ fn failure(source: &str) -> VmErrorKind {
     error.vm_error().kind()
 }
 
-fn edge_values(ty: IntegerType) -> Vec<i64> {
+fn edge_values(ty: IntegerType) -> Vec<i128> {
     [
         ty.minimum(),
         ty.minimum() + 1,
@@ -53,7 +53,7 @@ fn bitwise_operations_and_remainders_cover_every_integer_kind() {
                 if right == 0 {
                     assert_eq!(failure(&source), VmErrorKind::RemainderByZero);
                 } else {
-                    let expected = i128::from(left) % i128::from(right);
+                    let expected = left % right;
                     assert_eq!(
                         run_vm(&source).unwrap(),
                         format!("{expected}\n"),
@@ -78,8 +78,8 @@ fn shifts_check_the_original_width_before_performing_the_operation() {
         for left in edge_values(ty) {
             for count in 0..ty.bit_width() {
                 let source = format!("print({left}{0} << {count});", ty.name());
-                let expected = i128::from(left) * 2i128.pow(u32::from(count));
-                if expected >= i128::from(ty.minimum()) && expected <= i128::from(ty.maximum()) {
+                let expected = left * 2i128.pow(u32::from(count));
+                if expected >= ty.minimum() && expected <= ty.maximum() {
                     assert_eq!(
                         run_vm(&source).unwrap(),
                         format!("{expected}\n"),
@@ -97,7 +97,7 @@ fn shifts_check_the_original_width_before_performing_the_operation() {
                 }
                 let source = format!("print({left}{0} >> {count});", ty.name());
                 // 負の奇数も、0ではなく負の無限大へ寄せる右シフトです。
-                let expected = i128::from(left).div_euclid(2i128.pow(u32::from(count)));
+                let expected = left.div_euclid(2i128.pow(u32::from(count)));
                 assert_eq!(
                     run_vm(&source).unwrap(),
                     format!("{expected}\n"),
@@ -107,8 +107,8 @@ fn shifts_check_the_original_width_before_performing_the_operation() {
         }
         for count in [
             -1,
-            i64::from(ty.bit_width()),
-            i64::from(ty.bit_width()) + 1,
+            i128::from(ty.bit_width()),
+            i128::from(ty.bit_width()) + 1,
             ty.maximum(),
         ] {
             if !ty.contains(count) {

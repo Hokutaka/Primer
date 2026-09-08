@@ -1,0 +1,6 @@
+maximum: u64 = 18446744073709551615;
+print(maximum);
+print(maximum > 0);
+print(maximum / 2);
+print(maximum >> 63);
+print(u64(42i64));

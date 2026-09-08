@@ -1,0 +1,28 @@
+// 64個の状態を1つの値に保持します。最上位ビットも正の数値です。
+print("u64");
+type Flags { bits: [u64; 2], }
+fn first(values: [u64; 2]) -> u64 { return values[0]; }
+maximum: u64 = 18446744073709551615;
+top: u64 = 1u64 << 63;
+mut flags: Flags = Flags { bits: [maximum, top], };
+snapshot: Flags = flags;
+flags = Flags { bits: [0, top], };
+print(first(snapshot.bits));
+print(snapshot.bits[1]);
+print(flags.bits[0]);
+print(top > 0);
+print(maximum / top);
+print(maximum % top);
+print(maximum >> 63);
+print(~top);
+print((top | 3) & ~1u64);
+print((top ^ maximum) + 1);
+print(maximum - top);
+print(4294967295u64 * 4294967297u64);
+
+// 明示的な変換でも数値を保ちます。最大値のf64変換は丸めが必要なので失敗します。
+exact: u64 = 18446744073709549568;
+print(u64(f64(exact)) == exact);
+print(convert<u64>(4294967295u32));
+print(i64(top - 1));
+print(false && maximum + 1 == 0);

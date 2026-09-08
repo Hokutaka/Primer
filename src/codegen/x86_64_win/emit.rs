@@ -4,6 +4,14 @@ use super::ir::{
 
 pub fn emit(module: &Module) -> String {
     let mut output = initial_data(uses_bool_print(module));
+    if module
+        .instructions
+        .iter()
+        .chain(module.functions.iter().flat_map(|f| f.instructions.iter()))
+        .any(|i| matches!(i, Instruction::CallPrintU64))
+    {
+        output.push_str(".Lprimer_fmt_u64:\n  .asciz \"%llu\\n\"\n");
+    }
     if module.uses_strings {
         super::string::emit_data(module, &mut output);
     }
@@ -126,6 +134,20 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::CallPrintU64 => output
+            .push_str("  movq %rax, %rdx\n  leaq .Lprimer_fmt_u64(%rip), %rcx\n  callq printf\n"),
+        Instruction::CompareU64(op) => {
+            output.push_str("  cmpq %rcx, %rax\n");
+            output.push_str(match op {
+                CompareOp::Equal => "  sete %al\n",
+                CompareOp::NotEqual => "  setne %al\n",
+                CompareOp::Less => "  setb %al\n",
+                CompareOp::LessEqual => "  setbe %al\n",
+                CompareOp::Greater => "  seta %al\n",
+                CompareOp::GreaterEqual => "  setae %al\n",
+            });
+            output.push_str("  movzbq %al, %rax\n");
+        }
         Instruction::LoadStringLength => output.push_str("  movq (%rax), %rax\n"),
         Instruction::LoadStringConstant(id) => {
             output.push_str(&format!("  leaq .Lprimer_string_{id}(%rip), %rax\n"))
@@ -148,10 +170,17 @@ fn emit_instruction(
             output.push_str(&format!("  movabsq ${mask}, %r11\n  xorq %r11, %rax\n"));
         }
         Instruction::IntegerBinary { op, ty, label } => {
+            if *ty == crate::types::IntegerType::U64 {
+                return super::unsigned::emit_binary(*op, *label, label_prefix, output);
+            }
             use crate::codegen::IntegerBinaryOp;
             let bad = format!(".Lprimer_{label_prefix}_integer_bad_{label}");
             let done = format!(".Lprimer_{label_prefix}_integer_done_{label}");
             match op {
+                IntegerBinaryOp::Add
+                | IntegerBinaryOp::Subtract
+                | IntegerBinaryOp::Multiply
+                | IntegerBinaryOp::Divide => unreachable!("u64 operations are emitted above"),
                 IntegerBinaryOp::BitAnd => output.push_str("  andq %rcx, %rax\n"),
                 IntegerBinaryOp::BitOr => output.push_str("  orq %rcx, %rax\n"),
                 IntegerBinaryOp::BitXor => output.push_str("  xorq %rcx, %rax\n"),

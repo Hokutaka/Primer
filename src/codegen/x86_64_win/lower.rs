@@ -268,7 +268,11 @@ impl Lowerer<'_> {
                 let Value::Scalar(ty) = self.lower_expr(value, 0) else {
                     unreachable!("semantic analysis rejects aggregate printing")
                 };
-                self.lower_print(ty);
+                if crate::codegen::is_u64(&value.ty) {
+                    self.instructions.push(Instruction::CallPrintU64);
+                } else {
+                    self.lower_print(ty);
+                }
                 false
             }
 
@@ -453,6 +457,14 @@ impl Lowerer<'_> {
     }
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
+        if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
+            self.lower_expr(value, depth);
+            let label = self.next_label();
+            self.instructions
+                .push(Instruction::ConvertNumeric { conversion, label });
+            return Value::Scalar(Type::I64);
+        }
+
         match &expr.kind {
             primer_ir::ExprKind::StringByteLength { value } => {
                 self.lower_expr(value, depth);
@@ -489,7 +501,7 @@ impl Lowerer<'_> {
             }
             primer_ir::ExprKind::Integer(value) => {
                 self.instructions
-                    .push(Instruction::MovI64ImmediateToRax(*value));
+                    .push(Instruction::MovI64ImmediateToRax(*value as i64));
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::Float { text } => {
@@ -596,7 +608,7 @@ impl Lowerer<'_> {
                         self.instructions
                             .push(Instruction::LoadI64ScratchToRax(scratch));
 
-                        if let Some(op) = crate::codegen::integer_binary_op(*op) {
+                        if let Some(op) = crate::codegen::integer_binary_op(*op, &left.ty) {
                             let label = self.next_label();
                             self.instructions.push(Instruction::IntegerBinary {
                                 op,
@@ -604,7 +616,11 @@ impl Lowerer<'_> {
                                 label,
                             });
                         } else if let Some(op) = compare_op(*op) {
-                            self.instructions.push(Instruction::CompareI64(op));
+                            self.instructions.push(if crate::codegen::is_u64(&left.ty) {
+                                Instruction::CompareU64(op)
+                            } else {
+                                Instruction::CompareI64(op)
+                            });
                         } else {
                             let op = (*op).into();
                             if op == BinaryOp::Divide {
