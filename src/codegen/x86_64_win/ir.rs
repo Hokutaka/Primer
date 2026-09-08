@@ -65,6 +65,8 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CallPrintU64,
+    CompareU64(CompareOp),
     LoadStringLength,
     LoadStringConstant(usize),
     CompareString {

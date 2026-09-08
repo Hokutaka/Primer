@@ -19,6 +19,16 @@ pub struct NumericConversion {
 }
 
 impl NumericConversion {
+    pub fn uses_u64(self) -> bool {
+        matches!(
+            self.from,
+            crate::types::NumericType::Integer(crate::types::IntegerType::U64)
+        ) || matches!(
+            self.to,
+            crate::types::NumericType::Integer(crate::types::IntegerType::U64)
+        )
+    }
+
     pub fn helper(self) -> String {
         format!("primer_convert_{}_{}", self.from.name(), self.to.name())
     }
@@ -47,13 +57,17 @@ fn integer_range_check(expr: &crate::ir::Expr) -> Option<crate::types::IntegerTy
         | IntegerType::U16
         | IntegerType::I32
         | IntegerType::U32 => Some(ty),
-        IntegerType::I64 => None,
+        IntegerType::I64 | IntegerType::U64 => None,
     }
 }
 
 /// 整数専用の演算を、元の型の幅とともに各出力先へ渡します。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum IntegerBinaryOp {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
     Remainder,
     BitAnd,
     BitOr,
@@ -65,6 +79,10 @@ pub enum IntegerBinaryOp {
 impl IntegerBinaryOp {
     pub const fn name(self) -> &'static str {
         match self {
+            Self::Add => "add",
+            Self::Subtract => "sub",
+            Self::Multiply => "mul",
+            Self::Divide => "div",
             Self::Remainder => "rem",
             Self::BitAnd => "bit_and",
             Self::BitOr => "bit_or",
@@ -78,7 +96,16 @@ impl IntegerBinaryOp {
     }
 }
 
-fn integer_binary_op(op: crate::ir::BinaryOp) -> Option<IntegerBinaryOp> {
+fn integer_binary_op(op: crate::ir::BinaryOp, ty: &crate::ir::Type) -> Option<IntegerBinaryOp> {
+    if is_u64(ty) {
+        match op {
+            crate::ir::BinaryOp::Add => return Some(IntegerBinaryOp::Add),
+            crate::ir::BinaryOp::Subtract => return Some(IntegerBinaryOp::Subtract),
+            crate::ir::BinaryOp::Multiply => return Some(IntegerBinaryOp::Multiply),
+            crate::ir::BinaryOp::Divide => return Some(IntegerBinaryOp::Divide),
+            _ => {}
+        }
+    }
     use crate::ir::BinaryOp;
     match op {
         BinaryOp::Remainder => Some(IntegerBinaryOp::Remainder),
@@ -109,5 +136,27 @@ fn integer_type(ty: &crate::ir::Type) -> crate::types::IntegerType {
 
 fn complement_mask(ty: &crate::ir::Type) -> i64 {
     let ty = integer_type(ty);
-    if ty.is_signed() { -1 } else { ty.maximum() }
+    if ty.is_signed() {
+        -1
+    } else {
+        ty.maximum() as i64
+    }
+}
+
+fn is_u64(ty: &crate::ir::Type) -> bool {
+    matches!(ty, crate::ir::Type::Integer(crate::types::IntegerType::U64))
+}
+
+fn u64_integer_conversion(expr: &crate::ir::Expr) -> Option<(&crate::ir::Expr, NumericConversion)> {
+    let crate::ir::ExprKind::ConvertInteger {
+        value, from, to, ..
+    } = &expr.kind
+    else {
+        return None;
+    };
+    let conversion = NumericConversion {
+        from: crate::types::NumericType::Integer(*from),
+        to: crate::types::NumericType::Integer(*to),
+    };
+    (from != to && conversion.uses_u64()).then_some((value, conversion))
 }

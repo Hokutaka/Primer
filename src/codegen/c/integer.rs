@@ -3,6 +3,9 @@ use std::fmt::Write;
 use crate::{codegen::IntegerBinaryOp, types::IntegerType};
 
 pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut String) {
+    if ty == IntegerType::U64 {
+        return super::unsigned::emit_binary(op, output);
+    }
     writeln!(
         output,
         "static int64_t {}(int64_t left, int64_t right) {{",
@@ -10,6 +13,10 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
     )
     .unwrap();
     match op {
+        IntegerBinaryOp::Add
+        | IntegerBinaryOp::Subtract
+        | IntegerBinaryOp::Multiply
+        | IntegerBinaryOp::Divide => unreachable!("u64 operations are emitted above"),
         IntegerBinaryOp::BitAnd | IntegerBinaryOp::BitOr | IntegerBinaryOp::BitXor => {
             let symbol = match op {
                 IntegerBinaryOp::BitAnd => "&",

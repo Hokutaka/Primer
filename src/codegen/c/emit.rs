@@ -1,4 +1,5 @@
 use super::ir::{BinaryOp, Expr, ExprKind, Module, PrintFormat, Statement, Type, UnaryOp};
+use std::fmt::Write;
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
@@ -343,6 +344,7 @@ fn c_type(ty: &Type, module: &Module) -> String {
     match ty {
         Type::Bool => "bool".into(),
         Type::String => "primer_string".into(),
+        Type::U64 => "uint64_t".into(),
         Type::I64 => "int64_t".into(),
         Type::Float => "float".into(),
         Type::Double => "double".into(),
@@ -381,6 +383,12 @@ fn emit_print(
             output.push_str(") ? \"true\" : \"false\");\n");
         }
 
+        PrintFormat::U64 => {
+            output.push_str(prefix);
+            output.push_str("printf(\"%llu\\n\", (unsigned long long)(");
+            emit_expr(expr, module, output);
+            output.push_str("));\n");
+        }
         PrintFormat::I64 => {
             output.push_str(prefix);
             output.push_str("printf(\"%lld\\n\", (long long)(");
@@ -461,7 +469,9 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
         }
 
         ExprKind::Integer(value) => {
-            if *value == i64::MIN {
+            if expr.ty == Type::U64 {
+                write!(output, "UINT64_C({})", *value as u64).unwrap();
+            } else if *value == i64::MIN as i128 {
                 output.push_str("INT64_MIN");
             } else {
                 output.push_str(&value.to_string());
@@ -964,7 +974,7 @@ fn type_uses_bool(ty: &Type) -> bool {
     match ty {
         Type::Bool => true,
         Type::Array { element, .. } => type_uses_bool(element),
-        Type::String | Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
+        Type::String | Type::U64 | Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
     }
 }
 
@@ -972,7 +982,7 @@ fn type_uses_named(ty: &Type) -> bool {
     match ty {
         Type::Named(_) => true,
         Type::Array { element, .. } => type_uses_named(element),
-        Type::Bool | Type::String | Type::I64 | Type::Float | Type::Double => false,
+        Type::Bool | Type::String | Type::U64 | Type::I64 | Type::Float | Type::Double => false,
     }
 }
 
@@ -1067,6 +1077,7 @@ fn array_element_name(element: &Type, module: &Module) -> String {
     match element {
         Type::Bool => "bool".into(),
         Type::String => "string".into(),
+        Type::U64 => "u64".into(),
         Type::I64 => "i64".into(),
         Type::Float => "f32".into(),
         Type::Double => "f64".into(),

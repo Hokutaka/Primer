@@ -9,6 +9,7 @@ const imports = { primer: {
   },
   print_bool: value => writeText(value ? 'true' : 'false'),
   print_i64: value => writeText(value.toString()),
+  print_u64: value => writeText(BigInt.asUintN(64, value).toString()),
   // この比較fixtureの浮動小数点値は正確に表せる1.5だけです。
   print_f32: value => { if (value !== 1.5) throw new Error('unsupported test float'); writeText(value); },
   print_f64: value => { if (value !== 1.5) throw new Error('unsupported test float'); writeText(value); },

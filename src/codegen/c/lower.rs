@@ -263,6 +263,16 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 }
 
 fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
+    if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
+        return Expr {
+            ty: expr.ty.clone().into(),
+            kind: ExprKind::ConvertNumeric {
+                value: Box::new(lower_expr(value)),
+                conversion,
+            },
+        };
+    }
+
     let kind = match &expr.kind {
         primer_ir::ExprKind::StringByteLength { value } => ExprKind::StringByteLength {
             value: Box::new(lower_expr(value)),
@@ -311,8 +321,8 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
             ty: crate::codegen::integer_type(&expr.ty),
             left: Box::new(lower_expr(value)),
             right: Box::new(Expr {
-                ty: Type::I64,
-                kind: ExprKind::Integer(crate::codegen::complement_mask(&expr.ty)),
+                ty: expr.ty.clone().into(),
+                kind: ExprKind::Integer(crate::codegen::complement_mask(&expr.ty) as i128),
             }),
         },
         primer_ir::ExprKind::Unary { op, value } => ExprKind::Unary {
@@ -321,11 +331,11 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
         },
 
         primer_ir::ExprKind::Binary { op, left, right }
-            if crate::codegen::integer_binary_op(*op).is_some() =>
+            if crate::codegen::integer_binary_op(*op, &left.ty).is_some() =>
         {
             ExprKind::IntegerBinary {
                 scratch: expr.id.0,
-                op: crate::codegen::integer_binary_op(*op).unwrap(),
+                op: crate::codegen::integer_binary_op(*op, &left.ty).unwrap(),
                 ty: crate::codegen::integer_type(&expr.ty),
                 left: Box::new(lower_expr(left)),
                 right: Box::new(lower_expr(right)),
@@ -384,6 +394,7 @@ fn print_format(ty: &primer_ir::Type) -> PrintFormat {
     match ty {
         primer_ir::Type::String => PrintFormat::String,
         primer_ir::Type::Bool => PrintFormat::Bool,
+        primer_ir::Type::Integer(crate::types::IntegerType::U64) => PrintFormat::U64,
         primer_ir::Type::Integer(_) => PrintFormat::I64,
         primer_ir::Type::F32 => PrintFormat::F32,
         primer_ir::Type::F64 => PrintFormat::F64,
@@ -398,6 +409,7 @@ impl From<primer_ir::Type> for Type {
         match value {
             primer_ir::Type::String => Self::String,
             primer_ir::Type::Bool => Self::Bool,
+            primer_ir::Type::Integer(crate::types::IntegerType::U64) => Self::U64,
             primer_ir::Type::Integer(_) => Self::I64,
             primer_ir::Type::F32 => Self::Float,
             primer_ir::Type::F64 => Self::Double,

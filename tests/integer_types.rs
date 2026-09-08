@@ -26,7 +26,7 @@ fn explicit_and_inferred_integers_keep_their_kind_and_boundary_values() {
             };
             assert_eq!(*ty, ir::Type::Integer(IntegerType::I64));
             assert_eq!(expr.ty, *ty);
-            assert_eq!(expr.kind, ExprKind::Integer(value));
+            assert_eq!(expr.kind, ExprKind::Integer(i128::from(value)));
         }
     }
 }
@@ -89,7 +89,7 @@ fn integer_kinds_survive_nested_arrays_fields_and_function_signatures() {
 
 #[test]
 fn unimplemented_integer_types_are_not_implicitly_treated_as_i64() {
-    for name in ["u64", "i128", "u128", "usize", "isize"] {
+    for name in ["i128", "u128", "usize", "isize"] {
         let source = format!("value: {name} = 1;");
         let error = compile_to_ir(&source).unwrap_err();
 

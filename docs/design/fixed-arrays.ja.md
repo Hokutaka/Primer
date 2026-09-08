@@ -111,7 +111,7 @@ scalarの大きさが4 byteでも、QBE、WebAssembly、Windows x86-64では現�
 
 ## 現在の制限
 
-- 要素型は`bool`、`i64`、`f32`、`f64`、名前付きproduct typeまたは固定長配列
+- 要素型は`bool`、各整数型（`u64`を含む）、`f32`、`f64`、`string`、名前付きproduct typeまたは固定長配列
 - 長さは0より大きい整数
 - 空の配列リテラルは未対応
 - 配列全体の比較と`print`は未対応

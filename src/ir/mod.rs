@@ -189,7 +189,7 @@ pub enum ExprKind {
     Boolean(bool),
     /// 不変のUTF-8文字列値です。元の表記は式のSpanから追跡します。
     String(String),
-    Integer(i64),
+    Integer(i128),
     Float {
         text: String,
     },

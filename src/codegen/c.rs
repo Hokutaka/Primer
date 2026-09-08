@@ -5,6 +5,7 @@ pub mod ir;
 mod lower;
 mod sequence;
 mod string;
+mod unsigned;
 
 pub use emit::emit;
 use lower::lower;

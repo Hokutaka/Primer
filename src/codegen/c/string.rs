@@ -7,7 +7,9 @@ pub(super) fn uses_type(module: &Module) -> bool {
         match ty {
             Type::String => true,
             Type::Array { element, .. } => contains(element),
-            Type::Bool | Type::I64 | Type::Float | Type::Double | Type::Named(_) => false,
+            Type::Bool | Type::U64 | Type::I64 | Type::Float | Type::Double | Type::Named(_) => {
+                false
+            }
         }
     }
     module

@@ -16,6 +16,22 @@ pub fn emit(module: &Module) -> String {
         .unwrap();
     }
     let i64_operations = i64_operations(module);
+    if module
+        .instructions
+        .iter()
+        .chain(module.functions.iter().flat_map(|f| f.instructions.iter()))
+        .any(|i| {
+            matches!(
+                i,
+                Instruction::CallPrintf {
+                    format: PrintFormat::U64,
+                    ..
+                }
+            )
+        })
+    {
+        output.push_str("data $fmt_u64 = { b \"%llu\", b 10, b 0 }\n");
+    }
     if module.uses_strings {
         super::string::emit(module, &mut output);
     }
@@ -515,6 +531,7 @@ fn emit_instruction(
         }
 
         Instruction::Compare {
+            unsigned,
             dest,
             op,
             operand_ty,
@@ -545,7 +562,11 @@ fn emit_instruction(
                 output,
                 "  {} =w {} {}, {}",
                 temp(*dest),
-                compare_name(*op, *operand_ty),
+                if *unsigned {
+                    unsigned_compare(*op)
+                } else {
+                    compare_name(*op, *operand_ty)
+                },
                 operand(left, slots),
                 operand(right, slots),
             )
@@ -713,6 +734,7 @@ fn checked_i64_helper(op: BinaryOp) -> Option<&'static str> {
 
 fn format_name(format: PrintFormat) -> &'static str {
     match format {
+        PrintFormat::U64 => "fmt_u64",
         PrintFormat::I64 => "fmt_i64",
         PrintFormat::F32 => "fmt_f32",
         PrintFormat::F64 => "fmt_f64",
@@ -747,4 +769,15 @@ fn uses_bool_print(module: &Module) -> bool {
                 .flat_map(|function| function.instructions.iter()),
         )
         .any(|instruction| matches!(instruction, Instruction::CallPrintBool { .. }))
+}
+
+fn unsigned_compare(op: CompareOp) -> &'static str {
+    match op {
+        CompareOp::Equal => "ceql",
+        CompareOp::NotEqual => "cnel",
+        CompareOp::Less => "cultl",
+        CompareOp::LessEqual => "culel",
+        CompareOp::Greater => "cugtl",
+        CompareOp::GreaterEqual => "cugel",
+    }
 }

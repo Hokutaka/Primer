@@ -3,6 +3,7 @@ pub enum Type {
     Bool,
     String,
     I64,
+    U64,
     Float,
     Double,
     Named(usize),
@@ -107,6 +108,7 @@ pub struct ArrayProjection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrintFormat {
+    U64,
     Bool,
     String,
     I64,
@@ -153,7 +155,7 @@ pub enum ExprKind {
         ty: crate::types::IntegerType,
     },
     Boolean(bool),
-    Integer(i64),
+    Integer(i128),
     Float {
         text: String,
         suffix_f32: bool,

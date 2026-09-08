@@ -42,7 +42,7 @@ pub(super) fn convert(value: Value, from: NumericType, to: NumericType) -> VmRes
                 }
             };
             // i64最大値は浮動小数点では2^63へ丸められます。i64へ戻す比較では見逃します。
-            if number as i128 != i128::from(value) {
+            if number as i128 != value {
                 return Err(fail(NumericConversionFailure::Inexact));
             }
             Ok(result)
@@ -62,14 +62,14 @@ pub(super) fn convert(value: Value, from: NumericType, to: NumericType) -> VmRes
                         return Err(fail(NumericConversionFailure::NegativeZero));
                     }
                     // 上限は含まない境界にします。i64最大値をf64で比較すると上へ丸められるためです。
-                    let upper = (i128::from(ty.maximum()) + 1) as f64;
+                    let upper = (ty.maximum() + 1) as f64;
                     if number < ty.minimum() as f64 || number >= upper {
                         return Err(fail(NumericConversionFailure::OutOfRange));
                     }
                     if number.trunc() != number {
                         return Err(fail(NumericConversionFailure::Inexact));
                     }
-                    Ok(Value::Integer(number as i64, ty))
+                    Ok(Value::Integer(number as i128, ty))
                 }
                 NumericType::F32 => {
                     if number.is_nan() {

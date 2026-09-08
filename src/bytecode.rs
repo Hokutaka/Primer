@@ -126,7 +126,7 @@ pub enum InstructionKind {
     },
     PushBool(bool),
     PushString(String),
-    PushInteger(i64, IntegerType),
+    PushInteger(i128, IntegerType),
     PushF32(f32),
     PushF64(f64),
 

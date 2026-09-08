@@ -111,7 +111,7 @@ Bounds checks stop execution before an invalid memory access. Arrays do not, how
 
 ## Current limits
 
-- Element types are `bool`, `i64`, `f32`, `f64`, named product types, or fixed arrays.
+- Element types are `bool`, any integer kind (including `u64`), `f32`, `f64`, `string`, named product types, or fixed arrays.
 - Length is a positive integer.
 - Empty array literals are unavailable.
 - Whole-array comparison and `print` are unavailable.

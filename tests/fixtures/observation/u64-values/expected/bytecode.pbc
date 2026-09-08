@@ -1,0 +1,24 @@
+; Primer bytecode v0.1
+
+.slot 0 maximum u64
+
+0000  push.u64 18446744073709551615
+0001  store 0       ; maximum
+0002  load 0        ; maximum
+0003  print.u64
+0004  load 0        ; maximum
+0005  push.u64 0
+0006  gt.u64
+0007  print.bool
+0008  load 0        ; maximum
+0009  push.u64 2
+0010  div.u64
+0011  print.u64
+0012  load 0        ; maximum
+0013  push.u64 63
+0014  shr.u64
+0015  print.u64
+0016  push.i64 42
+0017  convert.checked i64 -> u64
+0018  print.u64
+0019  halt

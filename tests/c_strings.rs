@@ -7,6 +7,10 @@ use std::{
 };
 
 use primer_lang::{compile_to_c, run_vm};
+#[path = "support/crash_dialogs.rs"]
+mod crash_dialogs;
+#[path = "support/u64_cases.rs"]
+mod u64_cases;
 
 struct NativeC {
     directory: PathBuf,
@@ -15,6 +19,7 @@ struct NativeC {
 
 impl NativeC {
     fn new() -> Option<Self> {
+        crash_dialogs::suppress();
         let configured = std::env::var_os("PRIMER_TEST_CC");
         let compiler = configured
             .clone()
@@ -98,6 +103,27 @@ impl NativeC {
                 actual.stdout,
                 expected.as_bytes(),
                 "{optimization}\n{source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn u64_boundaries_and_failures_have_no_undefined_c_operations() {
+    let Some(c) = NativeC::new() else { return };
+    for (source, expected) in [u64_cases::EXAMPLE, u64_cases::BOUNDARIES] {
+        assert_eq!(run_vm(source).unwrap(), expected);
+        c.matches_vm(source);
+    }
+    for source in u64_cases::FAILURES {
+        for optimization in ["-O0", "-O2"] {
+            let failed = c.run(source, optimization);
+            assert!(!failed.status.success(), "{source}");
+            assert!(failed.stdout.is_empty(), "{source}");
+            let stderr = String::from_utf8_lossy(&failed.stderr);
+            assert!(
+                !stderr.contains("runtime error:") && !stderr.contains("ERROR: AddressSanitizer"),
+                "{source}: {stderr}"
             );
         }
     }

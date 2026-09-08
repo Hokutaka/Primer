@@ -96,6 +96,7 @@ pub enum CompareOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrintFormat {
+    U64,
     I64,
     F32,
     F64,
@@ -191,6 +192,7 @@ pub enum Instruction {
         right: Operand,
     },
     Compare {
+        unsigned: bool,
         dest: Temp,
         op: CompareOp,
         operand_ty: Type,

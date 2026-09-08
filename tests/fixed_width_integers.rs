@@ -97,7 +97,7 @@ fn out_of_range_literals_and_implicit_conversions_are_rejected() {
         "values: [i32; 1] = [1]; index: u32 = 0; print(values[index]);",
         "print(1.0i32);",
         "print(1i32abc);",
-        "print(1u64);",
+        "print(18446744073709551616u64);",
     ] {
         assert!(compile(source).is_err(), "{source}");
     }

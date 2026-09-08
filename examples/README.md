@@ -25,18 +25,71 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 
 一括実行は各サンプルの終了状態を確認します。期待する出力まで照合するには`cargo test --test examples`、fmt・clippy・全テストをまとめて実行するには`bash scripts/test.sh`を使います。
 
-## 基本
+## 型から探す
+
+8種類の整数型、`f32`・`f64`、`bool`、`string`、固定長配列、構造体を使えます。既存6経路（VM・C・LLVM・QBE・WAT・Windows x64直接アセンブリ）に`u64`まで実装しています。`u64_values.prim`は全6経路で既知の期待出力と比較しています。Linux直接アセンブリと機械語の直接生成は今後の対象です。
+
+### 符号付き整数：負数と正数
+
+| 型 | 数値範囲 | サンプル | 確認すること |
+| --- | --- | --- | --- |
+| `i8` | −128〜127 | [sensor_calibration.prim](sensor_calibration.prim) | 小さな負の補正量を、計算前に`i16`へ広げる |
+| `i16` | −32768〜32767 | [sensor_calibration.prim](sensor_calibration.prim) | 正負の測定値を保持し、集計時には`i32`へ広げる |
+| `i32` | −2147483648〜2147483647 | [maximum_subarray.prim](maximum_subarray.prim) | 正負の増減を足し、大小を比較する |
+| `i64` | −9223372036854775808〜9223372036854775807 | [integer_limits.prim](integer_limits.prim) | 最小値・最大値と、桁あふれ前の判定 |
+
+### 符号なし整数：非負の数とビット列
+
+| 型 | 数値範囲 | サンプル | 確認すること |
+| --- | --- | --- | --- |
+| `u8` | 0〜255 | [color_blending.prim](color_blending.prim)、[bit_flags.prim](bit_flags.prim) | 色の値と、8個のビットの設定・解除・反転 |
+| `u16` | 0〜65535 | [color_blending.prim](color_blending.prim) | `u8`の色を加算前に広げ、平均を求めて戻す |
+| `u32` | 0〜4294967295 | [population_statistics.prim](population_statistics.prim) | 30億前後の値を保持し、集計時には`i64`へ広げる |
+| `u64` | 0〜18446744073709551615 | [u64_values.prim](u64_values.prim) | 最大値、最上位ビット、符号なし比較・除算、関数・配列・コピー、正確な変換 |
+
+u64の例は次のコマンドで実行できます。
+
+```sh
+cargo run -- run examples/u64_values.prim
+```
+
+先頭の出力は順に`u64`、`18446744073709551615`、`9223372036854775808`、`0`です。元の束縛を再代入してもコピーは保持され、最上位ビットも正の数値として扱います。[u64の設計](../docs/design/u64.ja.md)では各生成先の表現も説明しています。
+
+整数の範囲外演算は停止し、折り返しません。型同士は暗黙に混ぜず、`i64(value)`や`convert<i64>(value)`で明示変換します。[integer_conversions.prim](integer_conversions.prim)で二つの表記を比較できます。型情報のない整数は`i64`になり、配列の添字も`i64`です。表のビット幅は数値の範囲を表し、現在の生成先では小さい整数も64ビット領域に格納します。
+
+### 浮動小数点：小数と精度
+
+| 型 | 表現 | サンプル | 確認すること |
+| --- | --- | --- | --- |
+| `f32` | 32ビット浮動小数点 | [floating_point.prim](floating_point.prim)、[logistic_map.prim](logistic_map.prim) | `f64`との丸め・計算結果の違い |
+| `f64` | 64ビット浮動小数点 | [floating_point.prim](floating_point.prim)、[small_values.prim](small_values.prim) | 小さい値の表示と計算時の丸め。型情報のない浮動小数点は`f64` |
+
+[measurement_statistics.prim](measurement_statistics.prim)と[normalized_histogram.prim](normalized_histogram.prim)では整数と浮動小数点を行き来します。明示変換は値を保てる場合だけ成功します。通常の浮動小数点演算で生じる丸めとは別の規則です。
+
+### 真偽値と文字列
+
+| 型 | 値 | サンプル | 確認すること |
+| --- | --- | --- | --- |
+| `bool` | `true` / `false` | [boolean_comparisons.prim](boolean_comparisons.prim)、[short_circuit.prim](short_circuit.prim) | 比較・否定と、評価を省く短絡評価 |
+| `string` | 内容が不変のUTF-8文字列 | [string_values.prim](string_values.prim)、[string_byte_length.prim](string_byte_length.prim) | 日本語・等値比較・コピーと、文字数とは異なるUTF-8バイト数 |
+
+[string_origins.prim](string_origins.prim)は文字列の処理をPrimer IRと出自注釈付きLLVMで辿る例です。文字列の内容は不変ですが、mutな束縛への再代入はできます。
+
+### 配列と構造体：型を組み合わせる
+
+| 型の形 | サンプル | 確認すること |
+| --- | --- | --- |
+| 固定長配列 `[T; N]` | [fixed_arrays.prim](fixed_arrays.prim)、[bubble_sort.prim](bubble_sort.prim) | 添字、要素の更新、コピー後の独立性 |
+| 構造体 `type Point { ... }` | [product-point.prim](product-point.prim)、[product_arrays.prim](product_arrays.prim) | フィールド・既定値と、構造体を要素にする配列 |
+| 入れ子の配列・構造体 | [function_values.prim](function_values.prim)、[u64_values.prim](u64_values.prim)、[string_lookup.prim](string_lookup.prim) | 数値や文字列を組み合わせ、関数へ値として渡す |
+
+`infer`は独立した値の型ではなく、型を推論する指定です。`void`は値を返さない関数の戻り方を表します。[floating_point.prim](floating_point.prim)と[functions.prim](functions.prim)で確認できます。
+
+## 基本と制御
 
 | サンプル | 内容 |
 | --- | --- |
 | [hello.prim](hello.prim) | 整数に名前を付け、足し算の結果を`print`で表示する最初の例 |
-| [string_values.prim](string_values.prim) | 日本語の表示、等値比較、改行、再代入しても保存済みの文字列が変わらないこと |
-| [floating_point.prim](floating_point.prim) | `f32`と`f64`の精度の違い、`infer`による型推論 |
-| [small_values.prim](small_values.prim) | 小さな数値を指数表記で観測し、表示と計算時の丸めを区別する |
-| [integer_limits.prim](integer_limits.prim) | `i64`の最小値・最大値と、桁あふれする前の判定 |
-| [integer_conversions.prim](integer_conversions.prim) | 同じ意味になる二つの変換表記で`i32`を`i64`へ広げる |
-| [bit_flags.prim](bit_flags.prim) | 8個のビットを独立したスイッチとして使い、設定・解除・反転・判定を行う |
-| [boolean_comparisons.prim](boolean_comparisons.prim) | 真偽値と比較演算 |
 | [short_circuit.prim](short_circuit.prim) | `&&`・`\|\|`で条件を組み合わせ、不要な割り算・配列参照・関数呼び出しを省略する |
 | [conditional.prim](conditional.prim) | `if` / `else`とscope |
 | [loop_control.prim](loop_control.prim) | `while`、`break`、`continue` |
@@ -118,7 +171,7 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
 
-文字列を使う2例は全出力経路に対応します。LLVMとQBEには明示的なターゲットを渡し、QBEはLinux x86-64、直接アセンブリはWindows x64、WATは出力用ホスト関数を備えたWebAssembly環境で検証します。`emit-ir`と`emit-bytecode`でも型と内容の変換を読めます。
+文字列のサンプルは既存6経路に対応します。LLVMとQBEには明示的なターゲットを渡し、QBEはLinux x86-64、直接アセンブリはWindows x64、WATは出力用ホスト関数を備えたWebAssembly環境で検証します。`emit-ir`と`emit-bytecode`でも型と内容の変換を読めます。
 
 QBE・WAT・直接アセンブリの実行比較は`cargo test --test string_routes`で確認できます。[文字列の設計](../docs/design/strings.ja.md#検証範囲)にツールの指定と検証範囲を記載しています。
 

@@ -1,3 +1,8 @@
+#[path = "support/crash_dialogs.rs"]
+mod crash_dialogs;
+#[path = "support/u64_cases.rs"]
+mod u64_cases;
+
 #[path = "support/string_cases.rs"]
 mod string_cases;
 
@@ -137,6 +142,7 @@ struct Native {
 
 impl Native {
     fn new() -> Option<Self> {
+        crash_dialogs::suppress();
         // 実行テスト側がホストに合うターゲットを指定します。生成APIは推測しません。
         let target = if cfg!(all(
             target_os = "windows",
@@ -316,9 +322,12 @@ fn origin_example_executes_identically_with_and_without_annotations() {
 }
 
 #[test]
-fn string_array_bounds_still_fail_at_runtime() {
+fn array_bounds_and_u64_failures_stop_at_runtime() {
     let Some(native) = Native::new() else { return };
-    for source in string_cases::OUT_OF_BOUNDS {
+    for source in string_cases::OUT_OF_BOUNDS
+        .iter()
+        .chain(u64_cases::FAILURES)
+    {
         assert!(run_vm(source).is_err());
         for optimization in ["-O0", "-O2"] {
             for llvm in [false, true] {
@@ -326,4 +335,15 @@ fn string_array_bounds_still_fail_at_runtime() {
             }
         }
     }
+}
+
+#[test]
+fn u64_values_match_known_output_on_c_and_llvm() {
+    let Some(native) = Native::new() else { return };
+    native.matches(u64_cases::EXAMPLE.0, u64_cases::EXAMPLE.1);
+    native.matches(u64_cases::BOUNDARIES.0, u64_cases::BOUNDARIES.1);
+    let annotated = native.run_with_origins(u64_cases::EXAMPLE.0, true, "-O2", true);
+    assert!(annotated.status.success());
+    assert!(annotated.stderr.is_empty());
+    assert_eq!(annotated.stdout, u64_cases::EXAMPLE.1.as_bytes());
 }

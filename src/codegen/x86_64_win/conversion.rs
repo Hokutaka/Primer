@@ -1,6 +1,9 @@
 use crate::{codegen::NumericConversion, types::NumericType};
 
 pub(super) fn emit(conversion: NumericConversion, label: usize, prefix: &str, output: &mut String) {
+    if conversion.uses_u64() {
+        return super::unsigned::emit_conversion(conversion, label, prefix, output);
+    }
     let bad = format!(".Lprimer_{prefix}_convert_bad_{label}");
     let done = format!(".Lprimer_{prefix}_convert_done_{label}");
     match (conversion.from, conversion.to) {
@@ -24,7 +27,7 @@ pub(super) fn emit(conversion: NumericConversion, label: usize, prefix: &str, ou
             output.push_str(&format!("  ucomisd %xmm2, %xmm2\n  jp {bad}\n  movq %xmm2, %r11\n  movabsq $-9223372036854775808, %r10\n  cmpq %r10, %r11\n  je {bad}\n"));
             load_bound(ty.minimum() as f64, output);
             output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}\n"));
-            load_bound((i128::from(ty.maximum()) + 1) as f64, output);
+            load_bound((ty.maximum() + 1) as f64, output);
             output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jae {bad}\n  cvttsd2siq %xmm2, %rax\n  cvtsi2sdq %rax, %xmm1\n  ucomisd %xmm1, %xmm2\n  jne {bad}\n"));
         }
         (NumericType::F32, NumericType::F64) => {

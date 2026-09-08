@@ -10,11 +10,12 @@ pub enum IntegerType {
     I32,
     U32,
     I64,
+    U64,
 }
 
 impl IntegerType {
     /// 実装済みの整数型を決定的な順序で列挙します。
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::I8,
         Self::U8,
         Self::I16,
@@ -22,6 +23,7 @@ impl IntegerType {
         Self::I32,
         Self::U32,
         Self::I64,
+        Self::U64,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -38,6 +40,7 @@ impl IntegerType {
             Self::I32 => "i32",
             Self::U32 => "u32",
             Self::I64 => "i64",
+            Self::U64 => "u64",
         }
     }
 
@@ -45,7 +48,7 @@ impl IntegerType {
     pub const fn is_signed(self) -> bool {
         match self {
             Self::I8 | Self::I16 | Self::I32 | Self::I64 => true,
-            Self::U8 | Self::U16 | Self::U32 => false,
+            Self::U8 | Self::U16 | Self::U32 | Self::U64 => false,
         }
     }
 
@@ -55,36 +58,38 @@ impl IntegerType {
             Self::I8 | Self::U8 => 8,
             Self::I16 | Self::U16 => 16,
             Self::I32 | Self::U32 => 32,
-            Self::I64 => 64,
+            Self::I64 | Self::U64 => 64,
         }
     }
 
     /// この整数型で表せる最小値です。
-    pub const fn minimum(self) -> i64 {
+    pub const fn minimum(self) -> i128 {
         match self {
-            Self::I8 => i8::MIN as i64,
-            Self::I16 => i16::MIN as i64,
-            Self::I32 => i32::MIN as i64,
-            Self::U8 | Self::U16 | Self::U32 => 0,
-            Self::I64 => i64::MIN,
+            Self::I8 => i8::MIN as i128,
+            Self::I16 => i16::MIN as i128,
+            Self::I32 => i32::MIN as i128,
+            Self::U8 | Self::U16 | Self::U32 | Self::U64 => 0,
+            Self::I64 => i64::MIN as i128,
         }
     }
 
     /// この整数型で表せる最大値です。
-    pub const fn maximum(self) -> i64 {
+    pub const fn maximum(self) -> i128 {
         match self {
-            Self::I8 => i8::MAX as i64,
-            Self::U8 => u8::MAX as i64,
-            Self::I16 => i16::MAX as i64,
-            Self::U16 => u16::MAX as i64,
-            Self::I32 => i32::MAX as i64,
-            Self::U32 => u32::MAX as i64,
-            Self::I64 => i64::MAX,
+            Self::I8 => i8::MAX as i128,
+            Self::U8 => u8::MAX as i128,
+            Self::I16 => i16::MAX as i128,
+            Self::U16 => u16::MAX as i128,
+            Self::I32 => i32::MAX as i128,
+            Self::U32 => u32::MAX as i128,
+            Self::I64 => i64::MAX as i128,
+            Self::U64 => u64::MAX as i128,
         }
     }
 
     /// 格納用の値が、意味上の整数型の範囲に収まるか調べます。
-    pub const fn contains(self, value: i64) -> bool {
+    pub fn contains(self, value: impl Into<i128>) -> bool {
+        let value = value.into();
         value >= self.minimum() && value <= self.maximum()
     }
 }

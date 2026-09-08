@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20.20.2"
-      - name: Install string validation tools
+      - name: Install execution validation tools
         run: |
           mkdir -p target
           curl --fail --location https://c9x.me/compile/release/qbe-1.2.tar.xz -o target/qbe-1.2.tar.xz
@@ -40,7 +40,7 @@ jobs:
           PRIMER_TEST_QBE: ${{ github.workspace }}/target/qbe-1.2/qbe
           PRIMER_TEST_NODE: node
           PRIMER_TEST_WAT2WASM_JS: ${{ github.workspace }}/target/wasm-tools/node_modules/wabt/bin/wat2wasm
-      - name: C string memory checks
+      - name: C string and u64 sanitizer checks
         run: cargo test --test c_strings
         env:
           PRIMER_TEST_CC: clang
@@ -56,7 +56,7 @@ jobs:
           node-version: "20.20.2"
       - name: Install WAT validation tool
         run: npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39
-      - name: Compare string output on Windows
+      - name: Compare string and u64 execution on Windows
         run: cargo test --test llvm_strings --test c_strings --test string_routes
         env:
           PRIMER_TEST_CC: clang

@@ -206,8 +206,8 @@ fn conversions_reject_nonnumeric_inputs_without_contextual_retyping() {
         );
     }
     assert_eq!(
-        compile("print(convert<u64>(1));").unwrap_err().message(),
-        "unknown type `u64`"
+        compile("print(convert<u128>(1));").unwrap_err().message(),
+        "unknown type `u128`"
     );
 }
 

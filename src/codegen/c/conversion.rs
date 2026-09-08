@@ -1,8 +1,9 @@
 use crate::{codegen::NumericConversion, types::NumericType};
 use std::fmt::Write;
 
-fn type_name(ty: NumericType) -> &'static str {
+pub(super) fn type_name(ty: NumericType) -> &'static str {
     match ty {
+        NumericType::Integer(crate::types::IntegerType::U64) => "uint64_t",
         NumericType::Integer(_) => "int64_t",
         NumericType::F32 => "float",
         NumericType::F64 => "double",
@@ -10,6 +11,9 @@ fn type_name(ty: NumericType) -> &'static str {
 }
 
 pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
+    if conversion.uses_u64() {
+        return super::unsigned::emit_conversion(conversion, output);
+    }
     let NumericConversion { from, to } = conversion;
     writeln!(
         output,
@@ -37,7 +41,7 @@ pub(super) fn emit_support(conversion: NumericConversion, output: &mut String) {
                 output,
                 "    if (number < {}.0 || number >= {}.0) abort();",
                 ty.minimum(),
-                i128::from(ty.maximum()) + 1
+                ty.maximum() + 1
             )
             .unwrap();
             output.push_str("    int64_t result = (int64_t)number;\n    if ((double)result != number) abort();\n    return result;\n");
