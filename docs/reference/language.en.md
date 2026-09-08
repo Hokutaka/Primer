@@ -435,7 +435,7 @@ Primer IR assigns deterministic IDs to bindings so references remain unambiguous
 
 ## Types
 
-Primer v0.1 has one boolean type, nine numeric types, a string type, fixed arrays, and user-defined named product types:
+Primer v0.1 has one boolean type, ten numeric types, a string type, fixed arrays, and user-defined named product types:
 
 ```text
 bool
@@ -446,6 +446,7 @@ u16
 i32
 u32
 i64
+u64
 f32
 f64
 string
