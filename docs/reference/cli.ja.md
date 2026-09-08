@@ -18,7 +18,7 @@ primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
-primer run <file>
+primer run <file> [--diagnostic-format runtime-v1]
 primer --version
 ```
 
@@ -130,6 +130,8 @@ primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
 ```
 
 対応するソース位置がない場合も、bytecode命令番号は表示します。簡潔な診断には、ソース本文や入力ファイルのパスを含めません。
+
+`run --diagnostic-format runtime-v1`では、言語の検査失敗を停止理由・NodeId・UTF-8バイト範囲を持つ1行の記録で出力します。コンパイル診断やVM内部エラーは従来の形式です。停止前に実行した`print`はstdoutに残します。Windows/LinuxのASMと自前オブジェクトでも同じ停止記録を使います。[共通診断の契約](../design/runtime-diagnostics.ja.md)と[意図した停止の例](../../examples/runtime_failures/README.md)を参照してください。
 
 ## バージョン表示
 

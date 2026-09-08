@@ -62,6 +62,12 @@ main:
   movq -32(%rbp,%rax,8), %rax
   jmp .Lprimer_main_array_done_0
 .Lprimer_main_array_oob_0:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $71, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_0:
   movq %rax, %rdx
@@ -76,6 +82,12 @@ main:
   movq -8(%rbp,%rax,8), %rax
   jmp .Lprimer_main_array_done_1
 .Lprimer_main_array_oob_1:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_1:
   movq %rax, %rdx
@@ -85,3 +97,9 @@ main:
   addq $256, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=13 bytes=85..92\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=17 bytes=101..110\n"

@@ -59,6 +59,12 @@ main:
   divq %rcx
   jmp .Lprimer_main_u64_done_0
 .Lprimer_main_u64_bad_0:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_main_u64_done_0:
   movq %rax, %rdx
@@ -74,6 +80,12 @@ main:
   shrq %cl, %rax
   jmp .Lprimer_main_u64_done_1
 .Lprimer_main_u64_bad_1:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $66, %r8d
+  callq _write
   ud2
 .Lprimer_main_u64_done_1:
   movq %rax, %rdx
@@ -84,6 +96,12 @@ main:
   js .Lprimer_main_u64_convert_2_bad
   jmp .Lprimer_main_u64_convert_2_done
 .Lprimer_main_u64_convert_2_bad:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_2(%rip), %rdx
+  movl $79, %r8d
+  callq _write
   ud2
 .Lprimer_main_u64_convert_2_done:
   movq %rax, %rdx
@@ -93,3 +111,11 @@ main:
   addq $144, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=division-by-zero node=9 bytes=79..90\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=invalid-shift-count node=13 bytes=99..112\n"
+.Lprimer_failure_2:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=17 bytes=121..131\n"

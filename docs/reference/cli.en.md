@@ -18,7 +18,7 @@ primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>
 primer emit-bytecode <file> [-o <output.pbc>]
-primer run <file>
+primer run <file> [--diagnostic-format runtime-v1]
 primer --version
 ```
 
@@ -130,6 +130,8 @@ primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
 ```
 
 The bytecode instruction index is still displayed when no source location is available. Compact diagnostics do not include source text or the input file path.
+
+`run --diagnostic-format runtime-v1` emits language check failures as a single record containing the reason, NodeId, and UTF-8 byte range. Compilation diagnostics and VM internal errors retain their existing format. Previously executed `print` output remains on stdout. Windows/Linux assembly and internal objects use the same failure records. See the [common diagnostic contract](../design/runtime-diagnostics.en.md) and [expected-failure examples](../../examples/runtime_failures/README.en.md).
 
 ## Version
 

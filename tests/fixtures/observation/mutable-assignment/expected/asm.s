@@ -38,6 +38,12 @@ main:
   movq -24(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_main_integer_ok_0
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_0:
   movq %rax, -8(%rbp)
@@ -63,3 +69,7 @@ main:
   addq $128, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-overflow node=3 bytes=29..38\n"

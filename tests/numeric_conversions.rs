@@ -182,9 +182,19 @@ fn destination_does_not_change_input_arithmetic_or_evaluate_it_twice() {
         compile_to_llvm,
         compile_to_qbe,
         compile_to_wat,
-        compile_to_x86_64_win_asm,
     ] {
         assert_eq!(emit(compact).unwrap(), emit(&explicit).unwrap());
+    }
+    // ASMは元の表記のバイト範囲を診断に保持するため、表記の違う生成物は異なります。
+    // 両表記の実行結果はnative_assemblyの既知出力のケースで比較します。
+    for source in [compact, explicit.as_str()] {
+        assert_eq!(
+            compile_to_x86_64_win_asm(source)
+                .unwrap()
+                .matches("  callq primer_fn_next_0\n")
+                .count(),
+            1
+        );
     }
     let RunError::Execution(error) = run_vm("print(f64(1 / 0));").unwrap_err() else {
         panic!()

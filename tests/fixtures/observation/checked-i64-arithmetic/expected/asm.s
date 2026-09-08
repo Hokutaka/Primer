@@ -32,6 +32,12 @@ main:
   movq -16(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_main_integer_ok_0
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_0:
   movq %rax, %rdx
@@ -44,6 +50,12 @@ main:
   movq -16(%rbp), %rax
   subq %rcx, %rax
   jno .Lprimer_main_integer_ok_1
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_1:
   movq %rax, %rdx
@@ -56,6 +68,12 @@ main:
   movq -16(%rbp), %rax
   imulq %rcx, %rax
   jno .Lprimer_main_integer_ok_2
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_2(%rip), %rdx
+  movl $62, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_2:
   movq %rax, %rdx
@@ -73,7 +91,20 @@ main:
   movabsq $-9223372036854775808, %rdx
   cmpq %rdx, %rax
   jne .Lprimer_main_division_ok_3
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_3(%rip), %rdx
+  movl $63, %r8d
+  callq _write
+  ud2
 .Lprimer_main_division_trap_3:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_4(%rip), %rdx
+  movl $62, %r8d
+  callq _write
   ud2
 .Lprimer_main_division_ok_3:
   cqto
@@ -84,6 +115,12 @@ main:
   movq -8(%rbp), %rax
   negq %rax
   jno .Lprimer_main_integer_ok_4
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_5(%rip), %rdx
+  movl $63, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_4:
   movq %rax, %rdx
@@ -93,3 +130,17 @@ main:
   addq $160, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-overflow node=3 bytes=22..31\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=integer-overflow node=7 bytes=40..49\n"
+.Lprimer_failure_2:
+  .asciz "primer: runtime-v1 code=integer-overflow node=11 bytes=58..67\n"
+.Lprimer_failure_3:
+  .asciz "primer: runtime-v1 code=division-overflow node=15 bytes=76..85\n"
+.Lprimer_failure_4:
+  .asciz "primer: runtime-v1 code=division-by-zero node=15 bytes=76..85\n"
+.Lprimer_failure_5:
+  .asciz "primer: runtime-v1 code=integer-overflow node=19 bytes=94..100\n"

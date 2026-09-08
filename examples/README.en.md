@@ -4,6 +4,8 @@
 
 This directory contains programs that can be read and executed with the current Primer language. Each example demonstrates a different piece of syntax or method of computation in a small program.
 
+Three [expected-failure examples](runtime_failures/README.en.md) separately demonstrate retained output and the source expression where execution stops.
+
 ## Run all examples
 
 From the repository root, run the following command to display each example's name, output, status, and a final summary:

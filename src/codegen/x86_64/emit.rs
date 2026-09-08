@@ -1,12 +1,15 @@
+use super::failure::Reporter;
 use super::ir::{
     Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
 };
+use crate::runtime::FailureCode as Failure;
 
 pub fn emit(module: &Module) -> String {
     emit_with_origins(module, false)
 }
 
 pub fn emit_with_origins(module: &Module, annotate: bool) -> String {
+    let mut reporter = Reporter::new(module.target);
     let mut output = initial_data(uses_bool_print(module), module.target);
     if annotate {
         output.insert_str(0, "# primer-asm-origins v1: UTF-8 byte ranges, end exclusive\n# primer-origin: synthetic\n");
@@ -37,7 +40,7 @@ pub fn emit_with_origins(module: &Module, annotate: bool) -> String {
     }
 
     for function in &module.functions {
-        emit_function(function, module, annotate, &mut output);
+        emit_function(function, module, annotate, &mut reporter, &mut output);
         output.push('\n');
     }
 
@@ -64,8 +67,16 @@ pub fn emit_with_origins(module: &Module, annotate: bool) -> String {
 
     assert_eq!(module.instructions.len(), module.origins.len());
     for (index, instruction) in module.instructions.iter().enumerate() {
+        reporter.origin = module.origins[index];
         emit_origin(module.origins[index], "main", index, annotate, &mut output);
-        emit_instruction(instruction, module.frame_size, "main", module, &mut output);
+        emit_instruction(
+            instruction,
+            module.frame_size,
+            "main",
+            module,
+            &mut reporter,
+            &mut output,
+        );
     }
 
     if annotate {
@@ -80,13 +91,28 @@ pub fn emit_with_origins(module: &Module, annotate: bool) -> String {
 
     emit_epilogue(module.frame_size, true, &mut output);
 
+    if !reporter.data.is_empty() {
+        output.push_str(if module.target.is_linux() {
+            "\n.section .rodata\n"
+        } else {
+            "\n.section .rdata,\"dr\"\n"
+        });
+        output.push_str(&reporter.data);
+    }
+
     if module.target.is_linux() {
         output.push_str("\n.section .note.GNU-stack,\"\",@progbits\n");
     }
     output
 }
 
-fn emit_function(function: &Function, module: &Module, annotate: bool, output: &mut String) {
+fn emit_function(
+    function: &Function,
+    module: &Module,
+    annotate: bool,
+    reporter: &mut Reporter,
+    output: &mut String,
+) {
     if annotate {
         output.push_str("# primer-origin: synthetic\n");
     }
@@ -114,6 +140,7 @@ fn emit_function(function: &Function, module: &Module, annotate: bool, output: &
     }
     assert_eq!(function.instructions.len(), function.origins.len());
     for (index, instruction) in function.instructions.iter().enumerate() {
+        reporter.origin = function.origins[index];
         emit_origin(
             function.origins[index],
             &format!("fn_{}", function.id),
@@ -126,6 +153,7 @@ fn emit_function(function: &Function, module: &Module, annotate: bool, output: &
             function.frame_size,
             &format!("fn_{}", function.id),
             module,
+            reporter,
             output,
         );
     }
@@ -189,6 +217,7 @@ fn emit_instruction(
     frame_size: usize,
     label_prefix: &str,
     module: &Module,
+    reporter: &mut Reporter,
     output: &mut String,
 ) {
     match instruction {
@@ -230,14 +259,14 @@ fn emit_instruction(
             output.push_str("  movq %rax, %rcx\n  callq primer_print_string\n")
         }
         Instruction::ConvertNumeric { conversion, label } => {
-            super::conversion::emit(*conversion, *label, label_prefix, output)
+            super::conversion::emit(*conversion, *label, label_prefix, reporter, output)
         }
         Instruction::BitNot { mask } => {
             output.push_str(&format!("  movabsq ${mask}, %r11\n  xorq %r11, %rax\n"));
         }
         Instruction::IntegerBinary { op, ty, label } => {
             if *ty == crate::types::IntegerType::U64 {
-                return super::unsigned::emit_binary(*op, *label, label_prefix, output);
+                return super::unsigned::emit_binary(*op, *label, label_prefix, reporter, output);
             }
             use crate::codegen::IntegerBinaryOp;
             let bad = format!(".Lprimer_{label_prefix}_integer_bad_{label}");
@@ -252,7 +281,9 @@ fn emit_instruction(
                 IntegerBinaryOp::BitXor => output.push_str("  xorq %rcx, %rax\n"),
                 IntegerBinaryOp::Remainder => {
                     let divide = format!(".Lprimer_{label_prefix}_integer_rem_{label}");
-                    output.push_str(&format!("  testq %rcx, %rcx\n  je {bad}\n  cmpq $-1, %rcx\n  jne {divide}\n  xorq %rax, %rax\n  jmp {done}\n{divide}:\n  cqto\n  idivq %rcx\n  movq %rdx, %rax\n  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+                    output.push_str(&format!("  testq %rcx, %rcx\n  je {bad}\n  cmpq $-1, %rcx\n  jne {divide}\n  xorq %rax, %rax\n  jmp {done}\n{divide}:\n  cqto\n  idivq %rcx\n  movq %rdx, %rax\n  jmp {done}\n{bad}:\n"));
+                    reporter.emit(Failure::RemainderByZero, output);
+                    output.push_str(&format!("{done}:\n"));
                 }
                 IntegerBinaryOp::ShiftLeft | IntegerBinaryOp::ShiftRight => {
                     output.push_str(&format!(
@@ -260,18 +291,23 @@ fn emit_instruction(
                         ty.bit_width()
                     ));
                     if *op == IntegerBinaryOp::ShiftLeft {
-                        output.push_str(&format!("  movabsq ${}, %r11\n  sarq %cl, %r11\n  cmpq %r11, %rax\n  jl {bad}\n  movabsq ${}, %r11\n  shrq %cl, %r11\n  cmpq %r11, %rax\n  jg {bad}\n  shlq %cl, %rax\n", ty.minimum(), ty.maximum()));
+                        output.push_str(&format!("  movabsq ${}, %r11\n  sarq %cl, %r11\n  cmpq %r11, %rax\n  jl {bad}_overflow\n  movabsq ${}, %r11\n  shrq %cl, %r11\n  cmpq %r11, %rax\n  jg {bad}_overflow\n  shlq %cl, %rax\n  jmp {done}\n{bad}_overflow:\n", ty.minimum(), ty.maximum()));
+                        reporter.emit(Failure::IntegerOverflow, output);
                     } else {
                         output.push_str("  sarq %cl, %rax\n");
                     }
-                    output.push_str(&format!("  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+                    output.push_str(&format!("  jmp {done}\n{bad}:\n"));
+                    reporter.emit(Failure::InvalidShiftCount, output);
+                    output.push_str(&format!("{done}:\n"));
                 }
             }
         }
-        Instruction::CheckIntegerRange { ty, label } => {
+        Instruction::CheckIntegerRange { ty, label, failure } => {
             let bad = format!(".Lprimer_{label_prefix}_range_bad_{label}");
             let done = format!(".Lprimer_{label_prefix}_range_ok_{label}");
-            output.push_str(&format!("  # semantic {}, storage i64\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jl {bad}\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jle {done}\n{bad}:\n  ud2\n{done}:\n", ty.name(), ty.minimum(), ty.maximum()));
+            output.push_str(&format!("  # semantic {}, storage i64\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jl {bad}\n  movabsq ${}, %r11\n  cmpq %r11, %rax\n  jle {done}\n{bad}:\n", ty.name(), ty.minimum(), ty.maximum()));
+            reporter.emit(*failure, output);
+            output.push_str(&format!("{done}:\n"));
         }
         Instruction::Label { id, name } => {
             output.push_str(&format!("{}: # {name}\n", block_label(label_prefix, *id)));
@@ -340,7 +376,7 @@ fn emit_instruction(
             }
             output.push_str(&format!("  jmp {done}\n"));
             output.push_str(&format!("{trap}:\n"));
-            output.push_str("  ud2\n");
+            reporter.emit(Failure::ArrayIndexOutOfBounds, output);
             output.push_str(&format!("{done}:\n"));
         }
 
@@ -366,7 +402,7 @@ fn emit_instruction(
             }
             output.push_str(&format!("  jmp {done}\n"));
             output.push_str(&format!("{trap}:\n"));
-            output.push_str("  ud2\n");
+            reporter.emit(Failure::ArrayIndexOutOfBounds, output);
             output.push_str(&format!("{done}:\n"));
         }
 
@@ -394,7 +430,7 @@ fn emit_instruction(
             output.push_str(&format!("  movq %rcx, {destination_offset}(%rbp)\n"));
             output.push_str(&format!("  jmp {done}\n"));
             output.push_str(&format!("{trap}:\n"));
-            output.push_str("  ud2\n");
+            reporter.emit(Failure::ArrayIndexOutOfBounds, output);
             output.push_str(&format!("{done}:\n"));
         }
 
@@ -522,7 +558,7 @@ fn emit_instruction(
         Instruction::TrapIfOverflow(label) => {
             let done = format!(".Lprimer_{label_prefix}_integer_ok_{label}");
             output.push_str(&format!("  jno {done}\n"));
-            output.push_str("  ud2\n");
+            reporter.emit(Failure::IntegerOverflow, output);
             output.push_str(&format!("{done}:\n"));
         }
 
@@ -573,8 +609,9 @@ fn emit_instruction(
             output.push_str("  movabsq $-9223372036854775808, %rdx\n");
             output.push_str("  cmpq %rdx, %rax\n");
             output.push_str(&format!("  jne {done}\n"));
+            reporter.emit(Failure::DivisionOverflow, output);
             output.push_str(&format!("{trap}:\n"));
-            output.push_str("  ud2\n");
+            reporter.emit(Failure::DivisionByZero, output);
             output.push_str(&format!("{done}:\n"));
         }
 

@@ -208,13 +208,24 @@ fn run() -> Result<(), String> {
         // Primer VM 実行
         "run" => {
             let input = required_path(args.next(), "missing input file")?;
-
-            reject_extra(args)?;
+            let rest: Vec<_> = args.collect();
+            let runtime_format = match rest.as_slice() {
+                [] => false,
+                [flag, format] if flag == "--diagnostic-format" && format == "runtime-v1" => true,
+                _ => return Err("usage: primer run <file> [--diagnostic-format runtime-v1]".into()),
+            };
 
             let source = read_source(&input)?;
 
-            let output =
-                primer_lang::run_vm(&source).map_err(|error| render_run_error(error, &source))?;
+            let output = primer_lang::run_vm(&source).map_err(|error| {
+                if let RunError::Execution(execution) = &error {
+                    print!("{}", execution.vm_error().output());
+                    if runtime_format && let Some(failure) = execution.runtime_failure() {
+                        return failure.record();
+                    }
+                }
+                render_run_error(error, &source)
+            })?;
 
             print!("{output}");
 
@@ -338,7 +349,7 @@ fn print_help() {
            primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]\n\
            primer emit-obj <file> --target <triple> [--annotate-origins] -o <output.o>\n\
            primer emit-bytecode <file> [-o <output.pbc>]\n\
-           primer run <file>\n\
+           primer run <file> [--diagnostic-format runtime-v1]\n\
            primer --version\n",
         env!("CARGO_PKG_VERSION")
     );

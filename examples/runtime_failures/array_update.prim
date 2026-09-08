@@ -1,0 +1,10 @@
+// 添字の検査で停止し、右辺の関数は実行しません。
+fn replacement() -> i64 {
+    print("右辺が実行されました");
+    return 99;
+}
+
+mut matrix: [[i64; 2]; 2] = [[1, 2], [3, 4]];
+saved: [[i64; 2]; 2] = matrix;
+print(saved[1][1]);
+matrix[1][2] = replacement();
