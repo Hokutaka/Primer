@@ -627,6 +627,11 @@ impl LoweringContext<'_> {
         instructions: &mut Vec<Instruction>,
     ) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::StringByteLength { value } => {
+                self.lower_expr(value, instructions);
+                instructions.push(Instruction::I64Load { offset: 0 });
+                Value::Scalar(Type::I64)
+            }
             primer_ir::ExprKind::String(value) => {
                 let address = self.allocate(8 + value.len());
                 self.strings.push((address, value.clone()));

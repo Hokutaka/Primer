@@ -337,6 +337,15 @@ impl Builder<'_> {
         let ty = self.model.type_of_expr_expected(expr, bindings, expected)?;
 
         let kind = match &expr.kind {
+            ast::ExprKind::Call {
+                name, arguments, ..
+            } if name == "byte_len" => ExprKind::StringByteLength {
+                value: Box::new(self.build_expr(
+                    &arguments[0],
+                    Some(semantic::Type::String),
+                    bindings,
+                )?),
+            },
             ast::ExprKind::Convert { value, syntax, .. } => {
                 let value = self.build_expr(value, None, bindings)?;
                 if let (Type::Integer(from), semantic::Type::Integer(to)) = (&value.ty, &ty) {

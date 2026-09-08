@@ -140,3 +140,9 @@ For LLVM, use the Windows/Linux command examples in the [CLI reference](../docs/
 ### Following string origins
 
 `string_origins.prim` demonstrates calls, string content equality, and short-circuit evaluation. Escaped output is `日本語\0\ntrue\nfalse\n`; `skipped` is never printed. Compare `emit-ir` with `emit-llvm --annotate-origins` to follow equality node #7 and short-circuit node #14 to calls and branches. See the [CLI walkthrough](../docs/reference/cli.en.md#following-llvm-origins).
+
+### Inspecting string byte lengths
+
+Run `cargo run -- run examples/string_byte_length.prim` and inspect `emit-ir` or `emit-llvm --target x86_64-unknown-linux-gnu --annotate-origins` for the same input.
+
+Output lines are `0, 9, 3, 2, 3, 4, 7, 3, 9, left, right, 9, false, false, 6, 10`, each followed by LF. The example exercises UTF-8 lengths, saved copies, calls, arrays, defaults, and evaluation order. Each of `left` and `right` is printed once; `skipped` is never printed. C, LLVM, QBE, WAT, and direct assembly are also executed against known expected bytes. See the [small observation fixture](../tests/fixtures/observation/string-byte-length/) for representations in every route.

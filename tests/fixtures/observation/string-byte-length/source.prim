@@ -1,0 +1,3 @@
+text: string = "日\0";
+print(byte_len(text));
+print(byte_len(""));

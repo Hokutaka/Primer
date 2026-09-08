@@ -86,7 +86,8 @@ fn expression(expr: &mut Expr, temporaries: &mut Vec<Type>) {
             expression(right, temporaries);
             return;
         }
-        ExprKind::ConvertNumeric { value, .. }
+        ExprKind::StringByteLength { value }
+        | ExprKind::ConvertNumeric { value, .. }
         | ExprKind::CheckIntegerRange { value, .. }
         | ExprKind::Unary { value, .. }
         | ExprKind::FieldAccess { base: value, .. } => {
@@ -158,7 +159,9 @@ fn observable(expr: &Expr) -> bool {
                 || observable(right)
         }
         ExprKind::Logical { left, right, .. } => observable(left) || observable(right),
-        ExprKind::FieldAccess { base, .. } => observable(base),
+        ExprKind::StringByteLength { value: base } | ExprKind::FieldAccess { base, .. } => {
+            observable(base)
+        }
         ExprKind::Construct { fields, .. } => fields.iter().any(|field| observable(&field.value)),
         ExprKind::Array(values) => values.iter().any(observable),
         ExprKind::Boolean(_)

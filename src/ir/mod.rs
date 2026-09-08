@@ -163,6 +163,9 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    StringByteLength {
+        value: Box<Expr>,
+    },
     /// 浮動小数点を含む明示変換です。値や符号を保てない場合は失敗します。
     ConvertNumeric {
         from: crate::types::NumericType,

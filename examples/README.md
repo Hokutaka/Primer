@@ -142,3 +142,15 @@ LLVMの場合は、[CLIリファレンス](../docs/reference/cli.ja.md#llvmの�
 `string_origins.prim`は関数呼び出し、文字列の内容比較、短絡評価を観察する例です。出力をエスケープ表記にすると`日本語\0\ntrue\nfalse\n`です。`skipped`は出力されません。
 
 `emit-ir`と`emit-llvm --annotate-origins`を並べると、`#7`の内容比較や`#14`の短絡評価からLLVMの呼び出し・分岐へ辿れます。[実行手順と出自注釈](../docs/reference/cli.ja.md#llvmの出自を辿る)を参照してください。
+
+### 文字列のバイト数を確かめる
+
+`string_byte_length.prim`は`byte_len`を使い、UTF-8の長さ、コピー済みの値、関数・配列・既定値、評価順を確認する例です。
+
+```sh
+cargo run -- run examples/string_byte_length.prim
+cargo run -- emit-ir examples/string_byte_length.prim
+cargo run -- emit-llvm examples/string_byte_length.prim --target x86_64-unknown-linux-gnu --annotate-origins -o string-byte-length.ll
+```
+
+出力は順に`0, 9, 3, 2, 3, 4, 7, 3, 9, left, right, 9, false, false, 6, 10`で、各値の後にLFが付きます。`left`と`right`は各一回だけ出力され、`skipped`は出力されません。C・LLVM・QBE・WAT・直接アセンブリも実行して既知の期待バイト列と比較します。小さい入力と各経路の表現は[観測fixture](../tests/fixtures/observation/string-byte-length/)で読めます。

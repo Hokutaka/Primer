@@ -280,6 +280,7 @@ fn bytes_equality_and_mixed_output_match_vm_and_c() {
     let Some(native) = Native::new() else { return };
     native.matches(string_cases::CASES[0].0, string_cases::CASES[0].1);
     native.matches(string_cases::UNUSED_DEFAULT, "1\ntrue\n");
+    native.matches(string_cases::BYTE_LENGTH.0, string_cases::BYTE_LENGTH.1);
     for source in [
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),

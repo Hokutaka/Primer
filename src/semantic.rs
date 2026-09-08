@@ -209,6 +209,12 @@ fn register_function_names(program: &Program) -> SemanticResult<HashMap<String, 
         let Item::FunctionDefinition(definition) = item else {
             continue;
         };
+        if definition.name == "byte_len" {
+            return Err(Diagnostic::new(
+                "function name `byte_len` is reserved for a built-in operation",
+                definition.name_span,
+            ));
+        }
         if ast::Type::from_name(&definition.name).is_some() {
             return Err(Diagnostic::new(
                 format!(
@@ -1441,6 +1447,22 @@ fn check_call(
     bindings: &Bindings,
     model: &SemanticModel,
 ) -> SemanticResult<ReturnType> {
+    if name == "byte_len" {
+        if arguments.len() != 1 {
+            return Err(Diagnostic::new(
+                format!("byte_len expects 1 argument, found {}", arguments.len()),
+                name_span,
+            ));
+        }
+        let actual = model.type_of_expr(&arguments[0], bindings)?;
+        if actual != Type::String {
+            return Err(Diagnostic::new(
+                format!("byte_len expects string, found {}", model.type_name(actual)),
+                arguments[0].span,
+            ));
+        }
+        return Ok(ReturnType::Value(Type::Integer(IntegerType::I64)));
+    }
     let id = model.resolve_function_name(name, name_span)?;
     let function = model.function_definition(id);
     if arguments.len() != function.parameters.len() {

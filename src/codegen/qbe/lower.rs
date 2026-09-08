@@ -452,6 +452,27 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::StringByteLength { value } => {
+                let value = self.lower_expr(value);
+                let Value::Scalar {
+                    ty,
+                    operand: address,
+                } = value
+                else {
+                    unreachable!("byte_len operand is a string")
+                };
+                debug_assert_eq!(ty, Type::String);
+                let dest = self.next_temp();
+                self.instructions.push(Instruction::Load {
+                    dest,
+                    address,
+                    ty: Type::I64,
+                });
+                Value::Scalar {
+                    ty: Type::I64,
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::String(value) => {
                 let id = self.strings.len();
                 self.strings.push(value.clone());

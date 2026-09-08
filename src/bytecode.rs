@@ -115,6 +115,7 @@ pub enum InstructionOrigin {
 
 #[derive(Debug, Clone)]
 pub enum InstructionKind {
+    StringByteLength,
     ConvertNumeric {
         from: crate::types::NumericType,
         to: crate::types::NumericType,
@@ -669,6 +670,10 @@ impl Compiler {
 
     fn emit_expr(&mut self, expr: &Expr) {
         match &expr.kind {
+            ExprKind::StringByteLength { value } => {
+                self.emit_expr(value);
+                self.emit_source(InstructionKind::StringByteLength, expr.id, expr.span);
+            }
             ExprKind::ConvertNumeric {
                 value, from, to, ..
             } => {
@@ -1045,6 +1050,9 @@ fn format_instruction(
     match instruction {
         InstructionKind::PushBool(value) => {
             writeln!(output, "push.bool {value}").unwrap();
+        }
+        InstructionKind::StringByteLength => {
+            writeln!(output, "byte_len.string").unwrap();
         }
         InstructionKind::PushString(value) => {
             writeln!(output, "push.string {value:?}").unwrap();

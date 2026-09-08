@@ -122,6 +122,9 @@ pub struct Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
+    StringByteLength {
+        value: Box<Expr>,
+    },
     /// 複数の作用や失敗を、ソース順に一度ずつ評価します。
     Sequence {
         bindings: Vec<(usize, Expr)>,

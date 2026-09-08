@@ -126,6 +126,7 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
+        Instruction::LoadStringLength => output.push_str("  movq (%rax), %rax\n"),
         Instruction::LoadStringConstant(id) => {
             output.push_str(&format!("  leaq .Lprimer_string_{id}(%rip), %rax\n"))
         }

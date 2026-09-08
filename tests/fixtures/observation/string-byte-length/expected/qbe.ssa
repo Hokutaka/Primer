@@ -1,0 +1,67 @@
+# target: x86_64-unknown-linux-gnu (qbe -t amd64_sysv)
+
+section ".rodata" data $primer_string_0 = align 8 { l 4, b 230, b 151, b 165, b 0 }
+section ".rodata" data $primer_string_1 = align 8 { l 0 }
+
+function w $primer_string_equal(l %left, l %right) {
+@start
+  %length =l loadl %left
+  %right_length =l loadl %right
+  %same_length =w ceql %length, %right_length
+  jnz %same_length, @condition, @different
+@condition
+  %index =l phi @start 0, @advance %next
+  %done =w ceql %index, %length
+  jnz %done, @equal, @compare
+@compare
+  %offset =l add %index, 8
+  %lp =l add %left, %offset
+  %rp =l add %right, %offset
+  %lb =w loadub %lp
+  %rb =w loadub %rp
+  %same_byte =w ceqw %lb, %rb
+  jnz %same_byte, @advance, @different
+@advance
+  %next =l add %index, 1
+  jmp @condition
+@equal
+  ret 1
+@different
+  ret 0
+}
+
+function $primer_print_string(l %value) {
+@start
+  %length =l loadl %value
+  jmp @condition
+@condition
+  %index =l phi @start 0, @write %next
+  %done =w ceql %index, %length
+  jnz %done, @newline, @write
+@write
+  %offset =l add %index, 8
+  %address =l add %value, %offset
+  %byte =w loadub %address
+  call $putchar(w %byte)
+  %next =l add %index, 1
+  jmp @condition
+@newline
+  call $putchar(w 10)
+  ret
+}
+
+data $fmt_i64 = { b "%lld", b 10, b 0 }
+data $fmt_f32 = { b "%.9g", b 10, b 0 }
+data $fmt_f64 = { b "%.17g", b 10, b 0 }
+
+export function w $main() {
+@start
+  %slot_text =l alloc8 8
+  storel $primer_string_0, %slot_text
+  %tmp0 =l loadl %slot_text
+  %tmp1 =l loadl %tmp0
+  %tmp2 =w call $printf(l $fmt_i64, ..., l %tmp1)
+  %tmp3 =l loadl $primer_string_1
+  %tmp4 =w call $printf(l $fmt_i64, ..., l %tmp3)
+  ret 0
+}

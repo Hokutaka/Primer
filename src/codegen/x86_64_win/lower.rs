@@ -454,6 +454,11 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::StringByteLength { value } => {
+                self.lower_expr(value, depth);
+                self.instructions.push(Instruction::LoadStringLength);
+                Value::Scalar(Type::I64)
+            }
             primer_ir::ExprKind::String(value) => {
                 let id = self.strings.len();
                 self.strings.push(value.clone());
@@ -1256,7 +1261,8 @@ fn count_expr_nodes(expr: &primer_ir::Expr) -> usize {
         | primer_ir::ExprKind::Variable { .. } => 1,
         primer_ir::ExprKind::ConvertNumeric { value, .. }
         | primer_ir::ExprKind::ConvertInteger { value, .. } => count_expr_nodes(value),
-        primer_ir::ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
+        primer_ir::ExprKind::StringByteLength { value }
+        | primer_ir::ExprKind::Unary { value, .. } => 1 + count_expr_nodes(value),
         primer_ir::ExprKind::Binary { left, right, .. }
         | primer_ir::ExprKind::Logical { left, right, .. } => {
             1 + count_expr_nodes(left) + count_expr_nodes(right)
@@ -1328,7 +1334,8 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
         | primer_ir::ExprKind::Integer(_)
         | primer_ir::ExprKind::Float { .. }
         | primer_ir::ExprKind::Variable { .. } => 0,
-        primer_ir::ExprKind::Unary { value, .. }
+        primer_ir::ExprKind::StringByteLength { value }
+        | primer_ir::ExprKind::Unary { value, .. }
         | primer_ir::ExprKind::ConvertNumeric { value, .. }
         | primer_ir::ExprKind::ConvertInteger { value, .. }
         | primer_ir::ExprKind::FieldAccess { base: value, .. } => {

@@ -65,6 +65,7 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    LoadStringLength,
     LoadStringConstant(usize),
     CompareString {
         left_offset: isize,

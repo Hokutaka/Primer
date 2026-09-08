@@ -264,6 +264,9 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 
 fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     let kind = match &expr.kind {
+        primer_ir::ExprKind::StringByteLength { value } => ExprKind::StringByteLength {
+            value: Box::new(lower_expr(value)),
+        },
         primer_ir::ExprKind::String(value) => ExprKind::String(value.clone()),
         primer_ir::ExprKind::Logical { op, left, right } => ExprKind::Logical {
             op: match op {
@@ -421,6 +424,7 @@ fn collect_array_types(program: &primer_ir::Program) -> Vec<Type> {
     fn visit_expr(expr: &primer_ir::Expr, types: &mut Vec<Type>) {
         add(&expr.ty, types);
         match &expr.kind {
+            primer_ir::ExprKind::StringByteLength { value } => visit_expr(value, types),
             primer_ir::ExprKind::String(_) => {}
             primer_ir::ExprKind::Array(values) => {
                 for value in values {

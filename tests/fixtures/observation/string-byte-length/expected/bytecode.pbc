@@ -1,0 +1,13 @@
+; Primer bytecode v0.1
+
+.slot 0 text string
+
+0000  push.string "日\0"
+0001  store 0       ; text
+0002  load 0        ; text
+0003  byte_len.string
+0004  print.i64
+0005  push.string ""
+0006  byte_len.string
+0007  print.i64
+0008  halt

@@ -498,6 +498,20 @@ impl Lowerer<'_> {
 
     fn lower_expr_unchecked(&mut self, expr: &primer_ir::Expr) -> Value {
         match &expr.kind {
+            primer_ir::ExprKind::StringByteLength { value } => {
+                let value = self.lower_expr(value);
+                let dest = self.next_temp();
+                self.push(Instruction::ExtractValue {
+                    dest,
+                    ty: Type::String,
+                    aggregate: value.operand,
+                    field: 1,
+                });
+                Value {
+                    ty: Type::I64,
+                    operand: Operand::Temp(dest),
+                }
+            }
             primer_ir::ExprKind::String(value) => {
                 // 出現順のIDを使い、保存先や共有の有無に意味を持たせません。
                 let id = self.strings.len();

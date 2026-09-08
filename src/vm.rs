@@ -297,6 +297,11 @@ fn execute_frame_inner(
             .ok_or_else(|| VmError::new(VmErrorKind::InstructionOutOfBounds, pc))?;
 
         match &instruction.kind {
+            InstructionKind::StringByteLength => {
+                let value = at_instruction(pop_string(&mut stack), pc)?;
+                // 対応する32/64ビット環境のRust文字列はisize::MAXを超えません。
+                stack.push(Value::Integer(value.len() as i64, IntegerType::I64));
+            }
             InstructionKind::ConvertNumeric { from, to } => {
                 let value = at_instruction(pop_value(&mut stack), pc)?;
                 stack.push(at_instruction(numeric::convert(value, *from, *to), pc)?);

@@ -69,6 +69,10 @@ fn cases() -> Vec<(&'static str, String)> {
         .collect();
     cases.push((string_cases::UNUSED_DEFAULT, "1\ntrue\n".into()));
     cases.push((
+        string_cases::BYTE_LENGTH.0,
+        string_cases::BYTE_LENGTH.1.into(),
+    ));
+    cases.push((
         include_str!("../examples/string_origins.prim"),
         "日本語\0\ntrue\nfalse\n".into(),
     ));
