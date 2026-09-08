@@ -65,6 +65,7 @@ type_spec   := "i8"
              | "i32"
              | "u32"
              | "i64"
+             | "u64"
              | "f32"
              | "f64"
              | "bool"
@@ -168,7 +169,7 @@ Concatenation, string indexing, character counts, ordering, and numeric conversi
 
 `print` writes the contents unchanged and appends LF. In contrast, textual Primer IR and bytecode escape line breaks and control characters. Decoded values are kept distinct from the UTF-8 byte range (Span) of the original quoted spelling.
 
-Strings are supported by every output route. LLVM and QBE require [CLI target selection](cli.en.md#llvm-target-selection); omitting it produces a source-located diagnostic before lowering, including strings in unused types, functions, and branches. Direct assembly is fixed to Windows x64; WAT uses the WebAssembly output host contract.
+Strings are supported by every output route. LLVM and QBE require [CLI target selection](cli.en.md#llvm-target-selection); omitting it produces a source-located diagnostic before lowering, including strings in unused types, functions, and branches. Direct assembly supports Windows x64 and Linux x86-64; native objects require an explicit target. WAT uses the WebAssembly output host contract.
 
 C emission uses read-only data retained until process exit, paired with a byte count. Generated programs using strings set standard output to binary mode on Windows, preventing automatic LF or CR translation. See [String design](../design/strings.en.md) for representation and lifetime details.
 
@@ -256,7 +257,7 @@ first = [30, 40];
 print(second[0]); // 10
 ```
 
-An element type may be `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, a named product type, or another fixed array. A fixed array may also be used as a field of a product type.
+An element type may be `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `string`, a named product type, or another fixed array. A fixed array may also be used as a field of a product type.
 
 ```primer
 type Point {
@@ -323,7 +324,7 @@ Function names are resolved across the whole file, so a call may precede its def
 
 Top-level executable statements receive a compiler-generated entrypoint. A program may instead define `fn main() -> void`, but an explicit `main` cannot be combined with top-level executable statements. `main` takes no parameters.
 
-Function parameters and results may use `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, named product types, and fixed arrays. Products and arrays are passed as values, so the received value and the caller's value do not share a mutable location. Functions accept at most four parameters. Recursion and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
+Function parameters and results may use `bool`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `f32`, `f64`, `string`, named product types, and fixed arrays. Products and arrays are passed as values, so the received value and the caller's value do not share a mutable location. Functions accept at most four parameters. Recursion and command-line arguments are not yet supported. Unsupported forms produce diagnostics instead of silently changing meaning.
 
 Primer IR and bytecode expose function IDs, parameter binding IDs, calls, and returns. Backend artifacts expose how those entities become function symbols, arguments, local storage, and ABI registers or memory. See [Function design](../design/functions.en.md) for details.
 
