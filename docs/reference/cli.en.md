@@ -15,7 +15,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
 primer --version
@@ -46,7 +46,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 
@@ -58,12 +58,12 @@ Each command emits the following artifact:
 | `emit-llvm` | LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 | `.ll` |
 | `emit-qbe` | QBE IR | unspecified, or explicit Linux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
-| `emit-asm` | native assembly | x86-64, Windows, Windows x64 ABI | `.s` |
+| `emit-asm` | native assembly | x86-64, Windows / Linux, respective calling conventions | `.s` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
 
 Each `emit-*` command writes its observation to standard output by default. With `-o`, the caller chooses the output path.
 
-The current `emit-asm` command has no target-selection option and emits assembly for x86-64 Windows.
+`emit-asm --target x86_64-unknown-linux-gnu` selects Linux; `--target x86_64-pc-windows-msvc` selects Windows. Omission preserves the fixed Windows default without inferring the host OS. `--annotate-origins` adds source comments and labels. See [native code observation](../design/native-code.en.md).
 
 ### LLVM target selection
 
@@ -104,7 +104,7 @@ The artifact records the target in a comment. Invoking QBE and the C linker belo
 
 ### WAT and direct assembly strings
 
-`emit-wat` and `emit-asm` retain their existing fixed targets and need no additional target selection.
+`emit-wat` remains fixed to WebAssembly. `emit-asm` accepts explicit Windows/Linux selection and preserves Windows as its default.
 
 WAT using strings imports `primer.write_byte(i32) -> void`, passing each byte and a trailing LF without exposing memory. Alongside the existing numeric and Boolean host functions, the host implements the [string output contract](../design/strings.en.md#wat-output-and-the-external-boundary). `emit-wat` does not launch a host.
 

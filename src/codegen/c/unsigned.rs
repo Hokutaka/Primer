@@ -14,28 +14,44 @@ pub(super) fn emit_binary(op: Op, output: &mut String) {
     .unwrap();
     let symbol = match op {
         Op::Add => {
-            output.push_str("    if (left > UINT64_MAX - right) abort();\n");
+            guard("left > UINT64_MAX - right", "u64 add overflow", output);
             "+"
         }
         Op::Subtract => {
-            output.push_str("    if (left < right) abort();\n");
+            guard("left < right", "u64 subtract overflow", output);
             "-"
         }
         Op::Multiply => {
-            output.push_str("    if (right != 0 && left > UINT64_MAX / right) abort();\n");
+            guard(
+                "right != 0 && left > UINT64_MAX / right",
+                "u64 multiply overflow",
+                output,
+            );
             "*"
         }
         Op::Divide | Op::Remainder => {
-            output.push_str("    if (right == 0) abort();\n");
+            guard(
+                "right == 0",
+                if op == Op::Divide {
+                    "integer division by zero"
+                } else {
+                    "integer remainder by zero"
+                },
+                output,
+            );
             if op == Op::Divide { "/" } else { "%" }
         }
         Op::BitAnd => "&",
         Op::BitOr => "|",
         Op::BitXor => "^",
         Op::ShiftLeft | Op::ShiftRight => {
-            output.push_str("    if (right >= 64) abort();\n");
+            guard("right >= 64", "u64 invalid shift count", output);
             if op == Op::ShiftLeft {
-                output.push_str("    if (left > (UINT64_MAX >> right)) abort();\n");
+                guard(
+                    "left > (UINT64_MAX >> right)",
+                    "u64 left shift overflow",
+                    output,
+                );
                 "<<"
             } else {
                 ">>"
@@ -51,14 +67,13 @@ pub(super) fn emit_conversion(c: NumericConversion, output: &mut String) {
     match (c.from, c.to) {
         (N::Integer(from), N::Integer(to)) => {
             if from == IntegerType::U64 {
-                writeln!(
+                guard(
+                    &format!("value > UINT64_C({})", to.maximum()),
+                    "integer conversion out of range",
                     output,
-                    "    if (value > UINT64_C({})) abort();",
-                    to.maximum()
-                )
-                .unwrap();
+                );
             } else if from.is_signed() {
-                output.push_str("    if (value < 0) abort();\n");
+                guard("value < 0", "integer conversion out of range", output);
             }
             writeln!(
                 output,
@@ -68,12 +83,53 @@ pub(super) fn emit_conversion(c: NumericConversion, output: &mut String) {
             .unwrap();
         }
         (N::Integer(_), N::F32 | N::F64) => {
-            writeln!(output,"    {to} result = ({to})value;\n    double number = (double)result;\n    if (number >= 18446744073709551616.0) abort();\n    if ((uint64_t)number != value) abort();\n    return result;").unwrap();
+            writeln!(
+                output,
+                "    {to} result = ({to})value;\n    double number = (double)result;"
+            )
+            .unwrap();
+            guard(
+                "number >= 18446744073709551616.0",
+                "numeric conversion inexact",
+                output,
+            );
+            guard(
+                "(uint64_t)number != value",
+                "numeric conversion inexact",
+                output,
+            );
+            output.push_str("    return result;\n");
         }
         (N::F32 | N::F64, N::Integer(_)) => {
-            output.push_str("    double number = (double)value;\n    if (!isfinite(number) || (number == 0.0 && signbit(number))) abort();\n    if (number < 0.0 || number >= 18446744073709551616.0) abort();\n    uint64_t result = (uint64_t)number;\n    if ((double)result != number) abort();\n    return result;\n");
+            output.push_str("    double number = (double)value;\n");
+            guard("!isfinite(number)", "numeric conversion not finite", output);
+            guard(
+                "number == 0.0 && signbit(number)",
+                "numeric conversion negative zero",
+                output,
+            );
+            guard(
+                "number < 0.0 || number >= 18446744073709551616.0",
+                "numeric conversion out of range",
+                output,
+            );
+            output.push_str("    uint64_t result = (uint64_t)number;\n");
+            guard(
+                "(double)result != number",
+                "numeric conversion inexact",
+                output,
+            );
+            output.push_str("    return result;\n");
         }
         _ => unreachable!("u64 conversion"),
     }
     output.push_str("}\n\n");
+}
+
+fn guard(condition: &str, reason: &str, output: &mut String) {
+    writeln!(
+        output,
+        "    if ({condition}) {{ fputs(\"primer: {reason}\\n\", stderr); abort(); }}"
+    )
+    .unwrap();
 }

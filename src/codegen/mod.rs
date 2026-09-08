@@ -3,6 +3,7 @@ pub mod llvm;
 pub mod qbe;
 mod support;
 pub mod wat;
+pub mod x86_64;
 pub mod x86_64_win;
 
 pub use c::emit_c;

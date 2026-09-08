@@ -6,17 +6,17 @@
 #include <stdlib.h>
 
 static uint64_t primer_convert_i64_u64(int64_t value) {
-    if (value < 0) abort();
+    if (value < 0) { fputs("primer: integer conversion out of range\n", stderr); abort(); }
     return (uint64_t)value;
 }
 
 static uint64_t primer_u64_div(uint64_t left, uint64_t right) {
-    if (right == 0) abort();
+    if (right == 0) { fputs("primer: integer division by zero\n", stderr); abort(); }
     return left / right;
 }
 
 static uint64_t primer_u64_shr(uint64_t left, uint64_t right) {
-    if (right >= 64) abort();
+    if (right >= 64) { fputs("primer: u64 invalid shift count\n", stderr); abort(); }
     return left >> right;
 }
 

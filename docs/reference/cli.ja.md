@@ -15,7 +15,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-wat <file> [-o <output.wat>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 primer run <file>
 primer --version
@@ -46,7 +46,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 
@@ -58,12 +58,12 @@ primer emit-bytecode <file> [-o <output.pbc>]
 | `emit-llvm` | LLVM IR | 未指定、または明示的なWindows x64 / Linux x86-64 | `.ll` |
 | `emit-qbe` | QBE IR | 未指定、または明示的なLinux x86-64 | `.ssa` |
 | `emit-wat` | WebAssembly Text | WebAssembly | `.wat` |
-| `emit-asm` | ネイティブアセンブリ | x86-64、Windows、Windows x64 ABI | `.s` |
+| `emit-asm` | ネイティブアセンブリ | x86-64、Windows / Linux、各OSの呼出規約 | `.s` |
 | `emit-bytecode` | Primer bytecode | Primer VM | `.pbc` |
 
 `emit-*`コマンドは、`-o`を指定しない場合、観測結果を標準出力へ書き出します。`-o`を指定した場合は、利用者が出力先のパスを決定します。
 
-現在の`emit-asm`にはターゲットを選択するオプションはなく、x86-64 Windows向けのアセンブリを生成します。
+`emit-asm --target x86_64-unknown-linux-gnu`でLinux、`--target x86_64-pc-windows-msvc`でWindows向けのアセンブリを生成します。省略時は互換性のためWindows固定で、ホストOSから推測しません。`--annotate-origins`で式と命令の対応を注釈とラベルとして残せます。[機械語までの観測](../design/native-code.ja.md)も参照してください。
 
 ### LLVMのターゲット指定
 
@@ -104,7 +104,7 @@ cc target/string_lookup.s -o target/string_lookup
 
 ### WATと直接アセンブリの文字列
 
-`emit-wat`と`emit-asm`は既存の固定ターゲットを使うため、ターゲット指定の追加はありません。
+`emit-wat`はWebAssembly固定です。`emit-asm`は明示的にWindows/Linuxを選べ、省略時は従来のWindows固定です。
 
 文字列を使うWATは`primer.write_byte(i32) -> void`をimportし、各バイトと末尾LFを渡します。メモリは公開しません。数値・真偽値の既存のホスト関数も含め、ホストは[文字列の出力契約](../design/strings.ja.md#watの出力と外部との境界)を実装します。`emit-wat`自体はホストを起動しません。
 

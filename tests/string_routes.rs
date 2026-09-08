@@ -1,5 +1,7 @@
 #[path = "support/crash_dialogs.rs"]
 mod crash_dialogs;
+#[path = "support/termination.rs"]
+mod termination;
 #[path = "support/u64_cases.rs"]
 mod u64_cases;
 
@@ -85,6 +87,7 @@ fn cases() -> Vec<(&'static str, String)> {
     for source in [
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),
+        include_str!("../examples/native_values.prim"),
     ] {
         cases.push((source, run_vm(source).unwrap()));
     }
@@ -204,7 +207,7 @@ fn direct_assembly_matches_known_bytes_and_vm_on_windows() {
             .current_dir(&workspace.0)
             .output()
             .unwrap();
-        assert!(!failed.status.success());
+        termination::assert_expected(&failed, termination::Expected::IllegalInstruction, source);
         assert!(failed.stdout.is_empty());
     }
 }
@@ -271,7 +274,7 @@ fn qbe_matches_known_bytes_and_vm_on_linux() {
             .current_dir(&workspace.0)
             .output()
             .unwrap();
-        assert!(!failed.status.success());
+        termination::assert_expected(&failed, termination::Expected::Abort, source);
         assert!(failed.stdout.is_empty());
     }
 }

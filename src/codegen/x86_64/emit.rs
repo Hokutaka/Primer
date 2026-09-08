@@ -3,7 +3,14 @@ use super::ir::{
 };
 
 pub fn emit(module: &Module) -> String {
-    let mut output = initial_data(uses_bool_print(module));
+    emit_with_origins(module, false)
+}
+
+pub fn emit_with_origins(module: &Module, annotate: bool) -> String {
+    let mut output = initial_data(uses_bool_print(module), module.target);
+    if annotate {
+        output.insert_str(0, "# primer-asm-origins v1: UTF-8 byte ranges, end exclusive\n# primer-origin: synthetic\n");
+    }
     if module
         .instructions
         .iter()
@@ -22,14 +29,21 @@ pub fn emit(module: &Module) -> String {
 
     output.push_str("\n.text\n");
     if module.uses_strings {
-        output.push_str(super::string::SUPPORT);
+        output.push_str(if module.target.is_linux() {
+            super::string::LINUX_SUPPORT
+        } else {
+            super::string::SUPPORT
+        });
     }
 
     for function in &module.functions {
-        emit_function(function, module, &mut output);
+        emit_function(function, module, annotate, &mut output);
         output.push('\n');
     }
 
+    if annotate {
+        output.push_str("# primer-origin: synthetic\n");
+    }
     output.push_str(".globl main\n");
 
     output.push_str(".p2align 4\n");
@@ -40,18 +54,23 @@ pub fn emit(module: &Module) -> String {
 
     output.push_str("  movq %rsp, %rbp\n");
 
-    emit_stack_allocation(module.frame_size, &mut output);
-    if module.uses_strings {
+    emit_stack_allocation(module.frame_size, module.target, &mut output);
+    if module.uses_strings && !module.target.is_linux() {
         // 固定ターゲットのWindows CRTで、最初のPrimer処理より前にLF変換を止めます。
         output.push_str("  movl $1, %ecx\n  movl $32768, %edx\n  callq _setmode\n  cmpl $-1, %eax\n  jne .Lstdout_ready\n  movl $1, %eax\n");
         emit_epilogue(module.frame_size, false, &mut output);
         output.push_str(".Lstdout_ready:\n");
     }
 
-    for instruction in &module.instructions {
+    assert_eq!(module.instructions.len(), module.origins.len());
+    for (index, instruction) in module.instructions.iter().enumerate() {
+        emit_origin(module.origins[index], "main", index, annotate, &mut output);
         emit_instruction(instruction, module.frame_size, "main", module, &mut output);
     }
 
+    if annotate {
+        output.push_str("# primer-origin: synthetic\n");
+    }
     if let Some(function_id) = module.explicit_main {
         output.push_str(&format!(
             "  callq {}\n",
@@ -61,16 +80,47 @@ pub fn emit(module: &Module) -> String {
 
     emit_epilogue(module.frame_size, true, &mut output);
 
+    if module.target.is_linux() {
+        output.push_str("\n.section .note.GNU-stack,\"\",@progbits\n");
+    }
     output
 }
 
-fn emit_function(function: &Function, module: &Module, output: &mut String) {
+fn emit_function(function: &Function, module: &Module, annotate: bool, output: &mut String) {
+    if annotate {
+        output.push_str("# primer-origin: synthetic\n");
+    }
     output.push_str(".p2align 4\n");
     output.push_str(&format!("{}:\n", function_name(function)));
     output.push_str("  pushq %rbp\n");
     output.push_str("  movq %rsp, %rbp\n");
-    emit_stack_allocation(function.frame_size, output);
-    for instruction in &function.instructions {
+    // 大きなフレームでは__chkstkの引数にRAXを使うため、集約戻り値の保存先を退避します。
+    // 一時領域は16バイトとし、呼び出し時のスタック整列を保ちます。
+    let save_result_pointer = !module.target.is_linux()
+        && function.frame_size >= 4096
+        && function
+            .instructions
+            .iter()
+            .any(|i| matches!(i, Instruction::StoreAggregateReturnPointer { .. }));
+    if save_result_pointer {
+        output.push_str("  subq $16, %rsp\n  movq %rax, (%rsp)\n");
+    }
+    emit_stack_allocation(function.frame_size, module.target, output);
+    if save_result_pointer {
+        output.push_str(&format!(
+            "  movq {}(%rsp), %rax\n  addq $16, %rsp\n",
+            function.frame_size
+        ));
+    }
+    assert_eq!(function.instructions.len(), function.origins.len());
+    for (index, instruction) in function.instructions.iter().enumerate() {
+        emit_origin(
+            function.origins[index],
+            &format!("fn_{}", function.id),
+            index,
+            annotate,
+            output,
+        );
         emit_instruction(
             instruction,
             function.frame_size,
@@ -83,7 +133,15 @@ fn emit_function(function: &Function, module: &Module, output: &mut String) {
 
 // Windowsのガードページを飛び越さないよう、確保前に各ページを検査します。
 // __chkstkは引数レジスタとraxを保持するため、引数を保存する前でも呼び出せます。
-fn emit_stack_allocation(frame_size: usize, output: &mut String) {
+fn emit_stack_allocation(frame_size: usize, target: super::Target, output: &mut String) {
+    if target.is_linux() {
+        // ガード領域を飛び越さず、引数レジスタを保持して各ページへ触れます。
+        for _ in 0..frame_size / 4096 {
+            output.push_str("  subq $4096, %rsp\n  testb $0, (%rsp)\n");
+        }
+        output.push_str(&format!("  subq ${}, %rsp\n", frame_size % 4096));
+        return;
+    }
     if frame_size >= 4096 {
         output.push_str(&format!(
             "  movq ${frame_size}, %rax\n  callq __chkstk\n  subq %rax, %rsp\n"
@@ -134,8 +192,16 @@ fn emit_instruction(
     output: &mut String,
 ) {
     match instruction {
-        Instruction::CallPrintU64 => output
-            .push_str("  movq %rax, %rdx\n  leaq .Lprimer_fmt_u64(%rip), %rcx\n  callq printf\n"),
+        Instruction::CallPrintSysV(ty) => emit_sysv_print(*ty, output),
+        Instruction::CallPrintU64 => {
+            if module.target.is_linux() {
+                output.push_str("  movq %rax, %rsi\n  leaq .Lprimer_fmt_u64(%rip), %rdi\n  xorl %eax, %eax\n  callq printf\n");
+            } else {
+                output.push_str(
+                    "  movq %rax, %rdx\n  leaq .Lprimer_fmt_u64(%rip), %rcx\n  callq printf\n",
+                );
+            }
+        }
         Instruction::CompareU64(op) => {
             output.push_str("  cmpq %rcx, %rax\n");
             output.push_str(match op {
@@ -153,9 +219,9 @@ fn emit_instruction(
             output.push_str(&format!("  leaq .Lprimer_string_{id}(%rip), %rax\n"))
         }
         Instruction::CompareString { left_offset, equal } => {
-            output.push_str(&format!(
-                "  movq %rax, %rdx\n  movq {left_offset}(%rbp), %rcx\n  callq primer_string_equal\n"
-            ));
+            let left = integer_argument_register(0, module.target);
+            let right = integer_argument_register(1, module.target);
+            output.push_str(&format!("  movq %rax, {right}\n  movq {left_offset}(%rbp), {left}\n  callq primer_string_equal\n"));
             if !equal {
                 output.push_str("  xorl $1, %eax\n");
             }
@@ -359,7 +425,7 @@ fn emit_instruction(
         }
 
         Instruction::StoreParameter { index, ty, offset } => {
-            emit_store_parameter(*index, *ty, *offset, output);
+            emit_store_parameter(*index, *ty, *offset, module.target, output);
         }
 
         Instruction::StoreAggregateParameter {
@@ -367,7 +433,7 @@ fn emit_instruction(
             slots,
             destination_offset,
         } => {
-            let register = integer_argument_register(*index);
+            let register = integer_argument_register(*index, module.target);
             for slot in 0..*slots {
                 let source = -8 * slot as isize;
                 let destination = destination_offset - 8 * slot as isize;
@@ -399,13 +465,33 @@ fn emit_instruction(
             arguments,
             aggregate_result_offset,
         } => {
-            for (index, argument) in arguments.iter().enumerate() {
+            let mut integer_index = 0;
+            let mut float_index = 0;
+            for (position, argument) in arguments.iter().enumerate() {
+                let index = if module.target.is_linux() {
+                    let counter = if matches!(
+                        argument,
+                        Argument::Scalar {
+                            ty: Type::F32 | Type::F64,
+                            ..
+                        }
+                    ) {
+                        &mut float_index
+                    } else {
+                        &mut integer_index
+                    };
+                    let index = *counter;
+                    *counter += 1;
+                    index
+                } else {
+                    position
+                };
                 match argument {
                     Argument::Scalar { ty, offset } => {
-                        emit_load_argument(index, *ty, *offset, output)
+                        emit_load_argument(index, *ty, *offset, module.target, output)
                     }
                     Argument::Aggregate { offset } => {
-                        let register = integer_argument_register(index);
+                        let register = integer_argument_register(index, module.target);
                         output.push_str(&format!("  leaq {offset}(%rbp), {register}\n"));
                     }
                 }
@@ -582,10 +668,30 @@ fn block_label(prefix: &str, id: usize) -> String {
     }
 }
 
-fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut String) {
+fn emit_sysv_print(ty: Type, output: &mut String) {
+    match ty {
+        Type::String => output.push_str("  movq %rax, %rdi\n  callq primer_print_string\n"),
+        Type::Bool => output.push_str("  testq %rax, %rax\n  leaq .Lprimer_bool_false(%rip), %rdi\n  leaq .Lprimer_bool_true(%rip), %rsi\n  cmovne %rsi, %rdi\n  callq puts\n"),
+        Type::I64 => output.push_str("  movq %rax, %rsi\n  leaq .Lprimer_fmt_i64(%rip), %rdi\n  xorl %eax, %eax\n  callq printf\n"),
+        Type::F32 | Type::F64 => {
+            if ty == Type::F32 { output.push_str("  cvtss2sd %xmm0, %xmm0\n"); }
+            let format = if ty == Type::F32 { "f32" } else { "f64" };
+            // SysVの可変長呼び出しはALに使ったXMM引数レジスタ数を渡します。
+            output.push_str(&format!("  leaq .Lprimer_fmt_{format}(%rip), %rdi\n  movl $1, %eax\n  callq printf\n"));
+        }
+    }
+}
+
+fn emit_store_parameter(
+    index: usize,
+    ty: Type,
+    offset: isize,
+    target: super::Target,
+    output: &mut String,
+) {
     match ty {
         Type::String | Type::Bool | Type::I64 => {
-            let register = integer_argument_register(index);
+            let register = integer_argument_register(index, target);
             output.push_str(&format!("  movq {register}, {offset}(%rbp)\n"));
         }
         Type::F32 => {
@@ -597,10 +703,16 @@ fn emit_store_parameter(index: usize, ty: Type, offset: isize, output: &mut Stri
     }
 }
 
-fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String) {
+fn emit_load_argument(
+    index: usize,
+    ty: Type,
+    offset: isize,
+    target: super::Target,
+    output: &mut String,
+) {
     match ty {
         Type::String | Type::Bool | Type::I64 => {
-            let register = integer_argument_register(index);
+            let register = integer_argument_register(index, target);
             output.push_str(&format!("  movq {offset}(%rbp), {register}\n"));
         }
         Type::F32 => {
@@ -612,14 +724,22 @@ fn emit_load_argument(index: usize, ty: Type, offset: isize, output: &mut String
     }
 }
 
-fn integer_argument_register(index: usize) -> &'static str {
-    ["%rcx", "%rdx", "%r8", "%r9"][index]
+fn integer_argument_register(index: usize, target: super::Target) -> &'static str {
+    if target.is_linux() {
+        ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"][index]
+    } else {
+        ["%rcx", "%rdx", "%r8", "%r9"][index]
+    }
 }
 
-fn initial_data(include_bool_text: bool) -> String {
+fn initial_data(include_bool_text: bool, target: super::Target) -> String {
     let mut output = String::new();
 
-    output.push_str(".section .rdata,\"dr\"\n");
+    output.push_str(if target.is_linux() {
+        "# target: x86_64-unknown-linux-gnu\n.section .rodata\n"
+    } else {
+        ".section .rdata,\"dr\"\n"
+    });
 
     output.push_str(".Lprimer_fmt_i64:\n");
 
@@ -714,5 +834,34 @@ fn uses_bool_print(module: &Module) -> bool {
                 .iter()
                 .flat_map(|function| function.instructions.iter()),
         )
-        .any(|instruction| matches!(instruction, Instruction::CallPrintBool))
+        .any(|instruction| {
+            matches!(
+                instruction,
+                Instruction::CallPrintBool | Instruction::CallPrintSysV(Type::Bool)
+            )
+        })
+}
+
+fn emit_origin(
+    origin: super::ir::Origin,
+    prefix: &str,
+    index: usize,
+    annotate: bool,
+    output: &mut String,
+) {
+    if !annotate {
+        return;
+    }
+    match origin {
+        super::ir::Origin::Synthetic => output.push_str("# primer-origin: synthetic\n"),
+        super::ir::Origin::Source { node_id, span } => {
+            output.push_str(&format!(
+                "# primer-origin: #{} bytes {}..{}\nprimer_origin_n{}_{prefix}_{index}:\n",
+                node_id.0,
+                span.start(),
+                span.end(),
+                node_id.0
+            ));
+        }
+    }
 }

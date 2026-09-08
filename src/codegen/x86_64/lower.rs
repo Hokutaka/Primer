@@ -3,10 +3,14 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
+    Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Origin, Type,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
+    lower_with_target(program, super::Target::X86_64PcWindowsMsvc)
+}
+
+pub fn lower_with_target(program: &primer_ir::Program, target: super::Target) -> Module {
     let mut strings = Vec::new();
     let mut float_id = 0;
     let mut float_constants = Vec::new();
@@ -20,9 +24,11 @@ pub fn lower(program: &primer_ir::Program) -> Module {
             &mut float_id,
             &mut strings,
             true,
+            target,
         );
         float_constants.extend(lowered.float_constants);
         functions.push(Function {
+            origins: lowered.origins,
             id: function.id.0,
             name: function.name.clone(),
             frame_size: lowered.frame_size,
@@ -38,10 +44,13 @@ pub fn lower(program: &primer_ir::Program) -> Module {
         &mut float_id,
         &mut strings,
         false,
+        target,
     );
     float_constants.extend(lowered.float_constants);
 
     Module {
+        origins: lowered.origins,
+        target,
         uses_strings: crate::codegen::support::first_string_span(program).is_some(),
         strings,
         functions,
@@ -57,11 +66,13 @@ pub fn lower(program: &primer_ir::Program) -> Module {
 }
 
 struct LoweredBody {
+    origins: Vec<Origin>,
     frame_size: usize,
     float_constants: Vec<FloatConstant>,
     instructions: Vec<Instruction>,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lower_body(
     program: &primer_ir::Program,
     parameters: &[primer_ir::Parameter],
@@ -70,6 +81,7 @@ fn lower_body(
     float_id: &mut usize,
     strings: &mut Vec<String>,
     is_function: bool,
+    target: super::Target,
 ) -> LoweredBody {
     let (binding_slots, binding_slot_count) = assign_binding_slots(program, parameters, statements);
 
@@ -81,6 +93,9 @@ fn lower_body(
     let aggregate_base = scratch_base + scratch_count;
 
     let mut lowerer = Lowerer {
+        origins: Vec::new(),
+        origin: Origin::Synthetic,
+        target,
         strings,
         program,
         binding_slots,
@@ -94,27 +109,40 @@ fn lower_body(
         aggregate_return_pointer_slot: None,
     };
 
-    for (index, parameter) in parameters.iter().enumerate() {
+    let mut integer_index = 0;
+    let mut float_index = 0;
+    for (position, parameter) in parameters.iter().enumerate() {
+        // SysVは整数と浮動小数点の引数レジスタを別々に数えます。
+        let index = if target.is_linux() {
+            let counter = if matches!(parameter.ty, primer_ir::Type::F32 | primer_ir::Type::F64) {
+                &mut float_index
+            } else {
+                &mut integer_index
+            };
+            let index = *counter;
+            *counter += 1;
+            index
+        } else {
+            position
+        };
         match &parameter.ty {
             primer_ir::Type::String
             | primer_ir::Type::Bool
             | primer_ir::Type::Integer(_)
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
-                lowerer.instructions.push(Instruction::StoreParameter {
+                lowerer.push(Instruction::StoreParameter {
                     index,
                     ty: scalar_type(&parameter.ty),
                     offset: lowerer.binding_offset(parameter.id),
                 });
             }
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
-                lowerer
-                    .instructions
-                    .push(Instruction::StoreAggregateParameter {
-                        index,
-                        slots: type_slot_count(program, &parameter.ty),
-                        destination_offset: lowerer.binding_offset(parameter.id),
-                    });
+                lowerer.push(Instruction::StoreAggregateParameter {
+                    index,
+                    slots: type_slot_count(program, &parameter.ty),
+                    destination_offset: lowerer.binding_offset(parameter.id),
+                });
             }
         }
     }
@@ -127,23 +155,26 @@ fn lower_body(
         let slot = lowerer.next_aggregate_slot;
         lowerer.next_aggregate_slot += 1;
         lowerer.aggregate_return_pointer_slot = Some(slot);
-        lowerer
-            .instructions
-            .push(Instruction::StoreAggregateReturnPointer {
-                offset: slot_offset(slot),
-            });
+        lowerer.push(Instruction::StoreAggregateReturnPointer {
+            offset: slot_offset(slot),
+        });
     }
     let terminates = lowerer.lower_statements(statements);
     if is_function && !terminates {
-        lowerer.instructions.push(Instruction::Return);
+        lowerer.push(Instruction::Return);
     }
 
     // Windows x64 ABI では、関数呼び出し用に 32 バイトの shadow space が必要になる。
     let local_bytes = 8 * lowerer.next_aggregate_slot;
-    let frame_size = align16(32 + local_bytes);
+    let frame_size = align16(if target.is_linux() {
+        local_bytes
+    } else {
+        32 + local_bytes
+    });
     *float_id = lowerer.float_id;
 
     LoweredBody {
+        origins: lowerer.origins,
         frame_size,
         float_constants: lowerer.float_constants,
         instructions: lowerer.instructions,
@@ -151,6 +182,9 @@ fn lower_body(
 }
 
 struct Lowerer<'a> {
+    origins: Vec<Origin>,
+    origin: Origin,
+    target: super::Target,
     strings: &'a mut Vec<String>,
     program: &'a primer_ir::Program,
     binding_slots: HashMap<primer_ir::BindingId, usize>,
@@ -211,7 +245,23 @@ impl Lowerer<'_> {
         false
     }
 
+    fn push(&mut self, instruction: Instruction) {
+        self.instructions.push(instruction);
+        self.origins.push(self.origin);
+    }
+
     fn lower_statement(&mut self, statement: &primer_ir::Statement) -> bool {
+        let previous = self.origin;
+        self.origin = Origin::Source {
+            node_id: statement.id,
+            span: statement.span,
+        };
+        let result = self.lower_statement_body(statement);
+        self.origin = previous;
+        result
+    }
+
+    fn lower_statement_body(&mut self, statement: &primer_ir::Statement) -> bool {
         match &statement.kind {
             primer_ir::StatementKind::Binding { id, ty, value, .. } => {
                 let value = self.lower_expr(value, 0);
@@ -245,7 +295,7 @@ impl Lowerer<'_> {
                         ArrayAddress::Indirect(offset) => (offset, true),
                     };
                     let label = self.next_label();
-                    self.instructions.push(Instruction::CheckedArrayAddress {
+                    self.push(Instruction::CheckedArrayAddress {
                         base_offset,
                         base_is_pointer,
                         length: *length,
@@ -269,7 +319,7 @@ impl Lowerer<'_> {
                     unreachable!("semantic analysis rejects aggregate printing")
                 };
                 if crate::codegen::is_u64(&value.ty) {
-                    self.instructions.push(Instruction::CallPrintU64);
+                    self.push(Instruction::CallPrintU64);
                 } else {
                     self.lower_print(ty);
                 }
@@ -286,26 +336,25 @@ impl Lowerer<'_> {
                 };
                 let else_label = self.next_label();
                 let end_label = self.next_label();
-                self.instructions
-                    .push(Instruction::JumpIfZero(if else_body.is_empty() {
-                        end_label
-                    } else {
-                        else_label
-                    }));
+                self.push(Instruction::JumpIfZero(if else_body.is_empty() {
+                    end_label
+                } else {
+                    else_label
+                }));
 
                 let then_terminates = self.lower_statements(then_body);
                 if !then_terminates {
-                    self.instructions.push(Instruction::Jump(end_label));
+                    self.push(Instruction::Jump(end_label));
                 }
 
                 if else_body.is_empty() {
-                    self.instructions.push(Instruction::Label {
+                    self.push(Instruction::Label {
                         id: end_label,
                         name: "if_end",
                     });
                     false
                 } else {
-                    self.instructions.push(Instruction::Label {
+                    self.push(Instruction::Label {
                         id: else_label,
                         name: "if_else",
                     });
@@ -314,7 +363,7 @@ impl Lowerer<'_> {
                     if then_terminates && else_terminates {
                         true
                     } else {
-                        self.instructions.push(Instruction::Label {
+                        self.push(Instruction::Label {
                             id: end_label,
                             name: "if_end",
                         });
@@ -327,14 +376,14 @@ impl Lowerer<'_> {
                 let condition_label = self.next_label();
                 let end_label = self.next_label();
 
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: condition_label,
                     name: "while_condition",
                 });
                 let Value::Scalar(Type::Bool) = self.lower_expr(condition, 0) else {
                     unreachable!("semantic analysis requires a bool condition")
                 };
-                self.instructions.push(Instruction::JumpIfZero(end_label));
+                self.push(Instruction::JumpIfZero(end_label));
 
                 self.loops.push(LoopContext {
                     continue_label: condition_label,
@@ -344,9 +393,9 @@ impl Lowerer<'_> {
                 self.loops.pop().expect("while loop context must exist");
 
                 if !body_terminates {
-                    self.instructions.push(Instruction::Jump(condition_label));
+                    self.push(Instruction::Jump(condition_label));
                 }
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "while_end",
                 });
@@ -365,14 +414,14 @@ impl Lowerer<'_> {
                 let update_label = self.next_label();
                 let end_label = self.next_label();
 
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: condition_label,
                     name: "for_condition",
                 });
                 let Value::Scalar(Type::Bool) = self.lower_expr(condition, 0) else {
                     unreachable!("semantic analysis requires a bool condition")
                 };
-                self.instructions.push(Instruction::JumpIfZero(end_label));
+                self.push(Instruction::JumpIfZero(end_label));
 
                 self.loops.push(LoopContext {
                     continue_label: update_label,
@@ -382,15 +431,15 @@ impl Lowerer<'_> {
                 self.loops.pop().expect("for loop context must exist");
 
                 if !body_terminates {
-                    self.instructions.push(Instruction::Jump(update_label));
+                    self.push(Instruction::Jump(update_label));
                 }
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: update_label,
                     name: "for_update",
                 });
                 self.lower_statement(update);
-                self.instructions.push(Instruction::Jump(condition_label));
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Jump(condition_label));
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "for_end",
                 });
@@ -403,7 +452,7 @@ impl Lowerer<'_> {
                     .last()
                     .expect("semantic analysis rejects break outside a loop")
                     .break_label;
-                self.instructions.push(Instruction::Jump(target));
+                self.push(Instruction::Jump(target));
                 true
             }
 
@@ -413,7 +462,7 @@ impl Lowerer<'_> {
                     .last()
                     .expect("semantic analysis rejects continue outside a loop")
                     .continue_label;
-                self.instructions.push(Instruction::Jump(target));
+                self.push(Instruction::Jump(target));
                 true
             }
             primer_ir::StatementKind::Call {
@@ -432,7 +481,7 @@ impl Lowerer<'_> {
                             let pointer_slot = self
                                 .aggregate_return_pointer_slot
                                 .expect("aggregate returns have a result pointer");
-                            self.instructions.push(Instruction::CopyToAggregateReturn {
+                            self.push(Instruction::CopyToAggregateReturn {
                                 source_offset: slot_offset(base_slot),
                                 slots: type_slot_count(self.program, &value.ty),
                                 pointer_offset: slot_offset(pointer_slot),
@@ -440,18 +489,28 @@ impl Lowerer<'_> {
                         }
                     }
                 }
-                self.instructions.push(Instruction::Return);
+                self.push(Instruction::Return);
                 true
             }
         }
     }
 
     fn lower_expr(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
+        let previous = self.origin;
+        self.origin = Origin::Source {
+            node_id: expr.id,
+            span: expr.span,
+        };
+        let value = self.lower_expr_value(expr, depth);
+        self.origin = previous;
+        value
+    }
+
+    fn lower_expr_value(&mut self, expr: &primer_ir::Expr, depth: usize) -> Value {
         let value = self.lower_expr_unchecked(expr, depth);
         if let Some(ty) = super::super::integer_range_check(expr) {
             let label = self.next_label();
-            self.instructions
-                .push(Instruction::CheckIntegerRange { ty, label });
+            self.push(Instruction::CheckIntegerRange { ty, label });
         }
         value
     }
@@ -460,21 +519,20 @@ impl Lowerer<'_> {
         if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
             self.lower_expr(value, depth);
             let label = self.next_label();
-            self.instructions
-                .push(Instruction::ConvertNumeric { conversion, label });
+            self.push(Instruction::ConvertNumeric { conversion, label });
             return Value::Scalar(Type::I64);
         }
 
         match &expr.kind {
             primer_ir::ExprKind::StringByteLength { value } => {
                 self.lower_expr(value, depth);
-                self.instructions.push(Instruction::LoadStringLength);
+                self.push(Instruction::LoadStringLength);
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::String(value) => {
                 let id = self.strings.len();
                 self.strings.push(value.clone());
-                self.instructions.push(Instruction::LoadStringConstant(id));
+                self.push(Instruction::LoadStringConstant(id));
                 Value::Scalar(Type::String)
             }
             primer_ir::ExprKind::ConvertNumeric {
@@ -483,7 +541,7 @@ impl Lowerer<'_> {
                 self.lower_expr(value, depth);
                 if from != to {
                     let label = self.next_label();
-                    self.instructions.push(Instruction::ConvertNumeric {
+                    self.push(Instruction::ConvertNumeric {
                         conversion: crate::codegen::NumericConversion {
                             from: *from,
                             to: *to,
@@ -495,21 +553,19 @@ impl Lowerer<'_> {
             }
             primer_ir::ExprKind::ConvertInteger { value, .. } => self.lower_expr(value, depth),
             primer_ir::ExprKind::Boolean(value) => {
-                self.instructions
-                    .push(Instruction::MovI64ImmediateToRax(i64::from(*value)));
+                self.push(Instruction::MovI64ImmediateToRax(i64::from(*value)));
                 Value::Scalar(Type::Bool)
             }
             primer_ir::ExprKind::Integer(value) => {
-                self.instructions
-                    .push(Instruction::MovI64ImmediateToRax(*value as i64));
+                self.push(Instruction::MovI64ImmediateToRax(*value as i64));
                 Value::Scalar(Type::I64)
             }
             primer_ir::ExprKind::Float { text } => {
                 let ty = scalar_type(&expr.ty);
                 let id = self.add_float_constant(text, ty);
                 match ty {
-                    Type::F32 => self.instructions.push(Instruction::LoadF32Constant(id)),
-                    Type::F64 => self.instructions.push(Instruction::LoadF64Constant(id)),
+                    Type::F32 => self.push(Instruction::LoadF32Constant(id)),
+                    Type::F64 => self.push(Instruction::LoadF64Constant(id)),
                     Type::String | Type::Bool | Type::I64 => {
                         unreachable!("a float literal has a float type")
                     }
@@ -537,25 +593,17 @@ impl Lowerer<'_> {
                     unreachable!("semantic analysis rejects aggregate unary operands")
                 };
                 match (*op, ty) {
-                    (primer_ir::UnaryOp::BitNot, Type::I64) => {
-                        self.instructions.push(Instruction::BitNot {
-                            mask: crate::codegen::complement_mask(&expr.ty),
-                        })
-                    }
+                    (primer_ir::UnaryOp::BitNot, Type::I64) => self.push(Instruction::BitNot {
+                        mask: crate::codegen::complement_mask(&expr.ty),
+                    }),
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
-                        self.instructions.push(Instruction::NegI64);
+                        self.push(Instruction::NegI64);
                         let label = self.next_label();
-                        self.instructions.push(Instruction::TrapIfOverflow(label));
+                        self.push(Instruction::TrapIfOverflow(label));
                     }
-                    (primer_ir::UnaryOp::Negate, Type::F32) => {
-                        self.instructions.push(Instruction::NegF32)
-                    }
-                    (primer_ir::UnaryOp::Negate, Type::F64) => {
-                        self.instructions.push(Instruction::NegF64)
-                    }
-                    (primer_ir::UnaryOp::Not, Type::Bool) => {
-                        self.instructions.push(Instruction::NotBool)
-                    }
+                    (primer_ir::UnaryOp::Negate, Type::F32) => self.push(Instruction::NegF32),
+                    (primer_ir::UnaryOp::Negate, Type::F64) => self.push(Instruction::NegF64),
+                    (primer_ir::UnaryOp::Not, Type::Bool) => self.push(Instruction::NotBool),
                     _ => unreachable!("semantic analysis rejects invalid unary operands"),
                 }
                 Value::Scalar(ty)
@@ -564,19 +612,19 @@ impl Lowerer<'_> {
                 self.lower_expr(left, depth);
                 let false_label = self.next_label();
                 let end_label = self.next_label();
-                self.instructions.push(Instruction::JumpIfZero(false_label));
+                self.push(Instruction::JumpIfZero(false_label));
                 if *op == primer_ir::LogicalOp::And {
                     self.lower_expr(right, depth);
                 }
-                self.instructions.push(Instruction::Jump(end_label));
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Jump(end_label));
+                self.push(Instruction::Label {
                     id: false_label,
                     name: "logical_false",
                 });
                 if *op == primer_ir::LogicalOp::Or {
                     self.lower_expr(right, depth);
                 }
-                self.instructions.push(Instruction::Label {
+                self.push(Instruction::Label {
                     id: end_label,
                     name: "logical_end",
                 });
@@ -598,25 +646,24 @@ impl Lowerer<'_> {
 
                 match operand_ty {
                     Type::String => {
-                        self.instructions.push(Instruction::CompareString {
+                        self.push(Instruction::CompareString {
                             left_offset: scratch,
                             equal: *op == primer_ir::BinaryOp::Equal,
                         });
                     }
                     Type::Bool | Type::I64 => {
-                        self.instructions.push(Instruction::MoveRaxToRcx);
-                        self.instructions
-                            .push(Instruction::LoadI64ScratchToRax(scratch));
+                        self.push(Instruction::MoveRaxToRcx);
+                        self.push(Instruction::LoadI64ScratchToRax(scratch));
 
                         if let Some(op) = crate::codegen::integer_binary_op(*op, &left.ty) {
                             let label = self.next_label();
-                            self.instructions.push(Instruction::IntegerBinary {
+                            self.push(Instruction::IntegerBinary {
                                 op,
                                 ty: crate::codegen::integer_type(&expr.ty),
                                 label,
                             });
                         } else if let Some(op) = compare_op(*op) {
-                            self.instructions.push(if crate::codegen::is_u64(&left.ty) {
+                            self.push(if crate::codegen::is_u64(&left.ty) {
                                 Instruction::CompareU64(op)
                             } else {
                                 Instruction::CompareI64(op)
@@ -625,35 +672,32 @@ impl Lowerer<'_> {
                             let op = (*op).into();
                             if op == BinaryOp::Divide {
                                 let label = self.next_label();
-                                self.instructions
-                                    .push(Instruction::TrapIfInvalidI64Division(label));
-                                self.instructions.push(Instruction::SignExtendRax);
-                                self.instructions.push(Instruction::DivideRaxByRcx);
+                                self.push(Instruction::TrapIfInvalidI64Division(label));
+                                self.push(Instruction::SignExtendRax);
+                                self.push(Instruction::DivideRaxByRcx);
                             } else {
-                                self.instructions.push(Instruction::I64Binary(op));
+                                self.push(Instruction::I64Binary(op));
                                 let label = self.next_label();
-                                self.instructions.push(Instruction::TrapIfOverflow(label));
+                                self.push(Instruction::TrapIfOverflow(label));
                             }
                         }
                     }
                     Type::F32 => {
-                        self.instructions.push(Instruction::CopyXmm0ToXmm1F32);
-                        self.instructions
-                            .push(Instruction::LoadF32ScratchToXmm0(scratch));
+                        self.push(Instruction::CopyXmm0ToXmm1F32);
+                        self.push(Instruction::LoadF32ScratchToXmm0(scratch));
                         if let Some(op) = compare_op(*op) {
-                            self.instructions.push(Instruction::CompareF32(op));
+                            self.push(Instruction::CompareF32(op));
                         } else {
-                            self.instructions.push(Instruction::F32Binary((*op).into()));
+                            self.push(Instruction::F32Binary((*op).into()));
                         }
                     }
                     Type::F64 => {
-                        self.instructions.push(Instruction::CopyXmm0ToXmm1F64);
-                        self.instructions
-                            .push(Instruction::LoadF64ScratchToXmm0(scratch));
+                        self.push(Instruction::CopyXmm0ToXmm1F64);
+                        self.push(Instruction::LoadF64ScratchToXmm0(scratch));
                         if let Some(op) = compare_op(*op) {
-                            self.instructions.push(Instruction::CompareF64(op));
+                            self.push(Instruction::CompareF64(op));
                         } else {
-                            self.instructions.push(Instruction::F64Binary((*op).into()));
+                            self.push(Instruction::F64Binary((*op).into()));
                         }
                     }
                 }
@@ -800,7 +844,7 @@ impl Lowerer<'_> {
                 let label = self.next_label();
                 match element {
                     ArrayElement::Scalar(ty) => {
-                        self.instructions.push(Instruction::CheckedArrayLoad {
+                        self.push(Instruction::CheckedArrayLoad {
                             ty,
                             base_offset: slot_offset(base_slot),
                             length,
@@ -814,7 +858,7 @@ impl Lowerer<'_> {
                         let destination = self.allocate_aggregate(&primer_ir::Type::Named(
                             primer_ir::TypeId(type_id),
                         ));
-                        self.instructions.push(Instruction::CheckedArrayCopy {
+                        self.push(Instruction::CheckedArrayCopy {
                             base_offset: slot_offset(base_slot),
                             length,
                             element_slots,
@@ -837,7 +881,7 @@ impl Lowerer<'_> {
                         let element_slots = array_element_slot_count(self.program, &element);
                         let destination = self.next_aggregate_slot;
                         self.next_aggregate_slot += element_slots;
-                        self.instructions.push(Instruction::CheckedArrayCopy {
+                        self.push(Instruction::CheckedArrayCopy {
                             base_offset: slot_offset(base_slot),
                             length,
                             element_slots,
@@ -895,7 +939,7 @@ impl Lowerer<'_> {
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => None,
         });
-        self.instructions.push(Instruction::Call {
+        self.push(Instruction::Call {
             function_id,
             arguments: lowered_arguments,
             aggregate_result_offset: aggregate_result
@@ -995,15 +1039,14 @@ impl Lowerer<'_> {
                 Value::Scalar(actual),
             ) => {
                 debug_assert!(matches!(actual, Type::String | Type::Bool | Type::I64));
-                self.instructions
-                    .push(Instruction::StoreI64ToPointer(pointer_offset));
+                self.push(Instruction::StoreI64ToPointer(pointer_offset));
             }
-            (primer_ir::Type::F32, Value::Scalar(Type::F32)) => self
-                .instructions
-                .push(Instruction::StoreF32ToPointer(pointer_offset)),
-            (primer_ir::Type::F64, Value::Scalar(Type::F64)) => self
-                .instructions
-                .push(Instruction::StoreF64ToPointer(pointer_offset)),
+            (primer_ir::Type::F32, Value::Scalar(Type::F32)) => {
+                self.push(Instruction::StoreF32ToPointer(pointer_offset))
+            }
+            (primer_ir::Type::F64, Value::Scalar(Type::F64)) => {
+                self.push(Instruction::StoreF64ToPointer(pointer_offset))
+            }
             (
                 primer_ir::Type::Named(_),
                 Value::Aggregate {
@@ -1015,7 +1058,7 @@ impl Lowerer<'_> {
                 Value::Array {
                     base_slot: source, ..
                 },
-            ) => self.instructions.push(Instruction::CopyToPointer {
+            ) => self.push(Instruction::CopyToPointer {
                 source_offset: slot_offset(source),
                 slots: type_slot_count(self.program, ty),
                 pointer_offset,
@@ -1049,7 +1092,7 @@ impl Lowerer<'_> {
     }
 
     fn load_scalar(&mut self, ty: Type, offset: isize) {
-        self.instructions.push(match ty {
+        self.push(match ty {
             Type::String | Type::Bool | Type::I64 => Instruction::LoadI64FromStack(offset),
             Type::F32 => Instruction::LoadF32FromStack(offset),
             Type::F64 => Instruction::LoadF64FromStack(offset),
@@ -1057,7 +1100,7 @@ impl Lowerer<'_> {
     }
 
     fn store_scalar(&mut self, ty: Type, offset: isize) {
-        self.instructions.push(match ty {
+        self.push(match ty {
             Type::String | Type::Bool | Type::I64 => Instruction::StoreI64ToStack(offset),
             Type::F32 => Instruction::StoreF32ToStack(offset),
             Type::F64 => Instruction::StoreF64ToStack(offset),
@@ -1065,27 +1108,31 @@ impl Lowerer<'_> {
     }
 
     fn lower_print(&mut self, ty: Type) {
+        if self.target.is_linux() {
+            self.push(Instruction::CallPrintSysV(ty));
+            return;
+        }
         match ty {
-            Type::String => self.instructions.push(Instruction::PrintString),
-            Type::Bool => self.instructions.push(Instruction::CallPrintBool),
+            Type::String => self.push(Instruction::PrintString),
+            Type::Bool => self.push(Instruction::CallPrintBool),
             Type::I64 => {
-                self.instructions.push(Instruction::MoveRaxToRdx);
-                self.instructions.push(Instruction::LoadFormatI64ToRcx);
-                self.instructions.push(Instruction::CallPrintf);
+                self.push(Instruction::MoveRaxToRdx);
+                self.push(Instruction::LoadFormatI64ToRcx);
+                self.push(Instruction::CallPrintf);
             }
             Type::F32 => {
                 // C の可変長引数では float を double に拡張する。
-                self.instructions.push(Instruction::ConvertF32ToF64Argument);
+                self.push(Instruction::ConvertF32ToF64Argument);
                 // Windows x64 の可変長引数では、浮動小数点数を汎用レジスタにも複製する。
-                self.instructions.push(Instruction::MoveXmm1ToRdx);
-                self.instructions.push(Instruction::LoadFormatF32ToRcx);
-                self.instructions.push(Instruction::CallPrintf);
+                self.push(Instruction::MoveXmm1ToRdx);
+                self.push(Instruction::LoadFormatF32ToRcx);
+                self.push(Instruction::CallPrintf);
             }
             Type::F64 => {
-                self.instructions.push(Instruction::CopyXmm0ToXmm1F64Scalar);
-                self.instructions.push(Instruction::MoveXmm1ToRdx);
-                self.instructions.push(Instruction::LoadFormatF64ToRcx);
-                self.instructions.push(Instruction::CallPrintf);
+                self.push(Instruction::CopyXmm0ToXmm1F64Scalar);
+                self.push(Instruction::MoveXmm1ToRdx);
+                self.push(Instruction::LoadFormatF64ToRcx);
+                self.push(Instruction::CallPrintf);
             }
         }
     }

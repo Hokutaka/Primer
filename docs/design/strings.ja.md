@@ -79,7 +79,7 @@ LLVM loweringは式をソース順に命令化し、短絡評価やループの�
 
 QBEは読み取り専用の`.rodata`にデータを置き、`loadl`で長さ、`loadub`で各バイトを読みます。文字列では`--target x86_64-unknown-linux-gnu`を必須にし、生成物へターゲットと`qbe -t amd64_sysv`の対応をコメントで残します。現在のPrimerの文字列対応はこの組み合わせを対象とします。後続のQBEに別のターゲットを渡しても、Primerが実行環境を変換したことにはなりません。
 
-直接アセンブリは既存のWindows x64ターゲットを使います。長さとデータは読み取り専用領域へ置き、参照は`RAX`や8バイトのスタックスロットで運びます。比較時には左辺を退避してから右辺を評価し、補助関数へ渡します。出力の補助関数はWindows x64のshadow space・スタック境界・保存レジスタの規則を守ります。最初のPrimer処理より前に`_setmode`を実行し、失敗時は終了コード1で停止します。
+直接アセンブリはWindows/Linux x86-64ターゲットを選べます。以下のWindows初期化に対し、Linux版はSysV規約でバイト出力し、標準出力モードの切替は行いません。長さとデータは読み取り専用領域へ置き、参照は`RAX`や8バイトのスタックスロットで運びます。比較時には左辺を退避してから右辺を評価し、補助関数へ渡します。出力の補助関数はWindows x64のshadow space・スタック境界・保存レジスタの規則を守ります。最初のPrimer処理より前に`_setmode`を実行し、失敗時は終了コード1で停止します。
 
 WATではデータを非公開のlinear memoryに置き、32ビットのアドレスで参照します。8バイトの長さヘッダはリトルエンディアンで、現在のwasm32の処理は下位32ビットを読みます。メモリ領域とページ数はlowering時に決定し、文字列データを実行中に確保しません。等値比較は`i32.load8_u`と分岐に変換します。
 
@@ -97,7 +97,7 @@ LLVMのスナップショットはLinuxターゲットを明示して固定し�
 
 `string-values`の観測fixtureは全8成果物を固定します。`tests/support/string_cases.rs`の共通入力と既知の期待値を、VM・C・LLVMに加え、`cargo test --test string_routes`でQBE・WAT・直接アセンブリでも検証します。出力バイトの一致、評価順、短絡評価、コピー後の独立性、範囲外アクセスでの停止を分けて確認します。未使用の既定値にだけ文字列がある場合も、WindowsのC・LLVM・ASMが同じ出力モードを選びます。
 
-QBEはLinux x86-64、ASMはWindows x64で実行します。WATはWABTで検証・変換してNodeのWebAssemblyエンジンで実行し、公開要素が`main`だけであることも検査します。テスト用ホストの浮動小数点出力は共通fixtureの正確な値`1.5`に限定しており、一般的な数値整形実装ではありません。実行できない経路は理由を表示し、成功した比較とは区別します。CIでは両OSのジョブを合わせて全経路の実行を必須にします。
+QBEはLinux x86-64、ASMはWindows x64とLinux x86-64で実行します。WATはWABTで検証・変換してNodeのWebAssemblyエンジンで実行し、公開要素が`main`だけであることも検査します。テスト用ホストの浮動小数点出力は共通fixtureの正確な値`1.5`に限定しており、一般的な数値整形実装ではありません。実行できない経路は理由を表示し、成功した比較とは区別します。CIでは両OSのジョブを合わせて全経路の実行を必須にします。
 
 開発用ツールは`PRIMER_TEST_QBE`、`PRIMER_TEST_ASM_CLANG`、`PRIMER_TEST_NODE`、`PRIMER_TEST_WAT2WASM_JS`（WABTの`bin/wat2wasm`）で明示できます。指定したツールがない場合はテスト失敗です。WABTの導入例は`npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39`です。ツールの起動は開発用テストの責務で、Primerの生成コマンドには追加しません。
 
@@ -114,7 +114,7 @@ QBEはLinux x86-64、ASMはWindows x64で実行します。WATはWABTで検証�
 | LLVM | `extractvalue %primer.string ..., 1` |
 | QBE | 長さヘッダを`loadl`で読む |
 | WAT | 非公開メモリの長さヘッダを`i64.load`で読む |
-| Windows x64 ASM | `movq (%rax), %rax`で長さヘッダを読む |
+| Windows/Linux x86-64 ASM | `movq (%rax), %rax`で長さヘッダを読む |
 
 長さを読む前に引数を一度評価します。Cでも引数にある呼び出しや失敗し得る式を評価順の処理へ伝え、複数の`byte_len`を組み合わせてもソース順を保ちます。LLVMの出自注釈からは`extractvalue`と元の`byte_len`式を対応付けられます。
 
