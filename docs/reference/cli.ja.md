@@ -148,3 +148,13 @@ Primerは、次のような外部実験の方針を決定しません。
 - 比較方法
 
 これらはPrimerを呼び出す側が決定し、必要に応じて記録します。
+
+## LLVMの出自を辿る
+
+```sh
+cargo run -- emit-ir examples/string_origins.prim
+cargo run -- emit-llvm examples/string_origins.prim --target x86_64-unknown-linux-gnu --annotate-origins -o string-origins.ll
+cargo run -- run examples/string_origins.prim
+```
+
+Windows向けには`--target x86_64-pc-windows-msvc`を指定します。`--annotate-origins`はLLVMだけの任意指定です。通常の出力は従来どおりです。APIでは`compile_to_llvm_with_options(source, llvm::Options { target, annotate_origins: true })`を使います。コメントの意味と対応範囲は[可観測性の契約](../design/observability.ja.md#llvmの出自注釈)を参照してください。

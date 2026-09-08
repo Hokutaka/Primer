@@ -136,3 +136,7 @@ For LLVM, use the Windows/Linux command examples in the [CLI reference](../docs/
 `cargo test --test c_strings` runs generated C with and without optimization and compares it with the VM. Execution comparisons skip when the default C compiler is unavailable; setting `PRIMER_TEST_CC` makes the selected compiler mandatory. CI requires Clang and also checks with AddressSanitizer and UndefinedBehaviorSanitizer.
 
 `xor_neural_network.prim` demonstrates inference with predetermined weights. `linear_regression.prim` learns a line's slope and intercept from data using gradient descent. Training the XOR neural network itself is not included.
+
+### Following string origins
+
+`string_origins.prim` demonstrates calls, string content equality, and short-circuit evaluation. Escaped output is `日本語\0\ntrue\nfalse\n`; `skipped` is never printed. Compare `emit-ir` with `emit-llvm --annotate-origins` to follow equality node #7 and short-circuit node #14 to calls and branches. See the [CLI walkthrough](../docs/reference/cli.en.md#following-llvm-origins).

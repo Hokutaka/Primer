@@ -189,6 +189,16 @@ impl Native {
     }
 
     fn run(&self, source: &str, llvm: bool, optimization: &str) -> Output {
+        self.run_with_origins(source, llvm, optimization, false)
+    }
+
+    fn run_with_origins(
+        &self,
+        source: &str,
+        llvm: bool,
+        optimization: &str,
+        annotate_origins: bool,
+    ) -> Output {
         let input = self
             .directory
             .join(if llvm { "program.ll" } else { "program.c" });
@@ -200,7 +210,14 @@ impl Native {
         fs::write(
             &input,
             if llvm {
-                compile_to_llvm_with_target(source, Some(self.target)).unwrap()
+                primer_lang::compile_to_llvm_with_options(
+                    source,
+                    primer_lang::codegen::llvm::Options {
+                        target: Some(self.target),
+                        annotate_origins,
+                    },
+                )
+                .unwrap()
             } else {
                 compile_to_c(source).unwrap()
             },
@@ -281,6 +298,20 @@ fn return_values_arrays_products_and_copies_remain_independent() {
 fn effects_and_short_circuiting_keep_source_order() {
     let Some(native) = Native::new() else { return };
     native.matches(string_cases::CASES[2].0, string_cases::CASES[2].1);
+}
+
+#[test]
+fn origin_example_executes_identically_with_and_without_annotations() {
+    let Some(native) = Native::new() else { return };
+    let source = include_str!("../examples/string_origins.prim");
+    let expected = "日本語\0\ntrue\nfalse\n";
+    native.matches(source, expected);
+    for optimization in ["-O0", "-O2"] {
+        let output = native.run_with_origins(source, true, optimization, true);
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert_eq!(output.stdout, expected.as_bytes());
+    }
 }
 
 #[test]

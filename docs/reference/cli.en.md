@@ -148,3 +148,9 @@ Primer does not choose external experiment policy such as:
 - comparison policy.
 
 Those choices belong to the caller and should be recorded when necessary.
+
+## Following LLVM origins
+
+Run `cargo run -- emit-ir examples/string_origins.prim`, then `cargo run -- emit-llvm examples/string_origins.prim --target x86_64-unknown-linux-gnu --annotate-origins -o string-origins.ll`. Use `x86_64-pc-windows-msvc` for Windows. Run the example with `cargo run -- run examples/string_origins.prim`.
+
+`--annotate-origins` is optional and LLVM-only. Ordinary output is unchanged. The API is `compile_to_llvm_with_options(source, llvm::Options { target, annotate_origins: true })`. See the [annotation contract](../design/observability.en.md#llvm-origin-annotations).

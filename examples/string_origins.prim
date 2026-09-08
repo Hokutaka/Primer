@@ -1,0 +1,10 @@
+// 呼び出し、内容比較、短絡評価をIRとLLVMの出自注釈で追います。
+fn echo(value: string) -> string {
+    print(value);
+    return value;
+}
+
+left: string = "日本語\0";
+same: bool = echo(left) == "日本語\0";
+print(same);
+print(false && echo("skipped") == left);

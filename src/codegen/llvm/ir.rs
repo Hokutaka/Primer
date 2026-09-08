@@ -18,7 +18,7 @@ pub struct Module {
     pub functions: Vec<Function>,
     pub explicit_main: Option<usize>,
     pub slots: Vec<Slot>,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<LocatedInstruction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub struct Function {
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub slots: Vec<Slot>,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Vec<LocatedInstruction>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,4 +218,20 @@ pub enum Instruction {
     CallPuts {
         value: Operand,
     },
+}
+
+/// 命令の由来は意味を持つ命令本体から分離し、欠落を暗黙の生成扱いにしません。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    Source {
+        node_id: crate::ir::NodeId,
+        span: crate::source::Span,
+    },
+    Synthetic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocatedInstruction {
+    pub instruction: Instruction,
+    pub origin: Origin,
 }

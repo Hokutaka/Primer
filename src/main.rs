@@ -76,7 +76,8 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let (output, target) = parse_native_options(&rest, "emit-llvm", "ll")?;
+            let (output, target, annotate_origins) =
+                parse_native_options(&rest, "emit-llvm", "ll")?;
             let target = match target.as_deref() {
                 None => None,
                 Some(value) => Some(primer_lang::codegen::llvm::Target::parse(value).ok_or_else(|| {
@@ -87,7 +88,13 @@ fn run() -> Result<(), String> {
             let source = read_source(&input)?;
 
             let llvm = render_compilation_result(
-                primer_lang::compile_to_llvm_with_target(&source, target),
+                primer_lang::compile_to_llvm_with_options(
+                    &source,
+                    primer_lang::codegen::llvm::Options {
+                        target,
+                        annotate_origins,
+                    },
+                ),
                 &source,
             )?;
 
@@ -115,7 +122,7 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let (output, target) = parse_native_options(&rest, "emit-qbe", "ssa")?;
+            let (output, target, _) = parse_native_options(&rest, "emit-qbe", "ssa")?;
             let target = match target.as_deref() {
                 None => None,
                 Some(value) => Some(primer_lang::codegen::qbe::Target::parse(value).ok_or_else(
@@ -249,11 +256,16 @@ fn parse_native_options(
     args: &[String],
     route: &str,
     extension: &str,
-) -> Result<(Option<PathBuf>, Option<String>), String> {
+) -> Result<(Option<PathBuf>, Option<String>, bool), String> {
     let mut output = None;
     let mut target = None;
+    let mut annotate_origins = false;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
+        if flag == "--annotate-origins" && route == "emit-llvm" && !annotate_origins {
+            annotate_origins = true;
+            continue;
+        }
         match (flag.as_str(), args.next()) {
             ("-o" | "--output", Some(path)) if output.is_none() => {
                 output = Some(PathBuf::from(path));
@@ -268,7 +280,7 @@ fn parse_native_options(
             }
         }
     }
-    Ok((output, target))
+    Ok((output, target, annotate_origins))
 }
 
 fn write_or_print(output: Option<PathBuf>, content: String) -> Result<(), String> {
@@ -291,7 +303,7 @@ fn print_help() {
            primer check <file>\n\
            primer emit-ir <file> [-o <output.pir>]\n\
            primer emit-c <file> [-o <output.c>]\n\
-           primer emit-llvm <file> [--target <triple>] [-o <output.ll>]\n\
+           primer emit-llvm <file> [--target <triple>] [--annotate-origins] [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]\n\
            primer emit-asm <file> [-o <output.s>]\n\

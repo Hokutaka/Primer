@@ -68,6 +68,10 @@ fn cases() -> Vec<(&'static str, String)> {
         .map(|&(s, e)| (s, e.to_owned()))
         .collect();
     cases.push((string_cases::UNUSED_DEFAULT, "1\ntrue\n".into()));
+    cases.push((
+        include_str!("../examples/string_origins.prim"),
+        "日本語\0\ntrue\nfalse\n".into(),
+    ));
     for source in [
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),
