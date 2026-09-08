@@ -74,3 +74,5 @@ primer run examples/runtime_failures/function_division.prim --diagnostic-format 
 `observe-native.cjs --run --expect-trap`はVMを共通形式で実行し、理由・NodeId・バイト範囲・停止前の出力をネイティブと比較します。さらにSIGILL / Windows不正命令終了を確認します。診断だけ一致する通常終了、レコードなしのクラッシュ、追加エラー、タイムアウトは合格にしません。manifestの`runtimeFailure`には照合できたレコードを保持します。
 
 49種類の失敗を既知の理由と比較し、Windows/Linux双方のASMと自前オブジェクトをVMと照合します。Unicode・CRLF、短絡評価、関数の呼び出し、既定フィールドの式、変換の境界値、出力の保持も含みます。通常の50サンプルと全既存テストも検証対象です。
+
+この失敗テストはリンクを30秒、生成プログラムを10秒に制限し、時間切れは成功ではなくケース名と取得済み出力を伴う失敗にします。stdout/stderrは一時ファイルに取得し、子プロセスの終了とパイプのEOFを混同しません。`PRIMER_TEST_TRACE=1`でケースごとの開始・終了を記録します。Linux CIのテスト全体にも8分の上限（終了猶予10秒）、ジョブには15分の上限を設定し、テストログをartifactへ保存します。

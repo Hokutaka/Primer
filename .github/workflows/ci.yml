@@ -12,6 +12,7 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.0
@@ -33,14 +34,24 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Test
-        run: cargo test --all-targets
+        run: |
+          set -o pipefail
+          timeout --kill-after=10s 8m cargo test --all-targets 2>&1 | tee target/ci-tests.log
         env:
+          PRIMER_TEST_TRACE: "1"
           PRIMER_TEST_CC: clang
           PRIMER_TEST_LLVM_CLANG: clang
           PRIMER_TEST_QBE: ${{ github.workspace }}/target/qbe-1.2/qbe
           PRIMER_TEST_NODE: node
           PRIMER_TEST_OBJDUMP: objdump
           PRIMER_TEST_WAT2WASM_JS: ${{ github.workspace }}/target/wasm-tools/node_modules/wabt/bin/wat2wasm
+      - name: Preserve test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-log
+          path: target/ci-tests.log
+          if-no-files-found: ignore
       - name: C string and u64 sanitizer checks
         run: cargo test --test c_strings
         env:
@@ -49,6 +60,7 @@ jobs:
 
   windows-strings:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.0
