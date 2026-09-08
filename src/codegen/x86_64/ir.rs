@@ -102,6 +102,7 @@ pub enum Instruction {
     CheckIntegerRange {
         ty: crate::types::IntegerType,
         label: usize,
+        failure: crate::runtime::FailureCode,
     },
     Label {
         id: usize,

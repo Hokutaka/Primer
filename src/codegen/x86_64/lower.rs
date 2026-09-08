@@ -283,7 +283,7 @@ impl Lowerer<'_> {
                         index,
                         element,
                         length,
-                        ..
+                        span,
                     } = projection;
                     let Value::Scalar(Type::I64) = self.lower_expr(index, 0) else {
                         unreachable!("array index must be i64")
@@ -295,6 +295,14 @@ impl Lowerer<'_> {
                         ArrayAddress::Indirect(offset) => (offset, true),
                     };
                     let label = self.next_label();
+                    let previous = self.origin;
+                    let Origin::Source { node_id, .. } = previous else {
+                        unreachable!()
+                    };
+                    self.origin = Origin::Source {
+                        node_id,
+                        span: *span,
+                    };
                     self.push(Instruction::CheckedArrayAddress {
                         base_offset,
                         base_is_pointer,
@@ -303,6 +311,7 @@ impl Lowerer<'_> {
                         destination_offset: slot_offset(pointer_slot),
                         label,
                     });
+                    self.origin = previous;
                     address = ArrayAddress::Indirect(slot_offset(pointer_slot));
                 }
 
@@ -510,7 +519,18 @@ impl Lowerer<'_> {
         let value = self.lower_expr_unchecked(expr, depth);
         if let Some(ty) = super::super::integer_range_check(expr) {
             let label = self.next_label();
-            self.push(Instruction::CheckIntegerRange { ty, label });
+            use crate::runtime::FailureCode;
+            let failure = match expr.kind {
+                primer_ir::ExprKind::ConvertInteger { .. } => {
+                    FailureCode::IntegerConversionOutOfRange
+                }
+                primer_ir::ExprKind::Binary {
+                    op: primer_ir::BinaryOp::Divide,
+                    ..
+                } => FailureCode::DivisionOverflow,
+                _ => FailureCode::IntegerOverflow,
+            };
+            self.push(Instruction::CheckIntegerRange { ty, label, failure });
         }
         value
     }

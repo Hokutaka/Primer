@@ -52,6 +52,8 @@ Language support does not imply equal observation detail. The VM provides runtim
 
 This is not a commitment to implement every item together. Start by making priority 1 concrete, and evaluate each addition through a small design and executable example. A limited GPU experiment need not wait for complete modules, generics, or dynamic allocation.
 
+The first priority-1 implementation adds [common runtime failure records](runtime-diagnostics.en.md) to the VM and Windows/Linux assembly and internal objects, including retained output before failure. C, LLVM, QBE, and WAT remain to be extended.
+
 Inheritance, implicit shared mutable references, automatic GPU dispatch, general asynchronous execution, and a large package system are not early priorities because current examples have not established their need.
 
 ## GPU direction

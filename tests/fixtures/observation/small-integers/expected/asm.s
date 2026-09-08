@@ -37,6 +37,12 @@ primer_fn_average_0:
   cmpq %r11, %rax
   jle .Lprimer_fn_0_range_ok_0
 .Lprimer_fn_0_range_bad_0:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $76, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_range_ok_0:
   movq %rax, -32(%rbp)
@@ -49,12 +55,24 @@ primer_fn_average_0:
   cmpq %r11, %rax
   jle .Lprimer_fn_0_range_ok_1
 .Lprimer_fn_0_range_bad_1:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $76, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_range_ok_1:
   movq %rax, %rcx
   movq -32(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_fn_0_integer_ok_2
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_2(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_integer_ok_2:
   # semantic u16, storage i64
@@ -65,6 +83,12 @@ primer_fn_average_0:
   cmpq %r11, %rax
   jle .Lprimer_fn_0_range_ok_3
 .Lprimer_fn_0_range_bad_3:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_3(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_range_ok_3:
   movq %rax, -24(%rbp)
@@ -78,7 +102,20 @@ primer_fn_average_0:
   movabsq $-9223372036854775808, %rdx
   cmpq %rdx, %rax
   jne .Lprimer_fn_0_division_ok_4
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_4(%rip), %rdx
+  movl $62, %r8d
+  callq _write
+  ud2
 .Lprimer_fn_0_division_trap_4:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_5(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_division_ok_4:
   cqto
@@ -91,6 +128,12 @@ primer_fn_average_0:
   cmpq %r11, %rax
   jle .Lprimer_fn_0_range_ok_5
 .Lprimer_fn_0_range_bad_5:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_6(%rip), %rdx
+  movl $62, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_range_ok_5:
   # semantic u8, storage i64
@@ -101,6 +144,12 @@ primer_fn_average_0:
   cmpq %r11, %rax
   jle .Lprimer_fn_0_range_ok_6
 .Lprimer_fn_0_range_bad_6:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_7(%rip), %rdx
+  movl $76, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_range_ok_6:
   addq $96, %rsp
@@ -116,6 +165,12 @@ main:
   movabsq $3, %rax
   negq %rax
   jno .Lprimer_main_integer_ok_0
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_8(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_0:
   # semantic i8, storage i64
@@ -126,12 +181,24 @@ main:
   cmpq %r11, %rax
   jle .Lprimer_main_range_ok_1
 .Lprimer_main_range_bad_1:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_9(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_range_ok_1:
   movq %rax, -8(%rbp)
   movabsq $32000, %rax
   negq %rax
   jno .Lprimer_main_integer_ok_2
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_10(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_2:
   # semantic i16, storage i64
@@ -142,6 +209,12 @@ main:
   cmpq %r11, %rax
   jle .Lprimer_main_range_ok_3
 .Lprimer_main_range_bad_3:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_11(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_range_ok_3:
   movq %rax, -16(%rbp)
@@ -156,12 +229,24 @@ main:
   cmpq %r11, %rax
   jle .Lprimer_main_range_ok_4
 .Lprimer_main_range_bad_4:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_12(%rip), %rdx
+  movl $79, %r8d
+  callq _write
   ud2
 .Lprimer_main_range_ok_4:
   movq %rax, %rcx
   movq -24(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_main_integer_ok_5
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_13(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_5:
   # semantic i16, storage i64
@@ -172,6 +257,12 @@ main:
   cmpq %r11, %rax
   jle .Lprimer_main_range_ok_6
 .Lprimer_main_range_bad_6:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_14(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_range_ok_6:
   movq %rax, %rdx
@@ -209,6 +300,12 @@ main:
   cmpq %r11, %rax
   jle .Lprimer_main_range_ok_7
 .Lprimer_main_range_bad_7:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_15(%rip), %rdx
+  movl $79, %r8d
+  callq _write
   ud2
 .Lprimer_main_range_ok_7:
   movq %rax, %rdx
@@ -218,3 +315,37 @@ main:
   addq $160, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=4 bytes=55..64\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=6 bytes=67..77\n"
+.Lprimer_failure_2:
+  .asciz "primer: runtime-v1 code=integer-overflow node=3 bytes=54..78\n"
+.Lprimer_failure_3:
+  .asciz "primer: runtime-v1 code=integer-overflow node=3 bytes=54..78\n"
+.Lprimer_failure_4:
+  .asciz "primer: runtime-v1 code=division-overflow node=2 bytes=54..82\n"
+.Lprimer_failure_5:
+  .asciz "primer: runtime-v1 code=division-by-zero node=2 bytes=54..82\n"
+.Lprimer_failure_6:
+  .asciz "primer: runtime-v1 code=division-overflow node=2 bytes=54..82\n"
+.Lprimer_failure_7:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=1 bytes=51..83\n"
+.Lprimer_failure_8:
+  .asciz "primer: runtime-v1 code=integer-overflow node=10 bytes=101..103\n"
+.Lprimer_failure_9:
+  .asciz "primer: runtime-v1 code=integer-overflow node=10 bytes=101..103\n"
+.Lprimer_failure_10:
+  .asciz "primer: runtime-v1 code=integer-overflow node=13 bytes=120..126\n"
+.Lprimer_failure_11:
+  .asciz "primer: runtime-v1 code=integer-overflow node=13 bytes=120..126\n"
+.Lprimer_failure_12:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=18 bytes=144..155\n"
+.Lprimer_failure_13:
+  .asciz "primer: runtime-v1 code=integer-overflow node=16 bytes=134..155\n"
+.Lprimer_failure_14:
+  .asciz "primer: runtime-v1 code=integer-overflow node=16 bytes=134..155\n"
+.Lprimer_failure_15:
+  .asciz "primer: runtime-v1 code=integer-conversion-out-of-range node=29 bytes=212..231\n"

@@ -1,8 +1,16 @@
+use super::failure::Reporter;
+use crate::runtime::FailureCode as Failure;
 use crate::{codegen::NumericConversion, types::NumericType};
 
-pub(super) fn emit(conversion: NumericConversion, label: usize, prefix: &str, output: &mut String) {
+pub(super) fn emit(
+    conversion: NumericConversion,
+    label: usize,
+    prefix: &str,
+    reporter: &mut Reporter,
+    output: &mut String,
+) {
     if conversion.uses_u64() {
-        return super::unsigned::emit_conversion(conversion, label, prefix, output);
+        return super::unsigned::emit_conversion(conversion, label, prefix, reporter, output);
     }
     let bad = format!(".Lprimer_{prefix}_convert_bad_{label}");
     let done = format!(".Lprimer_{prefix}_convert_done_{label}");
@@ -24,23 +32,55 @@ pub(super) fn emit(conversion: NumericConversion, label: usize, prefix: &str, ou
             } else {
                 output.push_str("  movapd %xmm0, %xmm2\n");
             }
-            output.push_str(&format!("  ucomisd %xmm2, %xmm2\n  jp {bad}\n  movq %xmm2, %r11\n  movabsq $-9223372036854775808, %r10\n  cmpq %r10, %r11\n  je {bad}\n"));
+            check_finite_integer_input(&bad, reporter, output);
             load_bound(ty.minimum() as f64, output);
-            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}\n"));
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}_range\n"));
             load_bound((ty.maximum() + 1) as f64, output);
-            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jae {bad}\n  cvttsd2siq %xmm2, %rax\n  cvtsi2sdq %rax, %xmm1\n  ucomisd %xmm1, %xmm2\n  jne {bad}\n"));
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jae {bad}_range\n  cvttsd2siq %xmm2, %rax\n  cvtsi2sdq %rax, %xmm1\n  ucomisd %xmm1, %xmm2\n  jne {bad}\n"));
         }
         (NumericType::F32, NumericType::F64) => {
             output.push_str(&format!(
-                "  ucomiss %xmm0, %xmm0\n  jp {bad}\n  cvtss2sd %xmm0, %xmm0\n"
+                "  ucomiss %xmm0, %xmm0\n  jp {bad}_nan\n  cvtss2sd %xmm0, %xmm0\n"
             ));
         }
         (NumericType::F64, NumericType::F32) => {
-            output.push_str(&format!("  ucomisd %xmm0, %xmm0\n  jp {bad}\n  movapd %xmm0, %xmm2\n  cvtsd2ss %xmm0, %xmm0\n  cvtss2sd %xmm0, %xmm1\n  ucomisd %xmm1, %xmm2\n  jne {bad}\n"));
+            output.push_str(&format!(
+                "  ucomisd %xmm0, %xmm0\n  jp {bad}_nan\n  movapd %xmm0, %xmm2\n"
+            ));
+            // 無限大は保存できますが、有限値がf32最大値を越える場合は範囲外です。
+            load_bound(f64::INFINITY, output);
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  je {bad}_convert\n"));
+            load_bound(f64::NEG_INFINITY, output);
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  je {bad}_convert\n"));
+            load_bound(f64::from(f32::MAX), output);
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  ja {bad}_range\n"));
+            load_bound(-f64::from(f32::MAX), output);
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}_range\n{bad}_convert:\n  cvtsd2ss %xmm0, %xmm0\n  cvtss2sd %xmm0, %xmm1\n  ucomisd %xmm1, %xmm2\n  jne {bad}\n"));
         }
         _ => unreachable!("identity and integer conversions are lowered separately"),
     }
-    output.push_str(&format!("  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+    output.push_str(&format!("  jmp {done}\n{bad}:\n"));
+    reporter.emit(Failure::ConversionInexact, output);
+    if matches!(conversion.from, NumericType::F32 | NumericType::F64) {
+        output.push_str(&format!("{bad}_range:\n"));
+        reporter.emit(Failure::ConversionOutOfRange, output);
+        output.push_str(&format!("{bad}_nan:\n"));
+        reporter.emit(Failure::ConversionNaN, output);
+    }
+    output.push_str(&format!("{done}:\n"));
+}
+
+/// xmm2のfloatを整数化する前に、NaN/無限大と負のゼロを区別します。
+pub(super) fn check_finite_integer_input(bad: &str, reporter: &mut Reporter, output: &mut String) {
+    output.push_str(&format!("  ucomisd %xmm2, %xmm2\n  jp {bad}_nonfinite\n"));
+    load_bound(f64::INFINITY, output);
+    output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  je {bad}_nonfinite\n"));
+    load_bound(f64::NEG_INFINITY, output);
+    output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  je {bad}_nonfinite\n  movq %xmm2, %r11\n  movabsq $-9223372036854775808, %r10\n  cmpq %r10, %r11\n  jne {bad}_finite\n"));
+    reporter.emit(Failure::ConversionNegativeZero, output);
+    output.push_str(&format!("{bad}_nonfinite:\n"));
+    reporter.emit(Failure::ConversionNotFinite, output);
+    output.push_str(&format!("{bad}_finite:\n"));
 }
 
 fn load_bound(value: f64, output: &mut String) {

@@ -10,7 +10,93 @@ mod u64_cases;
 use primer_lang::{
     codegen::x86_64::Target, compile_to_asm_with_target, compile_to_x86_64_win_asm, run_vm,
 };
-use std::{fs, path::PathBuf, process::Command};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Output, Stdio},
+    time::{Duration, Instant},
+};
+
+// pipeのEOFを待たず、子プロセスの終了と取得済み出力を別々に観測します。
+// 異常停止を大量に実行するCIでも、どのケースを待っているか残します。
+fn bounded_output(
+    command: &mut Command,
+    directory: &Path,
+    label: &str,
+    limit: Duration,
+) -> Result<Output, String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let stdout = directory.join(format!("process-{id}.stdout"));
+    let stderr = directory.join(format!("process-{id}.stderr"));
+    command.stdout(Stdio::from(fs::File::create(&stdout).unwrap()));
+    command.stderr(Stdio::from(fs::File::create(&stderr).unwrap()));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let trace = std::env::var_os("PRIMER_TEST_TRACE").is_some();
+    if trace {
+        use std::io::Write;
+        let _ = writeln!(std::io::stderr().lock(), "[native-process] start {label}");
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("{label}: {error}"))?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("{label}: {error}"))?
+        {
+            break status;
+        }
+        if start.elapsed() >= limit {
+            #[cfg(unix)]
+            {
+                // この呼び出し専用のprocess groupだけを終了します。
+                unsafe extern "C" {
+                    fn kill(pid: i32, signal: i32) -> i32;
+                }
+                unsafe {
+                    kill(-(child.id() as i32), 9);
+                }
+            }
+            #[cfg(windows)]
+            {
+                // テストが起動した子とその子孫だけが対象です。
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &child.id().to_string(), "/T", "/F"])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status();
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "{label}: timed out after {limit:?}; stdout={:?}; stderr={:?}",
+                String::from_utf8_lossy(&fs::read(&stdout).unwrap()),
+                String::from_utf8_lossy(&fs::read(&stderr).unwrap())
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    if trace {
+        use std::io::Write;
+        let _ = writeln!(
+            std::io::stderr().lock(),
+            "[native-process] end {label}: {status} in {:?}",
+            start.elapsed()
+        );
+    }
+    Ok(Output {
+        status,
+        stdout: fs::read(stdout).unwrap(),
+        stderr: fs::read(stderr).unwrap(),
+    })
+}
 
 struct Workspace(PathBuf);
 impl Workspace {
@@ -61,9 +147,40 @@ fn concurrent_test_workspaces_are_independent() {
         );
     }
 }
+
+#[test]
+fn native_process_deadline_reports_output_and_stops_an_infinite_loop() {
+    let workspace = Workspace::new();
+    let node = std::env::var_os("PRIMER_TEST_NODE").unwrap_or_else(|| "node".into());
+    let result = bounded_output(Command::new(node).args(["-e", "console.log('started'); setInterval(() => {}, 1000); process.on('SIGTERM', () => {}); "]),
+        &workspace.0, "intentional-hang", Duration::from_secs(1));
+    let error = result.unwrap_err();
+    assert!(
+        error.contains("intentional-hang: timed out") && error.contains("started"),
+        "{error}"
+    );
+}
 impl Drop for Workspace {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
+        use std::io::Write;
+        let trace = std::env::var_os("PRIMER_TEST_TRACE").is_some();
+        let start = Instant::now();
+        if trace {
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "[native-workspace] cleanup start {}",
+                self.0.display()
+            );
+        }
+        let result = fs::remove_dir_all(&self.0);
+        if trace {
+            let _ = writeln!(
+                std::io::stderr().lock(),
+                "[native-workspace] cleanup end {}: {result:?} in {:?}",
+                self.0.display(),
+                start.elapsed()
+            );
+        }
     }
 }
 
@@ -81,6 +198,12 @@ fn cases() -> Vec<(String, String)> {
         .map(|&(source, expected)| (source.to_owned(), expected.to_owned()))
         .collect();
     cases.push((string_cases::UNUSED_DEFAULT.into(), "1\ntrue\n".into()));
+    let compact = "fn next() -> i32 { print(7); return 3; } print(f64(next())); print(f64(1 / 2)); print(f64(1) / f64(2));";
+    cases.push((compact.into(), "7\n3\n0\n0.5\n".into()));
+    cases.push((
+        compact.replace("f64(", "convert<f64>("),
+        "7\n3\n0\n0.5\n".into(),
+    ));
     let values = (0..600)
         .map(|index| {
             if index == 599 {
@@ -107,6 +230,207 @@ fn cases() -> Vec<(String, String)> {
         cases.push((source, expected));
     }
     cases
+}
+
+#[test]
+fn runtime_record_parser_rejects_incomplete_or_unrelated_failures() {
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/observe-native.cjs");
+    let node = std::env::var_os("PRIMER_TEST_NODE").unwrap_or_else(|| "node".into());
+    let result = Command::new(node).arg("-e").arg(r#"
+const assert = require('node:assert/strict');
+const {parseRuntimeFailure: parse} = require(process.argv[1]);
+const valid = 'primer: runtime-v1 code=division-by-zero node=2 bytes=6..11\n';
+assert.deepEqual(parse(Buffer.from(valid)), {schema:'runtime-v1', code:'division-by-zero', node:2, start:6, end:11});
+assert.deepEqual(parse(Buffer.from(valid.replace('\n','\r\n'))), parse(Buffer.from(valid)));
+for (const text of ['', 'segmentation fault\n', valid + '\n', valid + valid, valid.trimEnd(),
+    valid.replace('division-by-zero','unknown'), valid.replace('6..11','11..6'),
+    valid.replace('6..11','6..6'), valid.replace('node=2','node=02'),
+    valid.replace('node=2','node=9007199254740992')]) assert.equal(parse(Buffer.from(text)), null, text);
+"#).arg(script).output().unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn runtime_failures_match_vm_codes_origins_and_prior_output() {
+    use primer_lang::{RunError, compile_to_native_object};
+    let cases = [
+        ("print(9223372036854775807 + 1);", "integer-overflow"),
+        ("print(-(-9223372036854775808));", "integer-overflow"),
+        ("print(127i8 + 1);", "integer-overflow"),
+        ("print(0u8 - 1);", "integer-overflow"),
+        ("print(18446744073709551615u64 + 1);", "integer-overflow"),
+        ("print(0u64 - 1);", "integer-overflow"),
+        ("print(18446744073709551615u64 * 2);", "integer-overflow"),
+        ("print(1 / 0);", "division-by-zero"),
+        ("print(1u64 / 0);", "division-by-zero"),
+        ("print(-9223372036854775808 / -1);", "division-overflow"),
+        ("print(-128i8 / -1);", "division-overflow"),
+        ("print(1 % 0);", "remainder-by-zero"),
+        ("print(1u64 % 0);", "remainder-by-zero"),
+        ("print(1 << -1);", "invalid-shift-count"),
+        ("print(0u8 >> 8);", "invalid-shift-count"),
+        ("print(0u64 << 64);", "invalid-shift-count"),
+        (
+            "print(0u64 >> 18446744073709551615u64);",
+            "invalid-shift-count",
+        ),
+        ("print(64i8 << 1);", "integer-overflow"),
+        ("print(9223372036854775808u64 << 1);", "integer-overflow"),
+        ("print(i8(128));", "integer-conversion-out-of-range"),
+        ("print(u64(-1));", "integer-conversion-out-of-range"),
+        (
+            "print(i64(9223372036854775808u64));",
+            "integer-conversion-out-of-range",
+        ),
+        ("print(f64(9223372036854775807));", "conversion-inexact"),
+        ("print(f32(16777217));", "conversion-inexact"),
+        ("print(f64(18446744073709551615u64));", "conversion-inexact"),
+        ("print(f32(18446744073709551615u64));", "conversion-inexact"),
+        ("print(i64(1.5));", "conversion-inexact"),
+        ("print(u64(1.5));", "conversion-inexact"),
+        ("print(i8(128.0));", "conversion-out-of-range"),
+        ("print(u64(-1.0));", "conversion-out-of-range"),
+        (
+            "print(u64(18446744073709551616.0));",
+            "conversion-out-of-range",
+        ),
+        ("print(i64(0.0 / 0.0));", "conversion-not-finite"),
+        ("print(i64(1.0 / 0.0));", "conversion-not-finite"),
+        ("print(i64(-1.0 / 0.0));", "conversion-not-finite"),
+        ("print(u64(0.0 / 0.0));", "conversion-not-finite"),
+        ("print(u64(1.0 / 0.0));", "conversion-not-finite"),
+        ("print(u64(-1.0 / 0.0));", "conversion-not-finite"),
+        ("print(i64(-0.0));", "conversion-negative-zero"),
+        ("print(u64(-0.0));", "conversion-negative-zero"),
+        ("print(f32(0.0 / 0.0));", "conversion-nan"),
+        ("x: f32 = 0.0 / 0.0; print(f64(x));", "conversion-nan"),
+        ("print(f32(0.1));", "conversion-inexact"),
+        // f32へ丸めると最大有限値になる場合でも、元の値は範囲外です。
+        (
+            "print(f32(3.402823466385289e38));",
+            "conversion-out-of-range",
+        ),
+        (
+            "print(f32(-3.402823466385289e38));",
+            "conversion-out-of-range",
+        ),
+        (
+            "a: [i64; 1] = [1]; print(a[1]);",
+            "array-index-out-of-bounds",
+        ),
+        (
+            "a: [[i64; 1]; 1] = [[1]]; print(a[-1][0]);",
+            "array-index-out-of-bounds",
+        ),
+        (
+            "fn value() -> i64 { print(999); return 1; } mut a: [[i64; 1]; 1] = [[1]]; a[0][1] = value();",
+            "array-index-out-of-bounds",
+        ),
+        (
+            "fn fail() -> i64 { return 1 / 0; } fn outer() -> i64 { return fail(); } print(outer());",
+            "division-by-zero",
+        ),
+        (
+            "type P { marker: bool, value: i64 = 1 / 0, } p: P = P { marker: true, };",
+            "division-by-zero",
+        ),
+    ];
+    let workspace = Workspace::new();
+    let target = if cfg!(windows) {
+        Target::X86_64PcWindowsMsvc
+    } else {
+        Target::X86_64UnknownLinuxGnu
+    };
+    let cc = std::env::var_os(if cfg!(windows) {
+        "PRIMER_TEST_ASM_CLANG"
+    } else {
+        "PRIMER_TEST_CC"
+    })
+    .unwrap_or_else(|| if cfg!(windows) { "clang" } else { "cc" }.into());
+    let exe = workspace.0.join(if cfg!(windows) {
+        "program.exe"
+    } else {
+        "program"
+    });
+    for (case_index, (body, expected_code)) in cases.into_iter().enumerate() {
+        // Unicode・CRLFのバイト位置、停止前の出力、短絡で失敗を避ける経路を併せて検証します。
+        let source = format!(
+            "// 日本語\r\nprint(\"開始\\0\\r\\n\");\r\nprint(false && (1 / 0 == 0));\r\n{body}"
+        );
+        let RunError::Execution(error) = run_vm(&source).unwrap_err() else {
+            panic!("{body}");
+        };
+        let failure = error.runtime_failure().unwrap();
+        assert_eq!(failure.code.name(), expected_code, "{body}");
+        assert_eq!(error.vm_error().output(), "開始\0\r\n\nfalse\n", "{body}");
+        for encoder in ["asm", "primer"] {
+            let input = workspace.0.join(if encoder == "asm" {
+                "program.s"
+            } else {
+                "program.o"
+            });
+            if encoder == "asm" {
+                fs::write(&input, compile_to_asm_with_target(&source, target).unwrap()).unwrap();
+            } else {
+                fs::write(
+                    &input,
+                    compile_to_native_object(&source, target, false).unwrap(),
+                )
+                .unwrap();
+            }
+            let label = format!("failure-{case_index}/{encoder}/{expected_code}");
+            let built = bounded_output(
+                Command::new(&cc).arg(&input).arg("-o").arg(&exe),
+                &workspace.0,
+                &format!("{label}/link"),
+                Duration::from_secs(30),
+            )
+            .unwrap();
+            assert!(
+                built.status.success(),
+                "{body}: {}",
+                String::from_utf8_lossy(&built.stderr)
+            );
+            let result = bounded_output(
+                Command::new(&exe).current_dir(&workspace.0),
+                &workspace.0,
+                &format!("{label}/run"),
+                Duration::from_secs(10),
+            )
+            .unwrap();
+            #[cfg(windows)]
+            assert_eq!(
+                result.status.code().map(|c| c as u32),
+                Some(0xc000001d),
+                "{body}"
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                assert_eq!(result.status.signal(), Some(4), "{body}");
+            }
+            assert_eq!(
+                result.stdout,
+                error.vm_error().output().as_bytes(),
+                "{encoder}: {body}"
+            );
+            assert_eq!(
+                String::from_utf8(result.stderr)
+                    .unwrap()
+                    .replace("\r\n", "\n"),
+                format!("primer: {}\n", failure.record()),
+                "{encoder}: {body}"
+            );
+            if std::env::var_os("PRIMER_TEST_TRACE").is_some() {
+                use std::io::Write;
+                let _ = writeln!(std::io::stderr().lock(), "[native-case] verified {label}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -316,6 +640,15 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
     for (index, source) in u64_cases::FAILURES
         .iter()
         .chain(string_cases::OUT_OF_BOUNDS)
+        .chain(
+            [
+                "print(7); print(1 / 0);",
+                include_str!("../examples/runtime_failures/overflow.prim"),
+                include_str!("../examples/runtime_failures/array_update.prim"),
+                include_str!("../examples/runtime_failures/function_division.prim"),
+            ]
+            .iter(),
+        )
         .enumerate()
     {
         invoke(source, &format!("failure-{index}"), true, "external");

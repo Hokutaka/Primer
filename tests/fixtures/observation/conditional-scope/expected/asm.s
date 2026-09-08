@@ -54,6 +54,12 @@ main:
   movabsq $1, %rax
   negq %rax
   jno .Lprimer_main_integer_ok_2
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_2:
   movq %rax, -8(%rbp)
@@ -66,3 +72,7 @@ main:
   addq $128, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-overflow node=13 bytes=115..117\n"

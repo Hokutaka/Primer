@@ -140,14 +140,16 @@ pub struct VmError {
     kind: VmErrorKind,
     instruction_index: usize,
     function_id: Option<usize>,
+    output: Box<str>,
 }
 
 impl VmError {
-    const fn new(kind: VmErrorKind, instruction_index: usize) -> Self {
+    fn new(kind: VmErrorKind, instruction_index: usize) -> Self {
         Self {
             kind,
             instruction_index,
             function_id: None,
+            output: Box::from(""),
         }
     }
 
@@ -171,6 +173,11 @@ impl VmError {
     /// エラーが関数内で起きた場合、その関数番号を返します。
     pub const fn function_id(&self) -> Option<usize> {
         self.function_id
+    }
+
+    /// 停止するまでに実行されたprintの出力です。失敗で取り消しません。
+    pub fn output(&self) -> &str {
+        &self.output
     }
 }
 
@@ -216,7 +223,10 @@ enum Frame {
 
 pub fn run(program: &BytecodeProgram) -> Result<String, VmError> {
     let mut output = String::new();
-    execute_frame(program, Frame::Entry, Vec::new(), &mut output)?;
+    if let Err(mut error) = execute_frame(program, Frame::Entry, Vec::new(), &mut output) {
+        error.output = output.into_boxed_str();
+        return Err(error);
+    }
     Ok(output)
 }
 

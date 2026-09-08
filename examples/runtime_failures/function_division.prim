@@ -1,0 +1,8 @@
+// 呼び出し側ではなく、失敗した関数内の式まで辿ります。
+fn divide(value: i64, divisor: i64) -> i64 {
+    print("除算を開始");
+    return value / divisor;
+}
+
+print(false && (divide(10, 0) == 0));
+print(divide(10, 0));

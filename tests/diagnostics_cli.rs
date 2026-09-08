@@ -1,5 +1,72 @@
 use std::{fs, path::PathBuf, process::Command};
 
+#[test]
+fn runtime_records_preserve_prints_and_identify_the_failing_expression() {
+    use primer_lang::RunError;
+    for (name, expression, expected_output, code) in [
+        (
+            "overflow",
+            "counter + 1",
+            "カウンタを更新\n",
+            "integer-overflow",
+        ),
+        ("array_update", "[2]", "4\n", "array-index-out-of-bounds"),
+        (
+            "function_division",
+            "value / divisor",
+            "false\n除算を開始\n",
+            "division-by-zero",
+        ),
+    ] {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("examples/runtime_failures/{name}.prim"));
+        let source = fs::read_to_string(&path).unwrap();
+        let RunError::Execution(error) = primer_lang::run_vm(&source).unwrap_err() else {
+            panic!()
+        };
+        let failure = error.runtime_failure().unwrap();
+        assert_eq!(failure.code.name(), code);
+        assert_eq!(
+            &source[failure.span.start()..failure.span.end()],
+            expression
+        );
+        assert_eq!(error.vm_error().output(), expected_output);
+        for structured in [false, true] {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_primer"));
+            command.arg("run").arg(&path);
+            if structured {
+                command.args(["--diagnostic-format", "runtime-v1"]);
+            }
+            let result = command.output().unwrap();
+            assert_eq!(result.status.code(), Some(1));
+            assert_eq!(result.stdout, expected_output.as_bytes());
+            if structured {
+                assert_eq!(
+                    String::from_utf8(result.stderr)
+                        .unwrap()
+                        .replace("\r\n", "\n"),
+                    format!("primer: {}\n", failure.record())
+                );
+            } else {
+                assert!(!result.stderr.windows(10).any(|s| s == b"runtime-v1"));
+            }
+        }
+    }
+    for args in [
+        vec!["--diagnostic-format"],
+        vec!["--diagnostic-format", "json"],
+        vec!["--diagnostic-format", "runtime-v1", "extra"],
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_primer"))
+            .args(["run", "unused.prim"])
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(1));
+        assert!(String::from_utf8(result.stderr).unwrap().contains("usage:"));
+    }
+}
+
 fn fixture_path(case_name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")

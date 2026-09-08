@@ -35,6 +35,12 @@ primer_fn_move_x_0:
   movq -32(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_fn_0_integer_ok_0
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $63, %r8d
+  callq _write
   ud2
 .Lprimer_fn_0_integer_ok_0:
   movq %rax, -96(%rbp)
@@ -107,6 +113,12 @@ primer_fn_first_row_2:
   movq %rcx, -80(%rbp)
   jmp .Lprimer_fn_2_array_done_0
 .Lprimer_fn_2_array_oob_0:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_fn_2_array_done_0:
   movq -64(%rbp), %r11
@@ -265,6 +277,12 @@ main:
   movq %rcx, -528(%rbp)
   jmp .Lprimer_main_array_done_0
 .Lprimer_main_array_oob_0:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_2(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_0:
   movabsq $0, %rax
@@ -276,6 +294,12 @@ main:
   movq -520(%rbp,%rax,8), %rax
   jmp .Lprimer_main_array_done_1
 .Lprimer_main_array_oob_1:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_3(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_1:
   movq %rax, %rdx
@@ -293,6 +317,12 @@ main:
   movq %rcx, -544(%rbp)
   jmp .Lprimer_main_array_done_2
 .Lprimer_main_array_oob_2:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_4(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_2:
   movabsq $1, %rax
@@ -304,6 +334,12 @@ main:
   movq -536(%rbp,%rax,8), %rax
   jmp .Lprimer_main_array_done_3
 .Lprimer_main_array_oob_3:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_5(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_3:
   movq %rax, %rdx
@@ -321,6 +357,12 @@ main:
   movq %rcx, -560(%rbp)
   jmp .Lprimer_main_array_done_4
 .Lprimer_main_array_oob_4:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_6(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_4:
   movabsq $0, %rax
@@ -332,6 +374,12 @@ main:
   movq -552(%rbp,%rax,8), %rax
   jmp .Lprimer_main_array_done_5
 .Lprimer_main_array_oob_5:
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_7(%rip), %rdx
+  movl $73, %r8d
+  callq _write
   ud2
 .Lprimer_main_array_done_5:
   movq %rax, %rdx
@@ -341,3 +389,21 @@ main:
   addq $592, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-overflow node=2 bytes=118..134\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=15 bytes=332..341\n"
+.Lprimer_failure_2:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=56 bytes=760..769\n"
+.Lprimer_failure_3:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=55 bytes=760..772\n"
+.Lprimer_failure_4:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=62 bytes=781..788\n"
+.Lprimer_failure_5:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=61 bytes=781..791\n"
+.Lprimer_failure_6:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=68 bytes=800..807\n"
+.Lprimer_failure_7:
+  .asciz "primer: runtime-v1 code=array-index-out-of-bounds node=67 bytes=800..810\n"

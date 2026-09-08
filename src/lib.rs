@@ -5,6 +5,7 @@ pub mod diagnostic;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
+pub mod runtime;
 pub mod semantic;
 pub mod source;
 pub mod types;
@@ -17,7 +18,7 @@ use diagnostic::Diagnostic;
 /// VM実行エラーと、失敗したbytecode命令の出自を保持します。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionError {
-    vm_error: vm::VmError,
+    vm_error: Box<vm::VmError>,
     origin: Option<InstructionOrigin>,
 }
 
@@ -32,6 +33,18 @@ impl ExecutionError {
     /// 命令番号がbytecodeの範囲外で、対応する命令自体が存在しない場合は`None`です。
     pub const fn origin(&self) -> Option<InstructionOrigin> {
         self.origin
+    }
+
+    /// 生成経路と照合できる停止理由とソース範囲を返します。
+    pub fn runtime_failure(&self) -> Option<runtime::RuntimeFailure> {
+        let InstructionOrigin::Source { node_id, span } = self.origin? else {
+            return None;
+        };
+        Some(runtime::RuntimeFailure {
+            code: runtime::FailureCode::from_vm(self.vm_error.kind())?,
+            node_id,
+            span,
+        })
     }
 }
 
@@ -177,7 +190,10 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
             .get(vm_error.instruction_index())
             .map(|instruction| instruction.origin);
 
-        RunError::Execution(ExecutionError { vm_error, origin })
+        RunError::Execution(ExecutionError {
+            vm_error: Box::new(vm_error),
+            origin,
+        })
     })
 }
 

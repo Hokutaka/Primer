@@ -1,10 +1,18 @@
+use super::failure::Reporter;
+use crate::runtime::FailureCode as Failure;
 use crate::{
     codegen::{IntegerBinaryOp as Op, NumericConversion},
     types::{IntegerType, NumericType as N},
 };
 
 // 左辺はrax、右辺はrcxです。演算が失敗したときだけ明示的にtrapします。
-pub(super) fn emit_binary(op: Op, label: usize, prefix: &str, output: &mut String) {
+pub(super) fn emit_binary(
+    op: Op,
+    label: usize,
+    prefix: &str,
+    reporter: &mut Reporter,
+    output: &mut String,
+) {
     let bad = format!(".Lprimer_{prefix}_u64_bad_{label}");
     let done = format!(".Lprimer_{prefix}_u64_done_{label}");
     match op {
@@ -19,25 +27,37 @@ pub(super) fn emit_binary(op: Op, label: usize, prefix: &str, output: &mut Strin
                 output.push_str("  movq %rdx, %rax\n");
             }
         }
-        Op::BitAnd => output.push_str("  andq %rcx, %rax\n"),
-        Op::BitOr => output.push_str("  orq %rcx, %rax\n"),
-        Op::BitXor => output.push_str("  xorq %rcx, %rax\n"),
+        Op::BitAnd => return output.push_str("  andq %rcx, %rax\n"),
+        Op::BitOr => return output.push_str("  orq %rcx, %rax\n"),
+        Op::BitXor => return output.push_str("  xorq %rcx, %rax\n"),
         Op::ShiftLeft | Op::ShiftRight => {
             output.push_str(&format!("  cmpq $64, %rcx\n  jae {bad}\n"));
             if op == Op::ShiftLeft {
-                output.push_str(&format!("  movq $-1, %r11\n  shrq %cl, %r11\n  cmpq %r11, %rax\n  ja {bad}\n  shlq %cl, %rax\n"));
+                output.push_str(&format!("  movq $-1, %r11\n  shrq %cl, %r11\n  cmpq %r11, %rax\n  ja {bad}_overflow\n  shlq %cl, %rax\n  jmp {done}\n{bad}_overflow:\n"));
+                reporter.emit(Failure::IntegerOverflow, output);
             } else {
                 output.push_str("  shrq %cl, %rax\n");
             }
         }
     }
-    output.push_str(&format!("  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+    output.push_str(&format!("  jmp {done}\n{bad}:\n"));
+    reporter.emit(
+        match op {
+            Op::Divide => Failure::DivisionByZero,
+            Op::Remainder => Failure::RemainderByZero,
+            Op::ShiftLeft | Op::ShiftRight => Failure::InvalidShiftCount,
+            _ => Failure::IntegerOverflow,
+        },
+        output,
+    );
+    output.push_str(&format!("{done}:\n"));
 }
 
 pub(super) fn emit_conversion(
     c: NumericConversion,
     label: usize,
     prefix: &str,
+    reporter: &mut Reporter,
     output: &mut String,
 ) {
     let base = format!(".Lprimer_{prefix}_u64_convert_{label}");
@@ -74,17 +94,30 @@ pub(super) fn emit_conversion(
             } else {
                 output.push_str("  movapd %xmm0, %xmm2\n");
             }
-            output.push_str(&format!("  ucomisd %xmm2, %xmm2\n  jp {bad}\n  movq %xmm2, %r11\n  movabsq $-9223372036854775808, %r10\n  cmpq %r10, %r11\n  je {bad}\n"));
+            super::conversion::check_finite_integer_input(&bad, reporter, output);
             bound(0.0, output);
-            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}\n"));
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {bad}_range\n"));
             bound(18446744073709551616.0, output);
-            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jae {bad}\n"));
+            output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jae {bad}_range\n"));
             bound(9223372036854775808.0, output);
             output.push_str(&format!("  ucomisd %xmm1, %xmm2\n  jb {base}_small\n  movapd %xmm2, %xmm3\n  subsd %xmm1, %xmm3\n  cvttsd2siq %xmm3, %rax\n  cvtsi2sdq %rax, %xmm3\n  addsd %xmm1, %xmm3\n  btcq $63, %rax\n  jmp {base}_compare\n{base}_small:\n  cvttsd2siq %xmm2, %rax\n  cvtsi2sdq %rax, %xmm3\n{base}_compare:\n  ucomisd %xmm3, %xmm2\n  jne {bad}\n"));
         }
         _ => unreachable!("u64 conversion"),
     }
-    output.push_str(&format!("  jmp {done}\n{bad}:\n  ud2\n{done}:\n"));
+    output.push_str(&format!("  jmp {done}\n{bad}:\n"));
+    reporter.emit(
+        if matches!((c.from, c.to), (N::Integer(_), N::Integer(_))) {
+            Failure::IntegerConversionOutOfRange
+        } else {
+            Failure::ConversionInexact
+        },
+        output,
+    );
+    if matches!(c.from, N::F32 | N::F64) {
+        output.push_str(&format!("{bad}_range:\n"));
+        reporter.emit(Failure::ConversionOutOfRange, output);
+    }
+    output.push_str(&format!("{done}:\n"));
 }
 fn bound(value: f64, output: &mut String) {
     output.push_str(&format!(

@@ -45,6 +45,12 @@ main:
   movq -24(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_main_integer_ok_2
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_0(%rip), %rdx
+  movl $61, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_2:
   movq %rax, -8(%rbp)
@@ -79,6 +85,12 @@ main:
   movq -24(%rbp), %rax
   addq %rcx, %rax
   jno .Lprimer_main_integer_ok_7
+  xorl %ecx, %ecx
+  callq fflush
+  movl $2, %ecx
+  leaq .Lprimer_failure_1(%rip), %rdx
+  movl $64, %r8d
+  callq _write
   ud2
 .Lprimer_main_integer_ok_7:
   movq %rax, -16(%rbp)
@@ -96,3 +108,9 @@ main:
   addq $208, %rsp
   popq %rbp
   retq
+
+.section .rdata,"dr"
+.Lprimer_failure_0:
+  .asciz "primer: runtime-v1 code=integer-overflow node=9 bytes=70..79\n"
+.Lprimer_failure_1:
+  .asciz "primer: runtime-v1 code=integer-overflow node=23 bytes=177..188\n"

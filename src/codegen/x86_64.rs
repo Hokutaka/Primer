@@ -1,5 +1,6 @@
 mod conversion;
 mod emit;
+mod failure;
 pub mod ir;
 mod lower;
 mod object;

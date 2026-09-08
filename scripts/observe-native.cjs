@@ -95,26 +95,30 @@ function observe(options) {
       report.artifacts[name] = { sha256: hash(bytes), bytes: bytes.length };
     }
     if (options['--run']) {
-      const vm = run('vm', primer, ['run', 'source.prim'], true);
+      const vm = run('vm', primer, ['run', 'source.prim', '--diagnostic-format', 'runtime-v1'], true);
       const native = run('native', path.join(directory, executable), [], true);
       write('vm.stdout', vm.stdout);
       write('vm.stderr', vm.stderr);
       write('native.stdout', native.stdout);
       write('native.stderr', native.stderr);
+      const strings = fs.readFileSync(path.join(directory, 'program.s'), 'utf8').includes('callq _setmode');
+      report.outputComparison = windows && !strings ? 'numeric-windows-crlf-to-lf' : 'exact-bytes';
+      const actual = windows && !strings ? Buffer.from(native.stdout.toString('utf8').replace(/\r\n/g, '\n')) : native.stdout;
       if (options['--expect-trap']) {
         const trapped = windows ? native.status !== null && (native.status >>> 0) === 0xc000001d : native.signal === 'SIGILL';
-        if (vm.status !== 1 || vm.stderr.length === 0 || !trapped || native.stdout.length !== 0 || native.stderr.length !== 0) {
-          throw new Error('expected a VM diagnostic and a native illegal-instruction trap');
+        const expectedFailure = parseRuntimeFailure(vm.stderr);
+        const nativeFailure = parseRuntimeFailure(native.stderr);
+        if (vm.status !== 1 || !trapped || !expectedFailure || !nativeFailure
+            || JSON.stringify(expectedFailure) !== JSON.stringify(nativeFailure) || !actual.equals(vm.stdout)) {
+          throw new Error('expected matching VM/native runtime-v1 failures, prior output, and a native illegal-instruction trap');
         }
+        report.runtimeFailure = nativeFailure;
         report.steps.at(-1).status = 'expected-trap';
         report.steps.at(-2).status = 'expected-diagnostic';
         report.status = 'expected-failure-confirmed';
       } else {
         if (vm.status !== 0 || native.status !== 0 || vm.stderr.length || native.stderr.length) throw new Error('unexpected execution failure');
         // 既存Windows数値出力のCRT改行規則を比較条件として記録します。
-        const strings = fs.readFileSync(path.join(directory, 'program.s'), 'utf8').includes('callq _setmode');
-        report.outputComparison = windows && !strings ? 'numeric-windows-crlf-to-lf' : 'exact-bytes';
-        const actual = windows && !strings ? Buffer.from(native.stdout.toString('utf8').replace(/\r\n/g, '\n')) : native.stdout;
         if (!actual.equals(vm.stdout)) throw new Error('native output differs from VM output');
         report.status = 'output-matched';
       }
@@ -133,6 +137,19 @@ function observe(options) {
 
 function hash(bytes) { return crypto.createHash('sha256').update(bytes).digest('hex'); }
 
+// 完全な1レコードだけを受け付け、別のクラッシュや追加のエラーを合格にしません。
+function parseRuntimeFailure(bytes) {
+  const text = bytes.toString('utf8').replace(/\r\n/g, '\n');
+  const match = /^primer: runtime-v1 code=([a-z-]+) node=(0|[1-9][0-9]*) bytes=(0|[1-9][0-9]*)\.\.(0|[1-9][0-9]*)\n$/.exec(text);
+  if (!match || match[0].length !== text.length) return null;
+  const codes = ['integer-overflow', 'division-by-zero', 'division-overflow', 'remainder-by-zero',
+    'invalid-shift-count', 'integer-conversion-out-of-range', 'conversion-out-of-range',
+    'conversion-inexact', 'conversion-not-finite', 'conversion-nan', 'conversion-negative-zero', 'array-index-out-of-bounds'];
+  const [node, start, end] = match.slice(2).map(Number);
+  if (!codes.includes(match[1]) || ![node, start, end].every(Number.isSafeInteger) || start >= end) return null;
+  return { schema: 'runtime-v1', code: match[1], node, start, end };
+}
+
 if (require.main === module) {
   if (process.argv.length === 3 && process.argv[2] === '--help') {
     console.log('Usage: node scripts/observe-native.cjs --source <file> --target <triple> --primer <tool> --cc <tool> --objdump <tool> --output-dir <new-directory> [--encoder external|primer] [--run [--expect-trap]]');
@@ -148,4 +165,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parse, observe };
+module.exports = { parse, observe, parseRuntimeFailure };
