@@ -79,7 +79,7 @@ Reassignment replaces the reference in a binding or array element. Shared storag
 
 QBE puts data in read-only `.rodata`, using `loadl` for length and `loadub` for bytes. Strings require `--target x86_64-unknown-linux-gnu`; the artifact records the target and its `qbe -t amd64_sysv` mapping in a comment. This is the combination currently supported by Primer for QBE strings. Selecting another downstream QBE target does not translate Primer's runtime assumptions.
 
-Direct assembly uses the existing Windows x64 target. Length and bytes reside in read-only storage, and references travel through `RAX` or eight-byte stack slots. Comparisons save the left operand before evaluating the right and passing both to a helper. The output helper follows Windows x64 shadow-space, stack-alignment, and register-preservation rules. `_setmode` runs before the first Primer operation and exits with code 1 on failure.
+Direct assembly supports Windows/Linux x86-64 targets. Linux uses SysV byte output without the Windows stdout initialization described below. Length and bytes reside in read-only storage, and references travel through `RAX` or eight-byte stack slots. Comparisons save the left operand before evaluating the right and passing both to a helper. The output helper follows Windows x64 shadow-space, stack-alignment, and register-preservation rules. `_setmode` runs before the first Primer operation and exits with code 1 on failure.
 
 WAT puts data in private linear memory and uses 32-bit addresses. Its eight-byte length header is little-endian; current wasm32 operations read the low 32 bits. Lowering selects memory regions and page counts without allocating string data at runtime. Equality becomes `i32.load8_u` and branches.
 
@@ -114,7 +114,7 @@ The frontend resolves arity, input type, and result type into a dedicated Primer
 | LLVM | `extractvalue %primer.string ..., 1` |
 | QBE | `loadl` from the length header |
 | WAT | `i64.load` from the private memory header |
-| Windows x64 ASM | `movq (%rax), %rax` from the length header |
+| Windows/Linux x86-64 ASM | `movq (%rax), %rax` from the length header |
 
 The argument is evaluated once before the read. C sequencing follows observable or fallible child expressions, preserving source order across multiple byte-length expressions. LLVM origin annotations connect the extraction to the source operation.
 

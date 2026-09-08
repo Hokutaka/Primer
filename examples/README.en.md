@@ -27,7 +27,7 @@ The runner checks each example's exit status. Use `cargo test --test examples` t
 
 ## Find examples by type
 
-Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays, and products. All six existing routes (VM, C, LLVM, QBE, WAT, and direct Windows x64 assembly) implement `u64`. The `u64_values.prim` example is compared against known output across all six. Direct Linux assembly and direct machine-code generation are future work.
+Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays, and products. All seven existing routes (VM, C, LLVM, QBE, WAT, direct Windows x64 assembly, and direct Linux x86-64 assembly) implement `u64`. The `u64_values.prim` example is compared against known output across all seven. [native_values.prim](native_values.prim) exercises mixed arguments and value passing on Windows/Linux. Use [explicit external tools](../docs/design/native-code.en.md) to generate, execute, and inspect machine-code objects and executables. A Primer-owned instruction encoder remains future work.
 
 ### Signed integers: negative and positive values
 
@@ -108,6 +108,7 @@ These examples show how to group, access, and pass multiple values. They use str
 | [fixed_arrays.prim](fixed_arrays.prim) | indexing, summation, and linear search in fixed arrays, and independent values after copying |
 | [product_arrays.prim](product_arrays.prim) | arrays of structs, nearest-point search, and array value copies |
 | [function_values.prim](function_values.prim) | passing and returning structs and nested fixed arrays as values |
+| [native_values.prim](native_values.prim) | Pass u64, integers, floats, strings, and structures through four mixed arguments; follow execution and machine code on Windows/Linux |
 
 ## Numerical computation
 
@@ -171,7 +172,7 @@ These examples are programs expressible with numbers, booleans, strings, binding
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
 
-The string examples support all six existing routes. LLVM and QBE require explicit targets: QBE is validated on Linux x86-64, direct assembly on Windows x64, and WAT in a WebAssembly environment providing the output host functions. `emit-ir` and `emit-bytecode` also expose type and content transformations.
+The string examples support all seven existing routes. LLVM and QBE require explicit targets: QBE is validated on Linux x86-64, direct assembly on Windows x64 / Linux x86-64, and WAT in a WebAssembly environment providing the output host functions. `emit-ir` and `emit-bytecode` also expose type and content transformations.
 
 Run QBE, WAT, and direct assembly comparisons with `cargo test --test string_routes`. [String design](../docs/design/strings.en.md#validation-scope) documents tool selection and validation scope.
 

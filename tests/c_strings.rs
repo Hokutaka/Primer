@@ -1,3 +1,5 @@
+#[path = "support/termination.rs"]
+mod termination;
 use std::{
     ffi::OsString,
     fs,
@@ -118,7 +120,7 @@ fn u64_boundaries_and_failures_have_no_undefined_c_operations() {
     for source in u64_cases::FAILURES {
         for optimization in ["-O0", "-O2"] {
             let failed = c.run(source, optimization);
-            assert!(!failed.status.success(), "{source}");
+            termination::assert_expected(&failed, termination::Expected::CheckedCFailure, source);
             assert!(failed.stdout.is_empty(), "{source}");
             let stderr = String::from_utf8_lossy(&failed.stderr);
             assert!(

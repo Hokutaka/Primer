@@ -129,6 +129,20 @@ pub fn compile_to_x86_64_win_asm(source: &str) -> Result<String, Diagnostic> {
     codegen::emit_x86_64_win_asm(&program)
 }
 
+pub fn compile_to_asm_with_target(
+    source: &str,
+    target: codegen::x86_64::Target,
+) -> Result<String, Diagnostic> {
+    codegen::x86_64::emit_asm(&compile_to_ir(source)?, target)
+}
+
+pub fn compile_to_asm_with_origins(
+    source: &str,
+    target: codegen::x86_64::Target,
+) -> Result<String, Diagnostic> {
+    codegen::x86_64::emit_asm_with_origins(&compile_to_ir(source)?, target)
+}
+
 pub fn compile_to_bytecode(source: &str) -> Result<bytecode::BytecodeProgram, Diagnostic> {
     let program = compile_to_ir(source)?;
 

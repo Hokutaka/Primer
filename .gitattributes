@@ -1,3 +1,4 @@
 tests/fixtures/** text eol=lf
 scripts/*.ps1 -linguist-detectable
 scripts/*.sh text eol=lf -linguist-detectable
+scripts/*.cjs text eol=lf -linguist-detectable

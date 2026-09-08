@@ -47,7 +47,7 @@ The current outputs can be described as follows:
 | LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 (required for strings) | LLVM IR `.ll` |
 | QBE IR | unspecified, or explicit Linux x86-64 (required for strings) | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
-| Native assembly | x86-64, Windows, Windows x64 ABI | GNU-style assembly `.s` |
+| Native assembly | x86-64, Windows / Linux, respective calling conventions | GNU-style assembly `.s` |
 | Primer bytecode | Primer VM | Primer bytecode `.pbc` |
 
 "Not selected by Primer" does not mean inferred implicitly from the host environment. It means that Primer does not include target-specific decisions in that observation and that the caller of a downstream tool selects the target.
@@ -60,7 +60,7 @@ LLVM `--target` selects `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc` a
 
 Artifact comparison separates the following questions. Support information is data, not permission to launch external programs.
 
-QBE strings pair explicit `x86_64-unknown-linux-gnu` selection with downstream `amd64_sysv`. Direct assembly remains fixed to Windows x64 and WAT to WebAssembly; WAT string output has a host contract accepting byte values. Route-specific storage and output choices remain documented in [string design](strings.en.md).
+QBE strings pair explicit `x86_64-unknown-linux-gnu` selection with downstream `amd64_sysv`. Direct assembly accepts explicit Windows/Linux x86-64 selection, and WAT remains fixed to WebAssembly; WAT string output has a host contract accepting byte values. Route-specific storage and output choices remain documented in [string design](strings.en.md).
 
 | Question | What is checked | Owner |
 | --- | --- | --- |
@@ -71,7 +71,7 @@ QBE strings pair explicit `x86_64-unknown-linux-gnu` selection with downstream `
 
 Finding an external tool does not establish that a build or execution will succeed. Keep preflight checks separate from actual stage results, distinguishing unsupported routes, missing tools, policy denial, generation failure, build failure, execution failure, and timeout. Do not silently drop unexecutable routes or count them as successes.
 
-The environment running Primer is separate from the artifact target. Calling `emit-asm` in WSL still produces GNU AT&T assembly for Windows x86-64. Linux assembly requires a separate implementation; support checks alone cannot add it. Even on Windows, Primer's internal aggregate passing convention does not guarantee external C ABI compatibility.
+The environment running Primer is separate from the artifact target. Calling `emit-asm` in WSL still produces GNU AT&T assembly for Windows x86-64. Select Linux assembly explicitly with `--target x86_64-unknown-linux-gnu`. Even on Windows, Primer's internal aggregate passing convention does not guarantee external C ABI compatibility.
 
 ### What comparison establishes
 
@@ -134,3 +134,5 @@ Adding a target preserves the following properties:
 Adding a target does not grant new authority to an observation API. A target identifier is data that selects lowering conditions, not authority to execute external commands or mutate compiler state.
 
 Selection and execution of external assemblers, linkers, and compilers remain the responsibility of the consumer of Primer artifacts.
+
+See [native code](native-code.en.md) for machine-code object and executable generation and observation.

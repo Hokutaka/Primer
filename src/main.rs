@@ -150,12 +150,20 @@ fn run() -> Result<(), String> {
 
             let rest: Vec<String> = args.collect();
 
-            let output = parse_output_option(&rest, "primer emit-asm <file> [-o <output.s>]")?;
+            let (output, target, annotate_origins) = parse_native_options(&rest, "emit-asm", "s")?;
+            let target = match target.as_deref() {
+                None => primer_lang::codegen::x86_64::Target::X86_64PcWindowsMsvc,
+                Some(value) => primer_lang::codegen::x86_64::Target::parse(value).ok_or_else(|| format!("unsupported assembly target `{value}`; expected x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc"))?,
+            };
 
             let source = read_source(&input)?;
 
             let asm = render_compilation_result(
-                primer_lang::compile_to_x86_64_win_asm(&source),
+                if annotate_origins {
+                    primer_lang::compile_to_asm_with_origins(&source, target)
+                } else {
+                    primer_lang::compile_to_asm_with_target(&source, target)
+                },
                 &source,
             )?;
 
@@ -262,7 +270,10 @@ fn parse_native_options(
     let mut annotate_origins = false;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
-        if flag == "--annotate-origins" && route == "emit-llvm" && !annotate_origins {
+        if flag == "--annotate-origins"
+            && matches!(route, "emit-llvm" | "emit-asm")
+            && !annotate_origins
+        {
             annotate_origins = true;
             continue;
         }
@@ -306,7 +317,7 @@ fn print_help() {
            primer emit-llvm <file> [--target <triple>] [--annotate-origins] [-o <output.ll>]\n\
            primer emit-wat <file> [-o <output.wat>]\n\
            primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]\n\
-           primer emit-asm <file> [-o <output.s>]\n\
+           primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]\n\
            primer emit-bytecode <file> [-o <output.pbc>]\n\
            primer run <file>\n\
            primer --version\n",

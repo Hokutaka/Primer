@@ -28,6 +28,8 @@ pub enum CompareOp {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Module {
+    pub origins: Vec<Origin>,
+    pub target: super::Target,
     pub uses_strings: bool,
     pub strings: Vec<String>,
     pub functions: Vec<Function>,
@@ -39,10 +41,20 @@ pub struct Module {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
+    pub origins: Vec<Origin>,
     pub id: usize,
     pub name: String,
     pub frame_size: usize,
     pub instructions: Vec<Instruction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Origin {
+    Source {
+        node_id: crate::ir::NodeId,
+        span: crate::source::Span,
+    },
+    Synthetic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +77,7 @@ pub enum FloatConstant {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    CallPrintSysV(Type),
     CallPrintU64,
     CompareU64(CompareOp),
     LoadStringLength,

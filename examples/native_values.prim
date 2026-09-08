@@ -1,0 +1,22 @@
+// 整数と浮動小数点が混ざる4引数を、Windows/Linuxの呼出規約で受け渡します。
+print("native values");
+type Row { count: u64, label: string, }
+
+fn measure(scale: f32, count: u64, offset: f64, correction: i32) -> f64 {
+    print(count);
+    print(correction);
+    return f64(scale) + offset;
+}
+
+fn replace(row: Row, weight: f64, count: u64, scale: f32) -> Row {
+    print(weight + f64(scale));
+    return Row { count: count, label: row.label, };
+}
+
+maximum: u64 = 18446744073709551615;
+print(measure(1.5, maximum, 2.5, -7));
+original: Row = Row { count: maximum, label: "日本語\0", };
+changed: Row = replace(original, 2.5, 9223372036854775808, 1.5);
+print(original.count);
+print(changed.count);
+print(changed.label);

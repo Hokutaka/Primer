@@ -148,6 +148,28 @@ fn missing_string_targets_fail_without_overwriting_an_artifact() {
 }
 
 #[test]
+fn native_origins_match_ir_and_both_target_assemblies() {
+    assert_observation("native-values", "emit-ir", "ir.pir");
+    for (target, file) in [
+        ("x86_64-pc-windows-msvc", "windows.s"),
+        ("x86_64-unknown-linux-gnu", "linux.s"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_primer"))
+            .arg("emit-asm")
+            .arg(source_path("native-values"))
+            .args(["--target", target, "--annotate-origins"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{:?}", output.stderr);
+        assert!(output.stderr.is_empty());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            expected_output("native-values", file).replace("\r\n", "\n")
+        );
+    }
+}
+
+#[test]
 fn emit_ir_matches_expected_output() {
     assert_observation_cases("emit-ir", "ir.pir");
 }

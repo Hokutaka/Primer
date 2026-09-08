@@ -72,7 +72,7 @@ primer emit-c examples/floating_point.prim
 
 整数の桁あふれ、不正な整数除算、配列の範囲外参照、値を保てない変換では実行を停止します。暗黙の数値変換はしません。通常の浮動小数点計算には丸めがあります。
 
-文字列はUTF-8の不変な値で、表示・等値比較・UTF-8バイト数の取得・関数やデータ構造での受け渡しに対応します。すべての出力経路で使用できます。LLVMとQBEでは実行環境を`--target`で明示します。[LLVMのターゲット指定](docs/reference/cli.ja.md#llvmのターゲット指定)はWindows x64 / Linux x86-64に対応します。QBEはLinux x86-64、直接アセンブリはWindows x64、WATはWebAssemblyの出力用ホスト関数を使います。表現の違いは[文字列の設計](docs/design/strings.ja.md)に記載しています。連結や文字列の添字参照は未実装です。
+文字列はUTF-8の不変な値で、表示・等値比較・UTF-8バイト数の取得・関数やデータ構造での受け渡しに対応します。すべての出力経路で使用できます。LLVMとQBEでは実行環境を`--target`で明示します。[LLVMのターゲット指定](docs/reference/cli.ja.md#llvmのターゲット指定)はWindows x64 / Linux x86-64に対応します。QBEはLinux x86-64、直接アセンブリはWindows x64 / Linux x86-64、WATはWebAssemblyの出力用ホスト関数を使います。表現の違いは[文字列の設計](docs/design/strings.ja.md)に記載しています。連結や文字列の添字参照は未実装です。
 
 動的な長さの配列、再帰、失敗からの回復、明示的な丸め・切り捨て操作は未実装です。現在の生成先では小さい整数型も64ビット領域に格納し、値の範囲を検査します。
 
@@ -86,10 +86,12 @@ primer emit-c examples/floating_point.prim
 | `emit-llvm` | LLVM IR（`.ll`） | LLVM / Clangでコンパイル |
 | `emit-qbe` | QBE IR（`.ssa`） | QBEで処理 |
 | `emit-wat` | WebAssembly Text（`.wat`） | WebAssembly用ツールとホストで実行 |
-| `emit-asm` | Windows x86-64アセンブリ（`.s`） | アセンブル・リンク |
+| `emit-asm` | Windows/Linux x86-64アセンブリ（`.s`） | アセンブル・リンク |
 | `emit-bytecode` | Primer bytecode（`.pbc`） | 命令列を確認。VM実行はソースに対する`run`を使用 |
 
 Primerは成果物の生成までを担当します。外部ツールの選択、対象CPUや最適化設定、測定方法は呼び出す側が決定します。詳細は[出力経路とターゲット](docs/design/targets.ja.md)を参照してください。
+
+Linux ASMと機械語までの観測は[ネイティブコードの設計と実行手順](docs/design/native-code.ja.md)を参照してください。
 
 ## サンプルと文書
 

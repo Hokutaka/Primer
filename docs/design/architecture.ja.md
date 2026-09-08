@@ -158,7 +158,7 @@ ASTとPrimer IRは剰余、AND、OR、XOR、左右のシフト、単項のビッ
 
 コード生成側は整数専用の`IntegerBinaryOp`と元の`IntegerType`を、各バックエンドIRの`IntegerBinary`へ渡します。単項`~`は符号付きなら`-1`、符号なしなら元の型の最大値とのXORへ下げます。64ビットで格納していても、`~0u8`の結果は255です。EmitterはPrimer IRの解釈や型推論を繰り返しません。
 
-C・LLVM・QBE・WATは、必要な演算と型の組を順序付き集合に集め、各補助関数を一度だけ出力します。Cでは式ごとの一時変数とコンマ演算子で左右の評価順を守り、式を短絡評価やループの外へ移動しません。Windows x86-64はレジスタ上の演算と明示的な検査分岐へ下げます。
+C・LLVM・QBE・WATは、必要な演算と型の組を順序付き集合に集め、各補助関数を一度だけ出力します。Cでは式ごとの一時変数とコンマ演算子で左右の評価順を守り、式を短絡評価やループの外へ移動しません。Windows/Linux x86-64はレジスタ上の演算と明示的な検査分岐へ下げます。
 
 シフト量は元の型の幅で先に検査します。左シフトは入力に許される上下限を求めてから実行し、捨てられたビットを事後検査で見逃すことを避けます。Cでは負数のシフトに依存せず、検査済みの乗算で左シフトを実現します。右シフトの符号も出力先の偶然の動作へ委ねません。符号付き最小値の`% -1`は、除算命令の桁あふれを起こさず0を返します。
 
@@ -176,7 +176,7 @@ Primer IRで一つの整数演算として見える式は、backend loweringで�
 | LLVM | LLVM IR表現 | `.ll` |
 | QBE | QBE IR表現 | `.ssa` |
 | WebAssembly | WAT指向の命令IR | `.wat` |
-| Windows x86-64直接アセンブリ | アセンブリIR | `.s` |
+| Windows/Linux x86-64直接アセンブリ | アセンブリIR | `.s` |
 | Primer bytecode | `BytecodeProgram` | `.pbc` |
 
 バックエンドIRには、Primer IRに含めるべきでない決定を表現できます。
@@ -241,7 +241,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 

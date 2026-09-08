@@ -1,6 +1,14 @@
 use primer_lang::run_vm;
 
 #[test]
+fn native_values_keep_mixed_arguments_and_aggregate_copies() {
+    assert_eq!(
+        run_vm(include_str!("../examples/native_values.prim")).unwrap(),
+        "native values\n18446744073709551615\n-7\n4\n4\n18446744073709551615\n9223372036854775808\n日本語\0\n"
+    );
+}
+
+#[test]
 fn string_values_preserve_copies_unicode_and_line_breaks() {
     assert_eq!(
         run_vm(include_str!("../examples/string_values.prim")).unwrap(),

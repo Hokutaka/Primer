@@ -27,7 +27,7 @@ bash scripts/run-examples.sh --pattern 'matrix*.prim' --skip-build
 
 ## 型から探す
 
-8種類の整数型、`f32`・`f64`、`bool`、`string`、固定長配列、構造体を使えます。既存6経路（VM・C・LLVM・QBE・WAT・Windows x64直接アセンブリ）に`u64`まで実装しています。`u64_values.prim`は全6経路で既知の期待出力と比較しています。Linux直接アセンブリと機械語の直接生成は今後の対象です。
+8種類の整数型、`f32`・`f64`、`bool`、`string`、固定長配列、構造体を使えます。既存7経路（VM・C・LLVM・QBE・WAT・Windows x64直接アセンブリ・Linux x86-64直接アセンブリ）に`u64`まで実装しています。`u64_values.prim`は全7経路で既知の期待出力と比較しています。[native_values.prim](native_values.prim)はWindows/Linuxの混在引数と値の受け渡しを確認する例です。機械語を含むオブジェクトと実行ファイルの生成・実行・観測には、[明示した外部ツールを使う手順](../docs/design/native-code.ja.md)を用意しています。機械語の符号化そのものの自前実装は今後の対象です。
 
 ### 符号付き整数：負数と正数
 
@@ -108,6 +108,7 @@ cargo run -- run examples/u64_values.prim
 | [fixed_arrays.prim](fixed_arrays.prim) | 固定長配列の要素を読み、合計と線形探索を行う。コピーした配列が独立した値であることも確認する |
 | [product_arrays.prim](product_arrays.prim) | 構造体を配列に並べ、最も近い点を探す。配列のコピーも確認する |
 | [function_values.prim](function_values.prim) | 構造体と入れ子の固定長配列を、関数へ値として渡して受け取る |
+| [native_values.prim](native_values.prim) | u64・整数・小数・文字列・構造体を混在する4引数で渡し、Windows/Linuxの実行と機械語までを辿る |
 
 ## 数値計算
 
@@ -171,7 +172,7 @@ cargo run --quiet -- emit-c examples/linear_regression.prim
 
 `mut`な配列では要素を直接更新できるため、in-place sortや配列を更新する動的計画法も表現できます。再帰、動的な長さのcollectionはまだありません。
 
-文字列のサンプルは既存6経路に対応します。LLVMとQBEには明示的なターゲットを渡し、QBEはLinux x86-64、直接アセンブリはWindows x64、WATは出力用ホスト関数を備えたWebAssembly環境で検証します。`emit-ir`と`emit-bytecode`でも型と内容の変換を読めます。
+文字列のサンプルは既存7経路に対応します。LLVMとQBEには明示的なターゲットを渡し、QBEはLinux x86-64、直接アセンブリはWindows x64 / Linux x86-64、WATは出力用ホスト関数を備えたWebAssembly環境で検証します。`emit-ir`と`emit-bytecode`でも型と内容の変換を読めます。
 
 QBE・WAT・直接アセンブリの実行比較は`cargo test --test string_routes`で確認できます。[文字列の設計](../docs/design/strings.ja.md#検証範囲)にツールの指定と検証範囲を記載しています。
 

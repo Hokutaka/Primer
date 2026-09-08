@@ -1,5 +1,7 @@
 #[path = "support/crash_dialogs.rs"]
 mod crash_dialogs;
+#[path = "support/termination.rs"]
+mod termination;
 #[path = "support/u64_cases.rs"]
 mod u64_cases;
 
@@ -290,6 +292,7 @@ fn bytes_equality_and_mixed_output_match_vm_and_c() {
     for source in [
         include_str!("../examples/string_values.prim"),
         include_str!("../examples/string_lookup.prim"),
+        include_str!("../examples/native_values.prim"),
     ] {
         native.matches(source, &run_vm(source).unwrap());
     }
@@ -331,7 +334,15 @@ fn array_bounds_and_u64_failures_stop_at_runtime() {
         assert!(run_vm(source).is_err());
         for optimization in ["-O0", "-O2"] {
             for llvm in [false, true] {
-                assert!(!native.run(source, llvm, optimization).status.success());
+                termination::assert_expected(
+                    &native.run(source, llvm, optimization),
+                    if llvm {
+                        termination::Expected::IllegalInstruction
+                    } else {
+                        termination::Expected::CheckedCFailure
+                    },
+                    source,
+                );
             }
         }
     }

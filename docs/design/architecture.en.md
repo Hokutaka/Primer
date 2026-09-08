@@ -148,7 +148,7 @@ The AST and Primer IR retain `&&` and `||` as `Logical`, separate from eager bin
 
 Bytecode lowering uses a conditional jump consuming the left value and a jump to the merge point. The branch carries the logical expression's `NodeId` and the left operand's `Span`; right-operand instructions retain their own origins. A failure in an evaluated right operand therefore points to the failed operation, not merely the containing logical expression.
 
-C uses short-circuit logical expressions, and WAT uses a Boolean-producing `if`. LLVM and QBE store the left result in compiler-generated storage, update it only in the right-operand branch, and load it after merging. Windows x86-64 retains the result in a register across branch and merge. None moves right-operand evaluation outside its branch.
+C uses short-circuit logical expressions, and WAT uses a Boolean-producing `if`. LLVM and QBE store the left result in compiler-generated storage, update it only in the right-operand branch, and load it after merging. Windows/Linux x86-64 retains the result in a register across branch and merge. None moves right-operand evaluation outside its branch.
 
 These transformations can be inspected through existing observation boundaries. They do not introduce a new public observation API or runtime history.
 
@@ -158,7 +158,7 @@ The AST and Primer IR distinguish remainder, AND, OR, XOR, left/right shifts, an
 
 Code generation passes an integer-only `IntegerBinaryOp` and the original `IntegerType` into each backend IR's `IntegerBinary`. Unary `~` lowers to XOR with `-1` for signed types or the original type's maximum for unsigned types. Thus `~0u8` remains 255 even with 64-bit storage. Emitters do not reinterpret Primer IR or repeat type inference.
 
-C, LLVM, QBE, and WAT collect required operation/type pairs in an ordered set and emit each helper once. C uses per-expression local temporaries and the comma operator to sequence operands, without moving expressions outside short-circuit branches or loops. Windows x86-64 lowers to register operations and explicit checking branches.
+C, LLVM, QBE, and WAT collect required operation/type pairs in an ordered set and emit each helper once. C uses per-expression local temporaries and the comma operator to sequence operands, without moving expressions outside short-circuit branches or loops. Windows/Linux x86-64 lowers to register operations and explicit checking branches.
 
 Shift counts are checked against the original width first. Left shift then checks the permitted input bounds before shifting, avoiding lost bits that a result-only check could miss. C uses checked multiplication rather than shifting negative signed values. Signed right shift is also independent of accidental target behavior. Signed minimum `% -1` returns zero without overflowing a division instruction.
 
@@ -176,7 +176,7 @@ The current output routes and implementation boundaries are:
 | LLVM | LLVM IR representation | `.ll` |
 | QBE | QBE IR representation | `.ssa` |
 | WebAssembly | WAT-oriented instruction IR | `.wat` |
-| Direct x86-64 Windows assembly | assembly IR | `.s` |
+| Direct x86-64 Windows/Linux assembly | assembly IR | `.s` |
 | Primer bytecode | `BytecodeProgram` | `.pbc` |
 
 Backend IR is allowed to encode decisions that do not belong in Primer IR.
@@ -241,7 +241,7 @@ primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
 primer emit-qbe <file> [--target <triple>] [-o <output.ssa>]
 primer emit-wat <file> [-o <output.wat>]
-primer emit-asm <file> [-o <output.s>]
+primer emit-asm <file> [--target <triple>] [--annotate-origins] [-o <output.s>]
 primer emit-bytecode <file> [-o <output.pbc>]
 ```
 

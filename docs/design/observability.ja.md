@@ -63,3 +63,9 @@ Lowererは各命令の本体と別に`Source { NodeId, Span }`または`Syntheti
 注釈にはソース本文・パスを含めません。注釈の有無はloweringに入力せず、出力時のコメント追加だけを切り替えます。注釈を除いたLLVMは通常出力と一致し、実行結果も同じであることをexampleで検証します。
 
 最初の対応経路はLLVMです。既存の公開観測面であるIRと生成物を使い、内部状態を書き換える窓口は追加しません。IRと注釈付きLLVMの対は`tests/fixtures/observation/string-origins/expected/`に固定しています。
+
+## ASMと機械語の出自
+
+`emit-asm --annotate-origins`もNodeIdとUTF-8バイト範囲を保持します。コメントと`primer_origin_nN_...`ラベルを加え、オブジェクトのシンボル・逆アセンブルからIRへ辿れます。両ターゲットのIR/ASMの対は`tests/fixtures/observation/native-values/expected/`に固定しています。注釈を除いたASMの一致と、注釈の有無による命令バイトの一致をテストします。
+
+機械語の符号化・リンクは明示した外部ツールが担当し、生成、想定した停止、正常実行、失敗を記録します。出自の範囲とアドレスの意味、実行手順は[ASMから機械語までを辿る](native-code.ja.md)を参照してください。
