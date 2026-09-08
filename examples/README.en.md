@@ -25,18 +25,71 @@ The `.sh` script defaults to `target/unix/debug/primer`, separate from Windows a
 
 The runner checks each example's exit status. Use `cargo test --test examples` to compare expected output, or `bash scripts/test.sh` to run fmt, Clippy, and all test targets together.
 
-## Basics
+## Find examples by type
+
+Primer supports eight integer kinds, `f32`/`f64`, `bool`, `string`, fixed arrays, and products. All six existing routes (VM, C, LLVM, QBE, WAT, and direct Windows x64 assembly) implement `u64`. The `u64_values.prim` example is compared against known output across all six. Direct Linux assembly and direct machine-code generation are future work.
+
+### Signed integers: negative and positive values
+
+| Type | Range | Example | What to observe |
+| --- | --- | --- | --- |
+| `i8` | −128 through 127 | [sensor_calibration.prim](sensor_calibration.prim) | widening a small negative correction to `i16` before arithmetic |
+| `i16` | −32768 through 32767 | [sensor_calibration.prim](sensor_calibration.prim) | signed readings, widened to `i32` for aggregation |
+| `i32` | −2147483648 through 2147483647 | [maximum_subarray.prim](maximum_subarray.prim) | adding and comparing positive and negative changes |
+| `i64` | −9223372036854775808 through 9223372036854775807 | [integer_limits.prim](integer_limits.prim) | minimum, maximum, and a check before overflow |
+
+### Unsigned integers: nonnegative values and bits
+
+| Type | Range | Example | What to observe |
+| --- | --- | --- | --- |
+| `u8` | 0 through 255 | [color_blending.prim](color_blending.prim), [bit_flags.prim](bit_flags.prim) | color channels and setting, clearing, or toggling eight bits |
+| `u16` | 0 through 65535 | [color_blending.prim](color_blending.prim) | widening `u8` colors before addition, then converting the average back |
+| `u32` | 0 through 4294967295 | [population_statistics.prim](population_statistics.prim) | values around three billion, widened to `i64` for aggregation |
+| `u64` | 0 through 18446744073709551615 | [u64_values.prim](u64_values.prim) | maximum, high bit, unsigned comparison/division, functions, arrays, copies, and exact conversions |
+
+Run the u64 example with:
+
+```sh
+cargo run -- run examples/u64_values.prim
+```
+
+Its first output lines are `u64`, `18446744073709551615`, `9223372036854775808`, and `0`. Reassigning the original binding preserves its copy, and the high bit remains part of a positive number. The [u64 design](../docs/design/u64.en.md) explains each target representation.
+
+Out-of-range integer arithmetic stops instead of wrapping. Types do not mix implicitly: use explicit conversions such as `i64(value)` or `convert<i64>(value)`. Compare both spellings in [integer_conversions.prim](integer_conversions.prim). Integers without type information default to `i64`; array indices also use `i64`. Bit widths describe value ranges; generated targets currently store even small integers in 64-bit locations.
+
+### Floating point: fractions and precision
+
+| Type | Representation | Example | What to observe |
+| --- | --- | --- | --- |
+| `f32` | 32-bit floating point | [floating_point.prim](floating_point.prim), [logistic_map.prim](logistic_map.prim) | rounding and computation differences from `f64` |
+| `f64` | 64-bit floating point | [floating_point.prim](floating_point.prim), [small_values.prim](small_values.prim) | small-value display and arithmetic rounding; floats without type information default to `f64` |
+
+[measurement_statistics.prim](measurement_statistics.prim) and [normalized_histogram.prim](normalized_histogram.prim) convert between integers and floats. Explicit conversion succeeds only when it preserves the value. This is separate from rounding during ordinary floating-point arithmetic.
+
+### Booleans and strings
+
+| Type | Values | Example | What to observe |
+| --- | --- | --- | --- |
+| `bool` | `true` / `false` | [boolean_comparisons.prim](boolean_comparisons.prim), [short_circuit.prim](short_circuit.prim) | comparison, negation, and skipped evaluation through short-circuiting |
+| `string` | immutable UTF-8 content | [string_values.prim](string_values.prim), [string_byte_length.prim](string_byte_length.prim) | Japanese text, equality, copies, and UTF-8 byte length rather than character count |
+
+[string_origins.prim](string_origins.prim) traces string operations through Primer IR and annotated LLVM. String content is immutable; mutable bindings can be reassigned.
+
+### Arrays and products: combining types
+
+| Type form | Example | What to observe |
+| --- | --- | --- |
+| Fixed array `[T; N]` | [fixed_arrays.prim](fixed_arrays.prim), [bubble_sort.prim](bubble_sort.prim) | indexing, element updates, and independent copies |
+| Product `type Point { ... }` | [product-point.prim](product-point.prim), [product_arrays.prim](product_arrays.prim) | fields, defaults, and arrays of products |
+| Nested arrays and products | [function_values.prim](function_values.prim), [u64_values.prim](u64_values.prim), [string_lookup.prim](string_lookup.prim) | combining numbers or strings and passing values to functions |
+
+`infer` requests type inference; it is not a separate value type. `void` describes functions returning no value. See [floating_point.prim](floating_point.prim) and [functions.prim](functions.prim).
+
+## Basics and control flow
 
 | Example | Demonstrates |
 | --- | --- |
 | [hello.prim](hello.prim) | a first example: name two integers, add them, and show the result with `print` |
-| [string_values.prim](string_values.prim) | Japanese text, equality, line breaks, and preserved string copies after reassignment |
-| [floating_point.prim](floating_point.prim) | precision differences between `f32` and `f64`, and type inference with `infer` |
-| [small_values.prim](small_values.prim) | observing small numbers in scientific notation and distinguishing display from arithmetic rounding |
-| [integer_limits.prim](integer_limits.prim) | minimum and maximum `i64` values and a check before addition overflows |
-| [integer_conversions.prim](integer_conversions.prim) | widening `i32` to `i64` with two equivalent conversion spellings |
-| [bit_flags.prim](bit_flags.prim) | setting, clearing, toggling, and testing eight independent bit switches |
-| [boolean_comparisons.prim](boolean_comparisons.prim) | booleans and comparisons |
 | [short_circuit.prim](short_circuit.prim) | combining conditions with `&&`/`\|\|` to skip unnecessary division, indexing, and function calls |
 | [conditional.prim](conditional.prim) | `if` / `else` and scope |
 | [loop_control.prim](loop_control.prim) | `while`, `break`, and `continue` |
@@ -118,7 +171,7 @@ These examples are programs expressible with numbers, booleans, strings, binding
 
 Elements of a `mut` array can be assigned directly, so in-place sorting and array-updating dynamic programming are expressible. Recursion and dynamically sized collections are not available yet.
 
-The two string examples support every output route. LLVM and QBE require explicit targets: QBE is validated on Linux x86-64, direct assembly on Windows x64, and WAT in a WebAssembly environment providing the output host functions. `emit-ir` and `emit-bytecode` also expose type and content transformations.
+The string examples support all six existing routes. LLVM and QBE require explicit targets: QBE is validated on Linux x86-64, direct assembly on Windows x64, and WAT in a WebAssembly environment providing the output host functions. `emit-ir` and `emit-bytecode` also expose type and content transformations.
 
 Run QBE, WAT, and direct assembly comparisons with `cargo test --test string_routes`. [String design](../docs/design/strings.en.md#validation-scope) documents tool selection and validation scope.
 
@@ -146,7 +199,3 @@ For LLVM, use the Windows/Linux command examples in the [CLI reference](../docs/
 Run `cargo run -- run examples/string_byte_length.prim` and inspect `emit-ir` or `emit-llvm --target x86_64-unknown-linux-gnu --annotate-origins` for the same input.
 
 Output lines are `0, 9, 3, 2, 3, 4, 7, 3, 9, left, right, 9, false, false, 6, 10`, each followed by LF. The example exercises UTF-8 lengths, saved copies, calls, arrays, defaults, and evaluation order. Each of `left` and `right` is printed once; `skipped` is never printed. C, LLVM, QBE, WAT, and direct assembly are also executed against known expected bytes. See the [small observation fixture](../tests/fixtures/observation/string-byte-length/) for representations in every route.
-
-## Unsigned 64-bit integers
-
-Run `cargo run -- run examples/u64_values.prim` to try a 64-bit set of flags, the maximum value, value copies, and exact conversions. Output starts with `u64`, `18446744073709551615`, `9223372036854775808`, and `0`. Reassigning the original binding preserves its earlier copy.
