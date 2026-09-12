@@ -571,3 +571,112 @@ fn module_observation_keeps_dependency_sources_for_both_encoders() {
         assert!(manifest.contains("\"file\": 2"));
     }
 }
+
+#[test]
+fn many_argument_cli_examples_preserve_order_copies_and_stack_values() {
+    let w = Workspace::new();
+    let entry = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/function_arguments.prim");
+    let program = primer_lang::modules::load(&entry).unwrap().to_ir().unwrap();
+    compare_routes(&w, &program, Some(&entry), "argument-example");
+
+    // 両レジスタ群を別々に使い切り、もう一方の空きとスタック順序を確認します。
+    // 引数ごとに異なる値を確認し、順序の取り違えを合計値で隠さないようにします。
+    for (case, float_first) in [true, false].into_iter().enumerate() {
+        let mut values = vec![
+            ("i8", "-8"),
+            ("u8", "255"),
+            ("i16", "-1600"),
+            ("u16", "65535"),
+            ("i32", "-320000"),
+            ("u32", "4294967295"),
+            ("i64", "-9223372036854775808"),
+            ("u64", "18446744073709551615"),
+            ("bool", "true"),
+            ("string", "\"観測\\0\\r\\n\""),
+        ];
+        let floats = vec![
+            ("f32", "1.5"),
+            ("f64", "2.5"),
+            ("f32", "3.5"),
+            ("f64", "4.5"),
+            ("f32", "5.5"),
+            ("f64", "6.5"),
+            ("f32", "7.5"),
+            ("f64", "8.5"),
+            ("f32", "-0.0"),
+            ("f64", "-0.0"),
+        ];
+        if float_first {
+            values.splice(0..0, floats);
+        } else {
+            values.extend(floats);
+        }
+        let parameters = values
+            .iter()
+            .enumerate()
+            .map(|(i, (ty, _))| format!("p{i}: {ty}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let arguments = values
+            .iter()
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let checks = values
+            .iter()
+            .enumerate()
+            .map(|(i, (ty, value))| {
+                if *value == "-0.0" {
+                    format!("print({ty}(1.0) / p{i} < {ty}(0.0));")
+                } else {
+                    format!("expected{i}: {ty} = {value}; print(p{i} == expected{i});")
+                }
+            })
+            .collect::<String>();
+        // 大きな集約引数をスタック経由で受け取り、集約戻り値の保存先も保ちます。
+        let elements = vec!["9"; 600].join(", ");
+        let source = format!(
+            "type Row {{ value: u64, label: string, }}
+            fn take({parameters}, row: Row, data: [i64; 600]) -> Row {{
+                {checks} mut copy: [i64; 600] = data; copy[599] = 3;
+                print(data[599]); print(copy[599]); return row;
+            }}
+            print(\"開始\"); original: Row = Row {{ value: 18446744073709551615, label: \"保持\" }};
+            data: [i64; 600] = [{elements}];
+            result: Row = take({arguments}, original, data);
+            print(result.value); print(result.label); print(data[599]);"
+        );
+        let program = primer_lang::compile_to_ir(&source).unwrap();
+        assert_eq!(
+            run_bytecode(&bytecode::lower(&program).unwrap()).unwrap(),
+            format!(
+                "開始\n{}9\n3\n18446744073709551615\n保持\n9\n",
+                "true\n".repeat(values.len())
+            )
+        );
+        compare_routes(&w, &program, None, &format!("argument-banks-{case}"));
+    }
+}
+
+#[test]
+fn many_argument_failure_preserves_prior_output_and_skips_later_arguments() {
+    let w = Workspace::new();
+    let source = r#"
+        fn seen(value: i64) -> i64 { print(value); return value; }
+        fn take(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> bool {
+            print("body"); return true;
+        }
+        print("開始");
+        print(false && take(seen(1), 2, 3, 4, 5, 1 / 0, seen(7)));
+        print(take(seen(1), seen(2), seen(3), seen(4), seen(5), 1 / 0, seen(7)));
+    "#;
+    let entry = w.0.join("arguments.prim");
+    fs::write(&entry, source).unwrap();
+    let program = primer_lang::modules::load(&entry).unwrap().to_ir().unwrap();
+    let error = run_bytecode(&bytecode::lower(&program).unwrap()).unwrap_err();
+    assert_eq!(error.vm_error().output(), "開始\nfalse\n1\n2\n3\n4\n5\n");
+    let failure = error.runtime_failure().unwrap();
+    assert_eq!(failure.code.name(), "division-by-zero");
+    assert_eq!(failure.span.start(), source.rfind("1 / 0").unwrap());
+    compare_routes(&w, &program, Some(&entry), "argument-failure");
+}

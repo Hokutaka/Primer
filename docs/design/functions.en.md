@@ -74,14 +74,28 @@ In this section, "aggregate value" means either a product value or a fixed array
 - LLVM IR emits typed parameters and results and stores received values in observable local slots.
 - QBE IR receives aggregate argument addresses and copies them into callee stack storage at function entry. An aggregate result uses a caller-provided destination as a hidden first argument.
 - WebAssembly Text represents the same scheme with addresses in linear memory.
-- Windows x86-64 lowers scalar arguments to the general-purpose or XMM registers selected by the Windows x64 ABI. Aggregate argument addresses use the positional general-purpose registers, while the internal Primer convention passes an aggregate result destination in `RAX`.
+- Windows/Linux x86-64 lower scalars and aggregate addresses to argument registers or stack slots for the explicit target. The callee copies aggregate arguments; the internal Primer convention passes an aggregate result destination in `RAX`.
 - Primer bytecode and the VM create an independent frame for every call and clone aggregate values into it.
 
-Primer IR does not choose ABI registers, stack offsets, or hidden result destinations. Those are backend-lowering decisions visible in emitted artifacts. Addresses used internally by QBE, WebAssembly, and Windows x86-64 only implement copying; they do not define Primer reference types or an external ABI.
+Primer IR does not choose ABI registers, stack offsets, or hidden result destinations. Those are backend-lowering decisions visible in emitted artifacts. Addresses used internally by QBE, WebAssembly, and Windows/Linux x86-64 only implement copying; they do not define Primer reference types or an external ABI.
+
+## Many arguments and observability
+
+[function_arguments.prim](../../examples/function_arguments.prim) executes a nested seven-argument call and an eleven-argument call combining numbers, strings, arrays, and products. Arguments are evaluated once, left to right. A failure skips later arguments and the callee body; short-circuiting skips argument evaluation too.
+
+Direct assembly and the internal encoder share argument placement. Windows uses positional registers for the first four arguments and stack slots after its 32-byte shadow space for the rest. Linux/SysV counts six integer/address registers and eight floating-point registers independently, placing spilled arguments on the stack in source order. Exhausting one bank does not prevent using the other. The target is explicit, never inferred from the running OS.
+
+Storage for evaluated arguments is separate from the outgoing stack area. Calls preserve 16-byte stack alignment and transfer f32/f64 bits without conversion. Aggregate copies and the result destination in `RAX` remain Primer internal conventions, not a promise of external ABI compatibility. Assembly and disassembly expose placement for observation without giving Primer programs those addresses or mutation capabilities.
+
+`cargo test --test source_files many_argument` compares C, LLVM, QBE, WAT, direct assembly, and internal objects against known VM outputs. Coverage includes 22 mixed arguments, integer boundaries, negative zero, 600-element arrays, independent copies, failure locations, and prior output. Linux/Windows CI runs these checks with the required external tools configured.
+
+For the basic register and stack rules, see [Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention) and the [System V AMD64 ABI](https://gitlab.com/x86-psABIs/x86-64-ABI).
 
 ## Current limits
 
-Functions currently accept at most four parameters. Scalars, named product types, and fixed arrays may be used as parameters and results.
+There is no fixed language-level parameter-count limit. Scalars, named product types, and fixed arrays may be used as parameters and results.
+
+Finite stack/memory and external tool constraints still apply. This does not introduce variadic or default arguments: argument counts and types must exactly match the declaration.
 
 Both direct and indirect recursion produce a diagnostic. The current WebAssembly backend does not yet separate product temporary memory per invocation, so enabling recursion could corrupt values in only some routes.
 

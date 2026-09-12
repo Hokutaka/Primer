@@ -66,4 +66,4 @@ WSLで`CARGO_TARGET_DIR=target/unix`を使う場合は、`--primer target/unix/d
 
 Cの検査は`runtime-v1`をstderrへ出し、VMと停止理由・ソース位置・先行出力を照合します。Windowsではabortと他のfast-failが同じ終了コードを使い得るため、コードだけでは合格にしません。[Microsoftのabort仕様](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/abort)と[fast-fail仕様](https://learn.microsoft.com/en-us/cpp/intrinsics/fastfail)も参照してください。QBEはSIGABRT、LLVMは不正命令、WATはunreachableを確認し、いずれも同じ共通記録を照合します。
 
-`cargo test --test native_assembly`で全example、文字列・u64境界値、混在する4引数、大きなスタック、コピー、出自、期待する停止を検証します。機械語経路のテストではNode・Cドライバ・objdumpが必要です。`PRIMER_TEST_NODE`、`PRIMER_TEST_CC`（Linux）、`PRIMER_TEST_ASM_CLANG`（Windows）、`PRIMER_TEST_OBJDUMP`で指定できます。CIでも両OSの実行を必須にしています。
+`cargo test --test native_assembly`で全example、文字列・u64境界値、register数を超える混在引数、大きなスタック、コピー、出自、期待する停止を検証します。機械語経路のテストではNode・Cドライバ・objdumpが必要です。`PRIMER_TEST_NODE`、`PRIMER_TEST_CC`（Linux）、`PRIMER_TEST_ASM_CLANG`（Windows）、`PRIMER_TEST_OBJDUMP`で指定できます。CIでも両OSの実行を必須にしています。

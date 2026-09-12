@@ -25,7 +25,7 @@ Primerでは、書いた計算の意味と、それが実行される表現へ�
 | 文字列 | `string`、表示、`==`・`!=`、`byte_len` | 連結・添字参照・文字数・数値変換は未実装 | [string_byte_length](../../examples/string_byte_length.prim)、[string_lookup](../../examples/string_lookup.prim) |
 | 固定長配列 | `[T; N]`、入れ子、値渡し、`mut`な要素の更新 | 長さは型の一部。添字は`i64`。動的長・スライスなし | [fixed_arrays](../../examples/fixed_arrays.prim)、[heat_diffusion](../../examples/heat_diffusion.prim) |
 | 名前付きproduct type | フィールド、既定値、入れ子、値渡し | フィールドの直接代入なし。新しい値を構築して全体を再代入 | [product-point](../../examples/product-point.prim)、[packet_counter](../../examples/packet_counter.prim) |
-| 関数と制御構文 | 型付き引数・戻り値、`void`、`if`・`else`、`while`・`for`、`break`・`continue`・`return` | 関数は最大4引数。再帰なし | [function_values](../../examples/function_values.prim)、[loop_control](../../examples/loop_control.prim) |
+| 関数と制御構文 | 型付き引数・戻り値、`void`、`if`・`else`、`while`・`for`、`break`・`continue`・`return` | 引数数の固定上限なし。再帰なし | [function_values](../../examples/function_values.prim)、[loop_control](../../examples/loop_control.prim) |
 | 束縛と変換 | 既定で不変、`mut`、明示的な`infer`、`T(value)`と`convert<T>(value)` | `infer`は実行時型ではない。変換は切り捨てや飽和の指定ではない | [integer_conversions](../../examples/integer_conversions.prim) |
 | モジュール | 明示的なimport・名前空間・関数と型のpub指定 | 循環・非公開参照を診断。再export・モジュール変数・パッケージ配布なし | [modules](../../examples/modules/README.md) |
 
@@ -45,7 +45,7 @@ Primerでは、書いた計算の意味と、それが実行される表現へ�
 | --- | --- | --- |
 | 1（実装済み） | 停止理由・ソース位置・実行成否の共通契約 | 桁あふれ、ゼロ除算、変換失敗、境界外アクセスを区別し、どの式で止まったか追う。同じ失敗例をVMと生成経路で比較する |
 | 2（基礎実装済み） | コードを分ける仕組み | モジュール・名前空間・公開範囲を実装。次は必要な例から明示的なコンパイル時定数などを検討する |
-| 2 | 関数・値操作の実用上の制限を減らす | 4引数制限を各ABIで解消する。productの一部を変えた新しい値を作る表現を検討する。混在引数とコピー後の独立性を確認する |
+| 2 | 関数・値操作の実用上の制限を減らす | 4引数制限は全経路で解消済み。productの一部を変えた新しい値を作る表現を検討する。混在引数とコピー後の独立性を確認する |
 | 3 | 選択肢と回復可能な失敗を値で表す仕組み | 列挙・直和型、網羅性を検査する分岐、成功/失敗や存在/不在の値を検討する。文字列検索の「未登録」を特別な文字列で代用せず表せるようにする |
 | 3 | 配列・数値処理の再利用 | 配列長の取得、反復、型や長さをまたぐ関数の必要性からジェネリクスを検討する。丸め・切り捨てが必要なら現在の正確な変換と別に契約を定める |
 | 4 | 動的データと外部入出力 | バイト列、スライス、動的配列、文字列連結、ファイル等を扱う前に、所有・寿命・確保失敗・副作用の境界を定める。再帰も呼び出しごとの保存領域と資源上限を解決してから追加する |
@@ -55,7 +55,7 @@ Primerでは、書いた計算の意味と、それが実行される表現へ�
 
 優先1の最初の実装として、VMとWindows/LinuxのASM・自前オブジェクトに[実行時停止の共通記録](runtime-diagnostics.ja.md)を追加しました。停止前の出力も保持します。C・LLVM・QBE・WATへの展開も実装し、同じ停止理由・ソース位置・先行出力を比較します。
 
-[ファイルを識別できるソース位置](source-files.ja.md)に続き、[モジュール](modules.ja.md)の明示的なimport・名前空間・関数と型の公開範囲を実装しました。CLIから分割版と単一ファイル版を全経路で実行比較します。コンパイル時定数、再export、パッケージ配布は未実装です。次は関数の引数数制限と値操作を、具体的なexampleから検討します。
+[ファイルを識別できるソース位置](source-files.ja.md)に続き、[モジュール](modules.ja.md)の明示的なimport・名前空間・関数と型の公開範囲を実装しました。CLIから分割版と単一ファイル版を全経路で実行比較します。コンパイル時定数、再export、パッケージ配布は未実装です。関数の4引数制限も解消し、[混在引数の例](../../examples/function_arguments.prim)で評価順とコピーを比較しています。次はproductの一部を変えた新しい値を作る表現を、具体的なexampleから検討します。
 
 継承、暗黙の共有可変参照、自動GPU振り分け、汎用非同期処理、大規模なパッケージ機構は、現在の例から必要性が確認できていないため先行させません。
 

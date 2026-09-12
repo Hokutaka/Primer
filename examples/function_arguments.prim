@@ -1,0 +1,36 @@
+// 引数は左から一度ずつ評価します。途中の呼び出しでも、先の引数を保ちます。
+fn observed(value: i64) -> i64 {
+    print(value);
+    return value;
+}
+
+fn total(a: i64, b: i64, c: i64, d: i64, e: i64, f: i64, g: i64) -> i64 {
+    return a + b + c + d + e + f + g;
+}
+
+type Reading { count: u64, label: string, }
+
+// 数値・真偽値・文字列・配列・構造体を、同じ関数へ値として渡します。
+fn changed(a: i64, b: i64, c: i64, d: i64, enabled: bool,
+           count: u64, label: string, values: [u64; 2], original: Reading,
+           scale: f32, offset: f64) -> Reading {
+    mut copied: [u64; 2] = values;
+    copied[0] = count;
+    print(enabled && scale == 1.5 && offset == 2.5);
+    print(original.count);
+    print(copied[0]);
+    return Reading { count: values[0], label: label, };
+}
+
+print("引数の評価順");
+print(total(observed(1), observed(2), observed(3), observed(4), observed(5),
+            total(0, 0, 0, 0, 0, 0, observed(6)), observed(7) + 0));
+
+original: Reading = Reading { count: 10, label: "元", };
+values: [u64; 2] = [18446744073709551615, 0];
+result: Reading = changed(1, 2, 3, 4, true, 9223372036854775808,
+                          "観測\0\r\n", values, original, 1.5, 2.5);
+print(values[0]);
+print(original.label);
+print(result.count);
+print(result.label);

@@ -245,12 +245,6 @@ fn resolve_function_definitions(
         let Item::FunctionDefinition(definition) = item else {
             continue;
         };
-        if definition.parameters.len() > 4 {
-            return Err(Diagnostic::new(
-                "functions currently support at most four parameters",
-                definition.span,
-            ));
-        }
         let mut parameter_names = HashMap::new();
         let mut parameters = Vec::new();
         for parameter in &definition.parameters {

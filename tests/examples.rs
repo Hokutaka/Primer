@@ -1,6 +1,14 @@
 use primer_lang::run_vm;
 
 #[test]
+fn function_arguments_keep_order_nested_calls_and_copies() {
+    assert_eq!(
+        run_vm(include_str!("../examples/function_arguments.prim")).unwrap(),
+        "引数の評価順\n1\n2\n3\n4\n5\n6\n7\n28\ntrue\n10\n9223372036854775808\n18446744073709551615\n元\n18446744073709551615\n観測\0\r\n\n"
+    );
+}
+
+#[test]
 fn packet_counter_keeps_high_bits_and_independent_copies() {
     assert_eq!(
         run_vm(include_str!("../examples/packet_counter.prim")).unwrap(),

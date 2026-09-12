@@ -1,6 +1,7 @@
 use super::failure::Reporter;
 use super::ir::{
-    Argument, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module, Type,
+    Argument, ArgumentLocation, BinaryOp, CompareOp, FloatConstant, Function, Instruction, Module,
+    Type,
 };
 use crate::runtime::FailureCode as Failure;
 
@@ -460,16 +461,28 @@ fn emit_instruction(
             }
         }
 
-        Instruction::StoreParameter { index, ty, offset } => {
-            emit_store_parameter(*index, *ty, *offset, module.target, output);
+        Instruction::StoreParameter {
+            location,
+            ty,
+            offset,
+        } => {
+            emit_store_parameter(*location, *ty, *offset, module.target, output);
         }
 
         Instruction::StoreAggregateParameter {
-            index,
+            location,
             slots,
             destination_offset,
         } => {
-            let register = integer_argument_register(*index, module.target);
+            let register = match location {
+                ArgumentLocation::Register(index) => {
+                    integer_argument_register(*index, module.target)
+                }
+                ArgumentLocation::Stack(offset) => {
+                    output.push_str(&format!("  movq {}(%rbp), %r11\n", offset + 16));
+                    "%r11"
+                }
+            };
             for slot in 0..*slots {
                 let source = -8 * slot as isize;
                 let destination = destination_offset - 8 * slot as isize;
@@ -501,34 +514,29 @@ fn emit_instruction(
             arguments,
             aggregate_result_offset,
         } => {
-            let mut integer_index = 0;
-            let mut float_index = 0;
-            for (position, argument) in arguments.iter().enumerate() {
-                let index = if module.target.is_linux() {
-                    let counter = if matches!(
-                        argument,
-                        Argument::Scalar {
-                            ty: Type::F32 | Type::F64,
-                            ..
-                        }
-                    ) {
-                        &mut float_index
-                    } else {
-                        &mut integer_index
-                    };
-                    let index = *counter;
-                    *counter += 1;
-                    index
-                } else {
-                    position
-                };
+            let mut locations = super::abi::Arguments::new(module.target);
+            for argument in arguments {
+                let location = locations.next(matches!(
+                    argument,
+                    Argument::Scalar {
+                        ty: Type::F32 | Type::F64,
+                        ..
+                    }
+                ));
                 match argument {
                     Argument::Scalar { ty, offset } => {
-                        emit_load_argument(index, *ty, *offset, module.target, output)
+                        emit_load_argument(location, *ty, *offset, module.target, output)
                     }
                     Argument::Aggregate { offset } => {
-                        let register = integer_argument_register(index, module.target);
-                        output.push_str(&format!("  leaq {offset}(%rbp), {register}\n"));
+                        match location {
+                            ArgumentLocation::Register(index) => {
+                                let register = integer_argument_register(index, module.target);
+                                output.push_str(&format!("  leaq {offset}(%rbp), {register}\n"));
+                            }
+                            ArgumentLocation::Stack(destination) => {
+                                output.push_str(&format!("  leaq {offset}(%rbp), %r10\n  movq %r10, {destination}(%rsp)\n"));
+                            }
+                        }
                     }
                 }
             }
@@ -720,12 +728,24 @@ fn emit_sysv_print(ty: Type, output: &mut String) {
 }
 
 fn emit_store_parameter(
-    index: usize,
+    location: ArgumentLocation,
     ty: Type,
     offset: isize,
     target: super::Target,
     output: &mut String,
 ) {
+    let ArgumentLocation::Register(index) = location else {
+        let ArgumentLocation::Stack(source) = location else {
+            unreachable!()
+        };
+        emit_stack_argument_copy(
+            ty,
+            &format!("{}(%rbp)", source + 16),
+            &format!("{offset}(%rbp)"),
+            output,
+        );
+        return;
+    };
     match ty {
         Type::String | Type::Bool | Type::I64 => {
             let register = integer_argument_register(index, target);
@@ -741,12 +761,24 @@ fn emit_store_parameter(
 }
 
 fn emit_load_argument(
-    index: usize,
+    location: ArgumentLocation,
     ty: Type,
     offset: isize,
     target: super::Target,
     output: &mut String,
 ) {
+    let ArgumentLocation::Register(index) = location else {
+        let ArgumentLocation::Stack(destination) = location else {
+            unreachable!()
+        };
+        emit_stack_argument_copy(
+            ty,
+            &format!("{offset}(%rbp)"),
+            &format!("{destination}(%rsp)"),
+            output,
+        );
+        return;
+    };
     match ty {
         Type::String | Type::Bool | Type::I64 => {
             let register = integer_argument_register(index, target);
@@ -759,6 +791,18 @@ fn emit_load_argument(
             output.push_str(&format!("  movsd {offset}(%rbp), %xmm{index}\n"));
         }
     }
+}
+
+// XMMや引数レジスタを壊さず、f32も数値変換せずにビットをコピーします。
+fn emit_stack_argument_copy(ty: Type, source: &str, destination: &str, output: &mut String) {
+    let (instruction, register) = if ty == Type::F32 {
+        ("movl", "%r10d")
+    } else {
+        ("movq", "%r10")
+    };
+    output.push_str(&format!(
+        "  {instruction} {source}, {register}\n  {instruction} {register}, {destination}\n"
+    ));
 }
 
 fn integer_argument_register(index: usize, target: super::Target) -> &'static str {

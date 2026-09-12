@@ -109,22 +109,12 @@ fn lower_body(
         aggregate_return_pointer_slot: None,
     };
 
-    let mut integer_index = 0;
-    let mut float_index = 0;
-    for (position, parameter) in parameters.iter().enumerate() {
-        // SysVは整数と浮動小数点の引数レジスタを別々に数えます。
-        let index = if target.is_linux() {
-            let counter = if matches!(parameter.ty, primer_ir::Type::F32 | primer_ir::Type::F64) {
-                &mut float_index
-            } else {
-                &mut integer_index
-            };
-            let index = *counter;
-            *counter += 1;
-            index
-        } else {
-            position
-        };
+    let mut locations = super::abi::Arguments::new(target);
+    for parameter in parameters {
+        let location = locations.next(matches!(
+            parameter.ty,
+            primer_ir::Type::F32 | primer_ir::Type::F64
+        ));
         match &parameter.ty {
             primer_ir::Type::String
             | primer_ir::Type::Bool
@@ -132,14 +122,14 @@ fn lower_body(
             | primer_ir::Type::F32
             | primer_ir::Type::F64 => {
                 lowerer.push(Instruction::StoreParameter {
-                    index,
+                    location,
                     ty: scalar_type(&parameter.ty),
                     offset: lowerer.binding_offset(parameter.id),
                 });
             }
             primer_ir::Type::Named(_) | primer_ir::Type::Array { .. } => {
                 lowerer.push(Instruction::StoreAggregateParameter {
-                    index,
+                    location,
                     slots: type_slot_count(program, &parameter.ty),
                     destination_offset: lowerer.binding_offset(parameter.id),
                 });
@@ -164,13 +154,30 @@ fn lower_body(
         lowerer.push(Instruction::Return);
     }
 
-    // Windows x64 ABI では、関数呼び出し用に 32 バイトの shadow space が必要になる。
-    let local_bytes = 8 * lowerer.next_aggregate_slot;
-    let frame_size = align16(if target.is_linux() {
-        local_bytes
-    } else {
-        32 + local_bytes
-    });
+    // ローカル値と、呼び出し先へ渡すスタック引数が重ならないように確保します。
+    let outgoing_bytes = lowerer
+        .instructions
+        .iter()
+        .filter_map(|instruction| {
+            if let Instruction::Call { arguments, .. } = instruction {
+                let mut locations = super::abi::Arguments::new(target);
+                for argument in arguments {
+                    locations.next(matches!(
+                        argument,
+                        Argument::Scalar {
+                            ty: Type::F32 | Type::F64,
+                            ..
+                        }
+                    ));
+                }
+                Some(locations.stack_bytes())
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(super::abi::Arguments::new(target).stack_bytes());
+    let frame_size = align16(8 * lowerer.next_aggregate_slot + outgoing_bytes);
     *float_id = lowerer.float_id;
 
     LoweredBody {
@@ -935,7 +942,7 @@ impl Lowerer<'_> {
     ) -> Option<Value> {
         let mut lowered_arguments = Vec::with_capacity(arguments.len());
         for (index, argument) in arguments.iter().enumerate() {
-            match self.lower_expr(argument, depth + 4) {
+            match self.lower_expr(argument, depth + arguments.len().max(4)) {
                 Value::Scalar(ty) => {
                     let offset = self.scratch_offset(depth + index);
                     self.store_scalar(ty, offset);
@@ -1378,7 +1385,7 @@ fn required_scratch_slots(statements: &[primer_ir::Statement]) -> usize {
             | primer_ir::StatementKind::Print { value } => required_expr_scratch(value, 0),
             primer_ir::StatementKind::Call { arguments, .. } => arguments
                 .iter()
-                .map(|argument| required_expr_scratch(argument, 4))
+                .map(|argument| required_expr_scratch(argument, arguments.len().max(4)))
                 .max()
                 .unwrap_or(0)
                 .max(arguments.len()),
@@ -1445,7 +1452,7 @@ fn required_expr_scratch(expr: &primer_ir::Expr, depth: usize) -> usize {
             .unwrap_or(0),
         primer_ir::ExprKind::Call { arguments, .. } => arguments
             .iter()
-            .map(|argument| required_expr_scratch(argument, depth + 4))
+            .map(|argument| required_expr_scratch(argument, depth + arguments.len().max(4)))
             .max()
             .unwrap_or(0)
             .max(depth + arguments.len()),

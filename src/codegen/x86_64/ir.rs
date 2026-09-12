@@ -58,6 +58,13 @@ pub enum Origin {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArgumentLocation {
+    Register(usize),
+    /// 呼び出し直前のRSPからのバイト位置。受け取り側ではRBP + 16を基準にします。
+    Stack(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Argument {
     Scalar {
         ty: Type,
@@ -153,12 +160,12 @@ pub enum Instruction {
     },
 
     StoreParameter {
-        index: usize,
+        location: ArgumentLocation,
         ty: Type,
         offset: isize,
     },
     StoreAggregateParameter {
-        index: usize,
+        location: ArgumentLocation,
         slots: usize,
         destination_offset: isize,
     },

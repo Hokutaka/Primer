@@ -25,7 +25,7 @@ Primer prioritizes explaining a computation's meaning and its transformation int
 | Strings | `string`, printing, `==`, `!=`, `byte_len` | No concatenation, indexing, character count, or numeric conversion | [string_byte_length](../../examples/string_byte_length.prim), [string_lookup](../../examples/string_lookup.prim) |
 | Fixed arrays | `[T; N]`, nesting, value passing, updates through `mut` | Length belongs to the type; indices are `i64`; no dynamic lengths or slices | [fixed_arrays](../../examples/fixed_arrays.prim), [heat_diffusion](../../examples/heat_diffusion.prim) |
 | Named product types | Fields, defaults, nesting, value passing | No direct field assignment; construct a new value and reassign the whole binding | [product-point](../../examples/product-point.prim), [packet_counter](../../examples/packet_counter.prim) |
-| Functions and control flow | Typed parameters/results, `void`, `if`/`else`, `while`/`for`, `break`/`continue`/`return` | At most four parameters; no recursion | [function_values](../../examples/function_values.prim), [loop_control](../../examples/loop_control.prim) |
+| Functions and control flow | Typed parameters/results, `void`, `if`/`else`, `while`/`for`, `break`/`continue`/`return` | No fixed parameter-count limit; no recursion | [function_values](../../examples/function_values.prim), [loop_control](../../examples/loop_control.prim) |
 | Bindings and conversions | Immutable by default, `mut`, explicit `infer`, `T(value)` and `convert<T>(value)` | `infer` is not a runtime type; conversions do not request truncation or saturation | [integer_conversions](../../examples/integer_conversions.prim) |
 | Modules | Explicit imports, namespaces, function/type visibility | Cycles/private access diagnosed; no re-exports, module variables, or package distribution | [modules](../../examples/modules/README.en.md) |
 
@@ -45,7 +45,7 @@ Language support does not imply equal observation detail. Language check failure
 | --- | --- | --- |
 | 1 (implemented) | A common contract for failure reasons, source locations, and execution outcomes | Distinguish overflow, division by zero, conversion failures, and bounds failures; locate the failing expression. Compare identical failure examples across the VM and generated routes |
 | 2 (foundation implemented) | Code organization | Modules, namespaces, and visibility are implemented. Consider explicit compile-time constants when concrete examples require them |
-| 2 | Remove practical function/value limitations | Lift the four-parameter limit across ABIs. Consider constructing a product with selected fields changed. Verify mixed arguments and independent copies |
+| 2 | Remove practical function/value limitations | The four-parameter limit has been lifted across all routes. Consider constructing a product with selected fields changed. Verify mixed arguments and independent copies |
 | 3 | Alternatives and recoverable failures as values | Consider enumerations/sum types, exhaustive branching, success/failure and present/absent values. Express a missing lookup without a special sentinel string |
 | 3 | Reusable array and numeric operations | Consider length queries, iteration, and generics when functions need to span types or lengths. Define rounding/truncation separately from today's exact conversions |
 | 4 | Dynamic data and external I/O | Define ownership, lifetimes, allocation failure, and effects before bytes, slices, dynamic arrays, concatenation, and files. Add recursion only after solving per-call storage and resource limits |
@@ -55,7 +55,7 @@ This is not a commitment to implement every item together. Priority 1 and founda
 
 The first priority-1 implementation adds [common runtime failure records](runtime-diagnostics.en.md) to the VM and Windows/Linux assembly and internal objects, including retained output before failure. C, LLVM, QBE, and WAT now implement the same contract and are compared against those reasons, locations, and prior output.
 
-Following [file-aware locations](source-files.en.md), [modules](modules.en.md) now implement explicit imports, namespaces, and function/type visibility, with cross-route CLI comparisons of modular and single-file programs. Compile-time constants, re-exports, and package distribution remain unsupported. Next, examine parameter-count limits and value operations through concrete examples.
+Following [file-aware locations](source-files.en.md), [modules](modules.en.md) now implement explicit imports, namespaces, and function/type visibility, with cross-route CLI comparisons of modular and single-file programs. Compile-time constants, re-exports, and package distribution remain unsupported. The four-parameter limit has also been lifted; [the mixed-argument example](../../examples/function_arguments.prim) checks evaluation order and copies. Next, consider constructing products with selected fields changed through concrete examples.
 
 Inheritance, implicit shared mutable references, automatic GPU dispatch, general asynchronous execution, and a large package system are not early priorities because current examples have not established their need.
 
