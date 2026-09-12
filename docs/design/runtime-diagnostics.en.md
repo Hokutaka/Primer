@@ -28,7 +28,10 @@ This identifies division in `print(1 / 0);`. Each ASCII line contains:
 
 - `code`: A failure reason from the table below.
 - `node`: The corresponding Primer IR NodeId. A failure inside a callee identifies the failing expression, not the caller's expression.
+- `file` (optional): A positive registered `SourceMap` file ID between `node` and `bytes`. Absence means the existing anonymous source 0.
 - `bytes`: The original UTF-8 source range, zero-based with an exclusive end. These are not line numbers or displayed character counts.
+
+The [file-identity API](source-files.en.md) produces records such as `primer: runtime-v1 code=division-by-zero node=1 file=2 bytes=6..11`, with a range local to that file. Existing single-source APIs and CLI records are unchanged. Readers must support this optional field; older strict readers cannot accept registered-file records. The bundled observation script and WAT validation host validate both forms, rejecting `file=0`, leading zeros, duplicate fields, and invalid numbers. CLI imports and a file-inventory manifest remain a subsequent stage.
 
 Records exclude paths, source text, and runtime values. Interpret them with the same source and compiler version. NodeIds are not persistent across edits or versions. Native observation manifests also record the source SHA-256 and tools used.
 

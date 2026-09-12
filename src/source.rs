@@ -12,6 +12,7 @@ pub enum ConversionSyntax {
 /// `start` は範囲に含み、`end` は含みません。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
+    source_id: SourceId,
     start: usize,
     end: usize,
 }
@@ -57,9 +58,27 @@ impl SourceLocation {
 impl Span {
     /// 指定した開始位置と終了位置から範囲を作成します。
     pub const fn new(start: usize, end: usize) -> Self {
+        Self::in_source(SourceId::ANONYMOUS, start, end)
+    }
+
+    /// 同じファイル内のUTF-8バイト範囲を作成します。
+    pub const fn in_source(source_id: SourceId, start: usize, end: usize) -> Self {
         assert!(start <= end, "span start must not exceed end");
 
-        Self { start, end }
+        Self {
+            source_id,
+            start,
+            end,
+        }
+    }
+
+    pub const fn source_id(self) -> SourceId {
+        self.source_id
+    }
+
+    /// 字句解析直後に、文字列内の位置へファイルの識別子を付けます。
+    pub const fn with_source(self, source_id: SourceId) -> Self {
+        Self { source_id, ..self }
     }
 
     /// 指定した位置に空の範囲を作成します。
@@ -75,6 +94,91 @@ impl Span {
     /// 範囲の終了バイト位置を返します。
     pub const fn end(self) -> usize {
         self.end
+    }
+}
+
+/// 一つのSourceMap内で有効な識別子です。0は従来の匿名ソースを表します。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SourceId(usize);
+
+impl SourceId {
+    pub const ANONYMOUS: Self = Self(0);
+
+    pub const fn index(self) -> usize {
+        self.0
+    }
+
+    /// 匿名ソースの既存の観測形式は変えません。
+    pub fn record_field(self) -> String {
+        if self == Self::ANONYMOUS {
+            String::new()
+        } else {
+            format!(" file={}", self.0)
+        }
+    }
+}
+
+/// 読み込んだままの本文と表示名。パス解決やファイルI/Oは行いません。
+#[derive(Debug, Clone)]
+pub struct SourceFile {
+    id: SourceId,
+    name: String,
+    text: String,
+}
+
+impl SourceFile {
+    pub const fn id(&self) -> SourceId {
+        self.id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+/// 登録順に識別子を割り当てます。正規化・連結・重複名による上書きはしません。
+/// 別のMapや別のコンパイルで得た識別子を混ぜてはいけません。
+#[derive(Debug, Default)]
+pub struct SourceMap {
+    files: Vec<SourceFile>,
+}
+
+impl SourceMap {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, name: impl Into<String>, text: impl Into<String>) -> SourceId {
+        let id = SourceId(self.files.len() + 1);
+        self.files.push(SourceFile {
+            id,
+            name: name.into(),
+            text: text.into(),
+        });
+        id
+    }
+
+    pub fn get(&self, id: SourceId) -> Option<&SourceFile> {
+        self.files.get(id.0.checked_sub(1)?)
+    }
+
+    pub fn files(&self) -> impl Iterator<Item = &SourceFile> {
+        self.files.iter()
+    }
+
+    /// 範囲全体が本文内のUTF-8境界にあるときだけ解決します。
+    pub fn resolve(&self, span: Span) -> Option<(&SourceFile, SourceLocation)> {
+        let file = self.get(span.source_id())?;
+        file.text.get(span.start()..span.end())?;
+        Some((file, SourceLocation::from_offset(&file.text, span.start())?))
+    }
+
+    pub fn slice(&self, span: Span) -> Option<&str> {
+        self.get(span.source_id())?
+            .text
+            .get(span.start()..span.end())
     }
 }
 

@@ -5,12 +5,25 @@ use crate::ast::{
 };
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Token, TokenKind};
-use crate::source::{ConversionSyntax, Span};
+use crate::source::{ConversionSyntax, SourceId, Span};
 
 type ParseResult<T> = Result<T, Diagnostic>;
 
 pub fn parse(tokens: Vec<Token>) -> Result<Program, Diagnostic> {
+    let source_id = tokens
+        .first()
+        .map_or(SourceId::ANONYMOUS, |token| token.span.source_id());
+    if let Some(token) = tokens
+        .iter()
+        .find(|token| token.span.source_id() != source_id)
+    {
+        return Err(Diagnostic::new(
+            "cannot parse tokens from different source files together",
+            token.span,
+        ));
+    }
     Parser {
+        source_id,
         tokens,
         current: 0,
         allow_construct: true,
@@ -19,12 +32,16 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, Diagnostic> {
 }
 
 struct Parser {
+    source_id: SourceId,
     tokens: Vec<Token>,
     current: usize,
     allow_construct: bool,
 }
 
 impl Parser {
+    fn span(&self, start: usize, end: usize) -> Span {
+        Span::in_source(self.source_id, start, end)
+    }
     fn parse_program(&mut self) -> ParseResult<Program> {
         let mut items = Vec::new();
 
@@ -50,7 +67,7 @@ impl Parser {
             let closing = self.advance().span;
             return Err(Diagnostic::new(
                 "product type must have at least one field",
-                Span::new(opening.start(), closing.end()),
+                self.span(opening.start(), closing.end()),
             ));
         }
 
@@ -83,7 +100,7 @@ impl Parser {
                 name_span: field_name_span,
                 type_ref,
                 default,
-                span: Span::new(field_name_span.start(), end),
+                span: self.span(field_name_span.start(), end),
             });
 
             if matches!(&self.peek().kind, TokenKind::Comma) {
@@ -102,7 +119,7 @@ impl Parser {
             name,
             name_span,
             fields,
-            span: Span::new(start, closing.end()),
+            span: self.span(start, closing.end()),
         })
     }
 
@@ -125,7 +142,7 @@ impl Parser {
             parameters.push(Parameter {
                 name: parameter_name,
                 name_span: parameter_name_span,
-                span: Span::new(parameter_name_span.start(), type_ref.span.end()),
+                span: self.span(parameter_name_span.start(), type_ref.span.end()),
                 type_ref,
             });
 
@@ -161,7 +178,7 @@ impl Parser {
             parameters,
             return_type,
             body,
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -224,14 +241,14 @@ impl Parser {
                 type_spec,
                 value,
             },
-            span: Span::new(start, semicolon.end()),
+            span: self.span(start, semicolon.end()),
         })
     }
 
     fn parse_assignment(&mut self) -> ParseResult<Stmt> {
         let mut statement = self.parse_assignment_clause()?;
         let semicolon = self.expect_simple(TokenKind::Semicolon)?;
-        statement.span = Span::new(statement.span.start(), semicolon.end());
+        statement.span = self.span(statement.span.start(), semicolon.end());
         Ok(statement)
     }
 
@@ -258,7 +275,7 @@ impl Parser {
             let end = self.expect_simple(TokenKind::RightBracket)?.end();
             projections.push(AssignmentProjection::Index {
                 index,
-                span: Span::new(projection_start, end),
+                span: self.span(projection_start, end),
             });
             target_end = end;
         }
@@ -280,11 +297,11 @@ impl Parser {
                     name,
                     name_span,
                     projections,
-                    span: Span::new(start, target_end),
+                    span: self.span(start, target_end),
                 },
                 value,
             },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -325,7 +342,7 @@ impl Parser {
                     element: Box::new(element),
                     length,
                 },
-                span: Span::new(start, end),
+                span: self.span(start, end),
             })
         } else {
             let (name, span) = self.expect_identifier()?;
@@ -346,14 +363,14 @@ impl Parser {
 
         Ok(Stmt {
             kind: StmtKind::Print { value },
-            span: Span::new(start, semicolon.end()),
+            span: self.span(start, semicolon.end()),
         })
     }
 
     fn parse_call_statement(&mut self) -> ParseResult<Stmt> {
         let value = self.parse_expression()?;
         let semicolon = self.expect_simple(TokenKind::Semicolon)?;
-        let span = Span::new(value.span.start(), semicolon.end());
+        let span = self.span(value.span.start(), semicolon.end());
         if !matches!(value.kind, ExprKind::Call { .. }) {
             return Err(Diagnostic::new(
                 "only a function call can be used as an expression statement",
@@ -376,7 +393,7 @@ impl Parser {
         let end = self.expect_simple(TokenKind::Semicolon)?.end();
         Ok(Stmt {
             kind: StmtKind::Return { value },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -389,7 +406,7 @@ impl Parser {
         while matches!(self.peek().kind, TokenKind::OrOr) {
             self.advance();
             let right = self.parse_logical_and()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Logical {
                     op: crate::ast::LogicalOp::Or,
@@ -407,7 +424,7 @@ impl Parser {
         while matches!(self.peek().kind, TokenKind::AndAnd) {
             self.advance();
             let right = self.parse_bit_or()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Logical {
                     op: crate::ast::LogicalOp::And,
@@ -447,7 +464,7 @@ impl Parser {
                 then_body,
                 else_body,
             },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -458,7 +475,7 @@ impl Parser {
 
         Ok(Stmt {
             kind: StmtKind::While { condition, body },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -514,7 +531,7 @@ impl Parser {
                 update: Box::new(update),
                 body,
             },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -524,7 +541,7 @@ impl Parser {
 
         Ok(Stmt {
             kind,
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -546,7 +563,7 @@ impl Parser {
             let op = BinaryOp::BitOr;
             self.advance();
             let right = self.parse_bit_xor()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Binary {
                     op,
@@ -565,7 +582,7 @@ impl Parser {
             let op = BinaryOp::BitXor;
             self.advance();
             let right = self.parse_bit_and()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Binary {
                     op,
@@ -584,7 +601,7 @@ impl Parser {
             let op = BinaryOp::BitAnd;
             self.advance();
             let right = self.parse_equality()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Binary {
                     op,
@@ -607,7 +624,7 @@ impl Parser {
             };
             self.advance();
             let right = self.parse_additive()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
             expr = Expr {
                 kind: ExprKind::Binary {
                     op,
@@ -633,7 +650,7 @@ impl Parser {
             self.advance();
 
             let right = self.parse_comparison()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
 
             expr = Expr {
                 kind: ExprKind::Binary {
@@ -663,7 +680,7 @@ impl Parser {
             self.advance();
 
             let right = self.parse_shift()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
 
             expr = Expr {
                 kind: ExprKind::Binary {
@@ -692,7 +709,7 @@ impl Parser {
 
             let right = self.parse_multiplicative()?;
 
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
 
             expr = Expr {
                 kind: ExprKind::Binary {
@@ -721,7 +738,7 @@ impl Parser {
             self.advance();
 
             let right = self.parse_unary()?;
-            let span = Span::new(expr.span.start(), right.span.end());
+            let span = self.span(expr.span.start(), right.span.end());
 
             expr = Expr {
                 kind: ExprKind::Binary {
@@ -747,7 +764,7 @@ impl Parser {
         if let Some(op) = op {
             let operator_span = self.advance().span;
             let value = self.parse_unary()?;
-            let span = Span::new(operator_span.start(), value.span.end());
+            let span = self.span(operator_span.start(), value.span.end());
 
             return Ok(Expr {
                 kind: ExprKind::Unary {
@@ -768,7 +785,7 @@ impl Parser {
             if matches!(&self.peek().kind, TokenKind::Dot) {
                 self.advance();
                 let (field_name, field_name_span) = self.expect_identifier()?;
-                let span = Span::new(expr.span.start(), field_name_span.end());
+                let span = self.span(expr.span.start(), field_name_span.end());
                 expr = Expr {
                     kind: ExprKind::FieldAccess {
                         base: Box::new(expr),
@@ -781,7 +798,7 @@ impl Parser {
                 self.advance();
                 let index = self.parse_expression()?;
                 let end = self.expect_simple(TokenKind::RightBracket)?.end();
-                let span = Span::new(expr.span.start(), end);
+                let span = self.span(expr.span.start(), end);
                 expr = Expr {
                     kind: ExprKind::Index {
                         base: Box::new(expr),
@@ -866,7 +883,7 @@ impl Parser {
                 self.allow_construct = previous;
                 let expr = result?;
                 let closing_span = self.expect_simple(TokenKind::RightParen)?;
-                let span = Span::new(span.start(), closing_span.end());
+                let span = self.span(span.start(), closing_span.end());
 
                 Ok(Expr { span, ..expr })
             }
@@ -924,7 +941,7 @@ impl Parser {
                 value: Box::new(value),
                 syntax,
             },
-            span: Span::new(start, end),
+            span: self.span(start, end),
         })
     }
 
@@ -949,7 +966,7 @@ impl Parser {
                 name_span,
                 arguments,
             },
-            span: Span::new(name_span.start(), closing.end()),
+            span: self.span(name_span.start(), closing.end()),
         })
     }
 
@@ -958,7 +975,7 @@ impl Parser {
             let closing = self.advance().span;
             return Err(Diagnostic::new(
                 "array literal must contain at least one value",
-                Span::new(opening_span.start(), closing.end()),
+                self.span(opening_span.start(), closing.end()),
             ));
         }
 
@@ -977,7 +994,7 @@ impl Parser {
         let closing = self.expect_simple(TokenKind::RightBracket)?;
         Ok(Expr {
             kind: ExprKind::Array(values),
-            span: Span::new(opening_span.start(), closing.end()),
+            span: self.span(opening_span.start(), closing.end()),
         })
     }
 
@@ -988,7 +1005,7 @@ impl Parser {
             let closing = self.advance().span;
             return Err(Diagnostic::new(
                 "aggregate literal must have at least one field",
-                Span::new(opening.start(), closing.end()),
+                self.span(opening.start(), closing.end()),
             ));
         }
 
@@ -998,7 +1015,7 @@ impl Parser {
             let (name, name_span) = self.expect_identifier()?;
             self.expect_simple(TokenKind::Colon)?;
             let value = self.parse_expression()?;
-            let span = Span::new(name_span.start(), value.span.end());
+            let span = self.span(name_span.start(), value.span.end());
             fields.push(FieldValue {
                 name,
                 name_span,
@@ -1024,7 +1041,7 @@ impl Parser {
                 type_name_span,
                 fields,
             },
-            span: Span::new(type_name_span.start(), closing.end()),
+            span: self.span(type_name_span.start(), closing.end()),
         })
     }
 

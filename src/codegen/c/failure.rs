@@ -5,8 +5,9 @@ use std::fmt::Write;
 pub(super) fn argument(origin: Origin, output: &mut String) {
     write!(
         output,
-        ", \" node={} bytes={}..{}\\n\"",
+        ", \" node={}{} bytes={}..{}\\n\"",
         origin.node_id.0,
+        origin.span.source_id().record_field(),
         origin.span.start(),
         origin.span.end()
     )

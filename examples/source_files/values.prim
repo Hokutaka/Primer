@@ -1,0 +1,14 @@
+// 型と関数の出自を保持するための、コンパイラAPI向けの部品です。
+type Reading {
+    amount: u64,
+    label: string = "観測\0\r\n",
+}
+
+fn reading(amount: u64) -> Reading {
+    return Reading { amount: amount };
+}
+
+fn divide(value: u64, divisor: u64) -> u64 {
+    print("計算");
+    return value / divisor;
+}

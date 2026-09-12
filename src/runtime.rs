@@ -70,9 +70,10 @@ impl RuntimeFailure {
     /// ASCIIのみ。パス・ソース本文・実行時の値を含めません。
     pub fn record(self) -> String {
         format!(
-            "runtime-v1 code={} node={} bytes={}..{}",
+            "runtime-v1 code={} node={}{} bytes={}..{}",
             self.code.name(),
             self.node_id.0,
+            self.span.source_id().record_field(),
             self.span.start(),
             self.span.end()
         )

@@ -70,6 +70,21 @@ pub struct Token {
     pub span: Span,
 }
 
+/// エスケープ処理の失敗を含め、すべての字句位置を元のファイルへ対応付けます。
+pub fn lex_source(source: &crate::source::SourceFile) -> Result<Vec<Token>, Diagnostic> {
+    lex(source.text())
+        .map(|mut tokens| {
+            for token in &mut tokens {
+                token.span = token.span.with_source(source.id());
+            }
+            tokens
+        })
+        .map_err(|error| match error.primary_span() {
+            Some(span) => Diagnostic::new(error.message(), span.with_source(source.id())),
+            None => error,
+        })
+}
+
 pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
     let bytes = source.as_bytes();
     let mut tokens = Vec::new();

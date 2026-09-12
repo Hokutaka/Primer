@@ -47,6 +47,8 @@ Primerは、ソースコードから生成物に至る変換過程を観測で�
 
 ## LLVMの出自注釈
 
+[登録済みファイルのAPI](source-files.ja.md)では、LLVM・ASMともに`#N`と`bytes`の間に`file=N`を加えます。範囲はそのファイル内のバイト位置です。従来の単一ソースAPIとCLIではこのフィールドを省略します。
+
 `emit-llvm --annotate-origins`は、既存のLLVM成果物に読み取り専用のコメントを加えます。形式は`; primer-origins v1`で識別します。
 
 ```llvm

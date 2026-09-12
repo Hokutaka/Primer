@@ -54,6 +54,8 @@ This is not a commitment to implement every item together. Start by making prior
 
 The first priority-1 implementation adds [common runtime failure records](runtime-diagnostics.en.md) to the VM and Windows/Linux assembly and internal objects, including retained output before failure. C, LLVM, QBE, and WAT now implement the same contract and are compared against those reasons, locations, and prior output. Modules and namespaces are the next language-feature candidate in the table.
 
+The first step toward modules implements [source locations with file identity](source-files.en.md). Next are explicit imports, namespaces, and visibility, followed by cross-route CLI comparisons of modular programs. Current split-file examples validate origins through the Rust API; module syntax remains unimplemented.
+
 Inheritance, implicit shared mutable references, automatic GPU dispatch, general asynchronous execution, and a large package system are not early priorities because current examples have not established their need.
 
 ## GPU direction

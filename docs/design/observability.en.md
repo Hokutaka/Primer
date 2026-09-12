@@ -47,6 +47,8 @@ Primer prioritizes the ability to observe the transformation process from source
 
 ## LLVM origin annotations
 
+With the [registered-file API](source-files.en.md), both LLVM and assembly add `file=N` between `#N` and `bytes`. Ranges are local to that file. Existing single-source APIs and the CLI omit this field.
+
 `emit-llvm --annotate-origins` adds read-only comments to the existing LLVM artifact. The header identifies the format as `; primer-origins v1`. A comment such as `; primer-origin: #7 bytes 208..235` connects the following instruction group to node #7 in `emit-ir`. These offsets identify `echo(left) == "日本語\0"` in the LF version of `examples/string_origins.prim`. Ranges are UTF-8 byte offsets into the original input, with an exclusive end; CRLF input changes offsets.
 
 The lowerer stores `Source { NodeId, Span }` or `Synthetic` separately from each instruction. It restores the parent origin after lowering a child expression. The emitter reads only backend IR. An annotation applies until the next annotation. One source expression may produce several instructions; literals that produce no instruction have no individual annotation. Module constant storage, shared helpers, stack allocation, parameter stores, and startup scaffolding are explicitly synthetic. Synthetic does not mean lost origin information. Follow source origins at use sites; mappings after external optimization and debug information are outside this contract.
