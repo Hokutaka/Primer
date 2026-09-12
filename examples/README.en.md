@@ -89,6 +89,20 @@ Out-of-range integer arithmetic stops instead of wrapping. Types do not mix impl
 
 `infer` requests type inference; it is not a separate value type. `void` describes functions returning no value. See [floating_point.prim](floating_point.prim) and [functions.prim](functions.prim).
 
+### Combining many arguments
+
+[function_arguments.prim](function_arguments.prim) compares a nested seven-argument call with an eleven-argument value transfer.
+
+| Type | What to observe |
+| --- | --- |
+| `i64` | `observed(1)` through `observed(7)` execute once in order; the nested call preserves the sum `28` |
+| `u64` | The maximum value and high bit survive in arguments beyond the fourth |
+| `f32`, `f64`, `bool` | Mixing with integers preserves `1.5`, `2.5`, and `true`; comparisons print `true` |
+| `string` | Japanese text, NUL, CR, and LF pass through unchanged |
+| Arrays and products | Updating a callee's array copy leaves the original unchanged; product results remain independent |
+
+Run `cargo run -- run examples/function_arguments.prim`. Output begins with `引数の評価順`, `1` through `7`, and `28`. There is no fixed parameter-count limit, but counts and types must match the declaration. See the [function design](../docs/design/functions.en.md) for placement and verification across routes.
+
 ## Basics and control flow
 
 | Example | Demonstrates |

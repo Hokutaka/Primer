@@ -89,6 +89,20 @@ cargo run -- run examples/u64_values.prim
 
 `infer`は独立した値の型ではなく、型を推論する指定です。`void`は値を返さない関数の戻り方を表します。[floating_point.prim](floating_point.prim)と[functions.prim](functions.prim)で確認できます。
 
+### 多い引数を組み合わせる
+
+[function_arguments.prim](function_arguments.prim)は7引数の入れ子呼び出しと、11引数の値の受け渡しを比較します。
+
+| 型 | 確認すること |
+| --- | --- |
+| `i64` | `observed(1)`〜`observed(7)`を順に一度だけ実行し、入れ子の呼び出しの後も合計は`28` |
+| `u64` | 最大値と最上位ビットを、5個目以降の引数でも保持 |
+| `f32`・`f64`・`bool` | 整数と混ぜても`1.5`・`2.5`・`true`を保持し、比較結果は`true` |
+| `string` | 日本語・NUL・CR/LFをそのまま渡す |
+| 配列・構造体 | 関数内の配列コピーを更新しても元は不変。構造体の戻り値も独立 |
+
+`cargo run -- run examples/function_arguments.prim`で実行できます。先頭は`引数の評価順`、`1`〜`7`、`28`です。引数数の固定上限はありませんが、個数と型は関数宣言に一致させます。[関数の設計](../docs/design/functions.ja.md)に各経路の配置と検証方法を記載しています。
+
 ## 基本と制御
 
 | サンプル | 内容 |

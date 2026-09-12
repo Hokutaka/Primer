@@ -74,14 +74,28 @@ VMエラーは、関数番号とその関数内の命令番号を保持します
 - LLVM IRは型付きparameterと戻り値を生成し、受け取った値を観測しやすいlocal slotへ保存する
 - QBE IRは集約引数の場所を受け取り、関数の開始時に自身のstack領域へコピーする。集約戻り値には、呼び出し側が用意した戻り先を隠れた先頭引数として使う
 - WebAssembly TextはQBEと同じ形をlinear memory上のaddressで表す
-- Windows x86-64はscalar引数をWindows x64 ABIの汎用registerまたはXMM registerへloweringする。集約引数の場所は引数位置に対応する汎用registerで渡し、集約戻り値の戻り先は内部規約として`RAX`で渡す
+- Windows/Linux x86-64はscalarと集約値の場所を、明示したターゲットの引数registerまたはstackへloweringする。集約引数は受け取り側でコピーし、集約戻り値の戻り先は内部規約として`RAX`で渡す
 - Primer bytecodeとVMは呼び出しごとに独立したframeを作り、集約値を複製して渡す
 
-Primer IRはABI register、stack offset、隠れた戻り先を決めません。これらはbackend loweringの判断であり、成果物で観測します。QBE、WebAssembly、Windows x86-64が内部でaddressを渡しても、それは値をコピーするための実装です。Primerの参照型や外部ABIを定義するものではありません。
+Primer IRはABI register、stack offset、隠れた戻り先を決めません。これらはbackend loweringの判断であり、成果物で観測します。QBE、WebAssembly、Windows/Linux x86-64が内部でaddressを渡しても、それは値をコピーするための実装です。Primerの参照型や外部ABIを定義するものではありません。
+
+## 多い引数と可観測性
+
+[function_arguments.prim](../../examples/function_arguments.prim)では、7引数の入れ子呼び出しと、数値・文字列・配列・構造体を混ぜた11引数を実行します。引数は左から一度ずつ評価し、途中で失敗したら後の引数と関数本体は実行しません。短絡評価で呼び出しを省く場合は、引数も評価しません。
+
+直接ASMと自前エンコーダは同じ引数配置を使います。Windowsは先頭4個を位置別のregister、5個目以降を32バイトのshadow spaceの後へ置きます。Linux/SysVは整数・アドレス用の6個と浮動小数点用の8個のregisterを別々に数え、溢れた引数を元の引数順でstackへ置きます。一方が埋まっても他方の空きregisterは使えます。ターゲットは明示指定し、実行中のOSから選びません。
+
+評価済み引数の一時領域と、次の呼び出しに渡すstack領域は分離します。呼び出し時のstackは16バイト境界に揃え、f32/f64は変換せずビットを渡します。集約値のコピーと`RAX`の戻り先はPrimer内部の規約であり、外部関数とのABI互換を約束しません。配置は生成ASMと逆アセンブルから観測できますが、Primerのプログラムにそのaddressや変更権限を公開しません。
+
+`cargo test --test source_files many_argument`はVMの既知の出力を基準にC・LLVM・QBE・WAT・直接ASM・自前オブジェクトを照合します。混在する22引数、整数境界値、負のゼロ、600要素の配列、コピーの独立性、失敗した式の位置と先行出力を確認します。必要な外部ツールを指定したLinux/Windows CIでも実行します。
+
+registerとstackの基本規則は[Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention)と[System V AMD64 ABI](https://gitlab.com/x86-psABIs/x86-64-ABI)を参照してください。
 
 ## 現在の制約
 
-parameterは最大4個です。scalar、名前付きproduct type、固定長配列をparameterと戻り値に使えます。
+引数の個数に言語としての固定上限は設けません。scalar、名前付きproduct type、固定長配列をparameterと戻り値に使えます。
+
+有限のstack・memoryと外部ツールの制約は引き続き適用されます。可変長引数やデフォルト引数を導入する変更ではなく、宣言と呼び出しの引数数・型は完全に一致させます。
 
 再帰は直接呼び出しと間接呼び出しの両方を診断します。現在のWebAssembly backendではproduct型の一時memoryを呼び出しごとに分離していないためです。再帰を許可すると、一部の出力経路だけで値が壊れる可能性があります。
 
