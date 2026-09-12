@@ -21,6 +21,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=integer-overflow node=13 bytes=115..117
       i32.const 112
       call $write_error_byte
       i32.const 114

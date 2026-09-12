@@ -11,6 +11,7 @@
     local.get $value
     f32.ne
     if
+      ;; primer: runtime-v1 code=conversion-nan node=21 bytes=185..196
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -157,6 +158,7 @@
     f64.eq
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-not-finite node=15 bytes=147..158
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -302,6 +304,7 @@
     i64.const -9223372036854775808
     i64.eq
     if
+      ;; primer: runtime-v1 code=conversion-negative-zero node=15 bytes=147..158
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -456,6 +459,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-out-of-range node=15 bytes=147..158
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -608,6 +612,7 @@
     local.get $number
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=15 bytes=147..158
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -751,6 +756,7 @@
     local.get $value
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-nan node=12 bytes=130..139
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -887,6 +893,7 @@
     f64.gt
     i32.and
     if
+      ;; primer: runtime-v1 code=conversion-out-of-range node=12 bytes=130..139
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1039,6 +1046,7 @@
     local.get $value
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=12 bytes=130..139
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1182,6 +1190,7 @@
     local.get $value
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-nan node=30 bytes=243..252
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1318,6 +1327,7 @@
     f64.gt
     i32.and
     if
+      ;; primer: runtime-v1 code=conversion-out-of-range node=30 bytes=243..252
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1470,6 +1480,7 @@
     local.get $value
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=30 bytes=243..252
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1620,6 +1631,7 @@
     f64.eq
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-not-finite node=18 bytes=167..176
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1765,6 +1777,7 @@
     i64.const -9223372036854775808
     i64.eq
     if
+      ;; primer: runtime-v1 code=conversion-negative-zero node=18 bytes=167..176
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1919,6 +1932,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-out-of-range node=18 bytes=167..176
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2071,6 +2085,7 @@
     local.get $number
     f64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=18 bytes=167..176
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2223,6 +2238,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=2 bytes=43..53
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2356,6 +2372,7 @@
     local.get $value
     i64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=2 bytes=43..53
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2502,6 +2519,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=4 bytes=56..62
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2635,6 +2653,7 @@
     local.get $value
     i64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=4 bytes=56..62
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2782,6 +2801,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=24 bytes=205..215
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -2921,6 +2941,7 @@
     local.get $value
     i64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=24 bytes=205..215
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -3073,6 +3094,7 @@
     f64.ge
     i32.or
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=9 bytes=95..114
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -3208,6 +3230,7 @@
     local.get $value
     i64.ne
     if
+      ;; primer: runtime-v1 code=conversion-inexact node=9 bytes=95..114
       i32.const 112
       call $write_error_byte
       i32.const 114

@@ -93,6 +93,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=array-index-out-of-bounds node=15 bytes=145..161
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -246,6 +247,7 @@
     i64.const 3
     i64.ge_s
     if
+      ;; primer: runtime-v1 code=array-index-out-of-bounds node=15 bytes=145..161
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -411,6 +413,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=array-index-out-of-bounds node=20 bytes=170..185
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -564,6 +567,7 @@
     i64.const 3
     i64.ge_s
     if
+      ;; primer: runtime-v1 code=array-index-out-of-bounds node=20 bytes=170..185
       i32.const 112
       call $write_error_byte
       i32.const 114

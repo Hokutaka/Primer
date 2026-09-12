@@ -28,6 +28,8 @@ pub(super) fn helper_name(instruction: &Instruction, origin: Origin) -> String {
 /// レコードを命令内の定数として持ち、ホストには出力バイトだけを渡します。
 /// 線形メモリ、現在位置の可変変数、診断用の公開状態は追加しません。
 pub(super) fn emit(record: RuntimeFailure, prefix: &str, output: &mut String) {
+    // バイト定数を手で復号せず、生成物から理由とソース位置を読めるようにします。
+    writeln!(output, "{prefix};; primer: {}", record.record()).unwrap();
     for byte in format!("primer: {}\n", record.record()).bytes() {
         writeln!(
             output,

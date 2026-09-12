@@ -12,6 +12,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=integer-conversion-out-of-range node=17 bytes=121..131
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -180,6 +181,7 @@
     local.get $right
     i64.eqz
     if
+      ;; primer: runtime-v1 code=division-by-zero node=9 bytes=79..90
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -314,6 +316,7 @@
     i64.const 64
     i64.ge_u
     if
+      ;; primer: runtime-v1 code=invalid-shift-count node=13 bytes=99..112
       i32.const 112
       call $write_error_byte
       i32.const 114

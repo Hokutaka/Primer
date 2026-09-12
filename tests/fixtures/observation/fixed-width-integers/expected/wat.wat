@@ -14,6 +14,7 @@
     i64.gt_s
     i32.or
     if
+      ;; primer: runtime-v1 code=integer-overflow node=1 bytes=50..62
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -150,6 +151,7 @@
     i64.gt_s
     i32.or
     if
+      ;; primer: runtime-v1 code=integer-overflow node=6 bytes=83..85
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -286,6 +288,7 @@
     i64.gt_s
     i32.or
     if
+      ;; primer: runtime-v1 code=division-overflow node=14 bytes=136..145
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -430,6 +433,7 @@
     i64.gt_s
     i32.or
     if
+      ;; primer: runtime-v1 code=integer-conversion-out-of-range node=25 bytes=200..219
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -609,6 +613,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=integer-overflow node=1 bytes=50..62
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -741,6 +746,7 @@
     local.get $right
     i64.eqz
     if
+      ;; primer: runtime-v1 code=division-by-zero node=14 bytes=136..145
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -879,6 +885,7 @@
     i64.eq
     i32.and
     if
+      ;; primer: runtime-v1 code=division-overflow node=14 bytes=136..145
       i32.const 112
       call $write_error_byte
       i32.const 114
@@ -1034,6 +1041,7 @@
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=integer-overflow node=6 bytes=83..85
       i32.const 112
       call $write_error_byte
       i32.const 114
