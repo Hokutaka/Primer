@@ -1,0 +1,18 @@
+pub type Reading {
+    amount: u64,
+    label: string = "観測\0\r\n",
+}
+
+pub fn reading(amount: u64) -> Reading {
+    return Reading { amount: amount };
+}
+
+// 公開関数からは呼べますが、importした側から直接は呼べません。
+fn announce() -> void {
+    print("計算");
+}
+
+pub fn divide(value: u64, divisor: u64) -> u64 {
+    announce();
+    return value / divisor;
+}

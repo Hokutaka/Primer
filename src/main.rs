@@ -1,12 +1,4 @@
-use primer_lang::{
-    RunError,
-    bytecode::InstructionOrigin,
-    diagnostic::{Diagnostic, render::render_compact},
-    vm::render::{
-        render_compact as render_vm_error,
-        render_compact_with_source as render_vm_error_with_source,
-    },
-};
+use primer_lang::{diagnostic::Diagnostic, modules::Compilation};
 use std::{env, fs, path::PathBuf, process};
 
 fn main() {
@@ -33,11 +25,22 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            render_compilation_result(primer_lang::compile(&source), &source)?;
+            render_compilation_result(primer_lang::semantic::check(&source.program), &source)?;
 
             println!("OK {}", input.display());
 
             Ok(())
+        }
+
+        // 依存ファイルと正確な本文を明示的に出力します。
+        "emit-sources" => {
+            let input = required_path(args.next(), "missing input file")?;
+            let rest: Vec<String> = args.collect();
+            let output =
+                parse_output_option(&rest, "primer emit-sources <file> [-o <sources.json>]")?;
+            let source = read_source(&input)?;
+            ir_for(&source)?;
+            write_or_print(output, source.source_manifest())
         }
 
         // Primer IR 生成
@@ -50,7 +53,10 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let ir = render_compilation_result(primer_lang::compile_to_ir_text(&source), &source)?;
+            let ir = render_compilation_result(
+                Ok(primer_lang::ir::text::emit(&ir_for(&source)?)),
+                &source,
+            )?;
 
             write_or_print(output, ir)
         }
@@ -65,7 +71,10 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let c = render_compilation_result(primer_lang::compile_to_c(&source), &source)?;
+            let c = render_compilation_result(
+                primer_lang::codegen::emit_c(&ir_for(&source)?),
+                &source,
+            )?;
 
             write_or_print(output, c)
         }
@@ -88,8 +97,8 @@ fn run() -> Result<(), String> {
             let source = read_source(&input)?;
 
             let llvm = render_compilation_result(
-                primer_lang::compile_to_llvm_with_options(
-                    &source,
+                primer_lang::codegen::llvm::emit_llvm_with_options(
+                    &ir_for(&source)?,
                     primer_lang::codegen::llvm::Options {
                         target,
                         annotate_origins,
@@ -111,7 +120,10 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let wat = render_compilation_result(primer_lang::compile_to_wat(&source), &source)?;
+            let wat = render_compilation_result(
+                primer_lang::codegen::emit_wat(&ir_for(&source)?),
+                &source,
+            )?;
 
             write_or_print(output, wat)
         }
@@ -137,7 +149,7 @@ fn run() -> Result<(), String> {
             let source = read_source(&input)?;
 
             let qbe = render_compilation_result(
-                primer_lang::compile_to_qbe_with_target(&source, target),
+                primer_lang::codegen::qbe::emit_qbe_with_target(&ir_for(&source)?, target),
                 &source,
             )?;
 
@@ -160,9 +172,9 @@ fn run() -> Result<(), String> {
 
             let asm = render_compilation_result(
                 if annotate_origins {
-                    primer_lang::compile_to_asm_with_origins(&source, target)
+                    primer_lang::codegen::x86_64::emit_asm_with_origins(&ir_for(&source)?, target)
                 } else {
-                    primer_lang::compile_to_asm_with_target(&source, target)
+                    primer_lang::codegen::x86_64::emit_asm(&ir_for(&source)?, target)
                 },
                 &source,
             )?;
@@ -181,7 +193,7 @@ fn run() -> Result<(), String> {
                 .ok_or("unsupported native object target")?;
             let source = read_source(&input)?;
             let bytes = render_compilation_result(
-                primer_lang::compile_to_native_object(&source, target, origins),
+                primer_lang::codegen::x86_64::emit_object(&ir_for(&source)?, target, origins),
                 &source,
             )?;
             fs::write(&output, bytes)
@@ -199,8 +211,11 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let bytecode =
-                render_compilation_result(primer_lang::compile_to_bytecode_text(&source), &source)?;
+            let bytecode = render_compilation_result(
+                primer_lang::bytecode::lower(&ir_for(&source)?)
+                    .map(|program| primer_lang::bytecode::format_program(&program)),
+                &source,
+            )?;
 
             write_or_print(output, bytecode)
         }
@@ -217,14 +232,16 @@ fn run() -> Result<(), String> {
 
             let source = read_source(&input)?;
 
-            let output = primer_lang::run_vm(&source).map_err(|error| {
-                if let RunError::Execution(execution) = &error {
-                    print!("{}", execution.vm_error().output());
-                    if runtime_format && let Some(failure) = execution.runtime_failure() {
-                        return failure.record();
-                    }
+            let bytecode = render_compilation_result(
+                primer_lang::bytecode::lower(&ir_for(&source)?),
+                &source,
+            )?;
+            let output = primer_lang::run_bytecode(&bytecode).map_err(|error| {
+                print!("{}", error.vm_error().output());
+                if runtime_format && let Some(failure) = error.runtime_failure() {
+                    return failure.record();
                 }
-                render_run_error(error, &source)
+                source.render_execution(&error)
             })?;
 
             print!("{output}");
@@ -247,28 +264,23 @@ fn run() -> Result<(), String> {
     }
 }
 
-fn render_compilation_result<T>(result: Result<T, Diagnostic>, source: &str) -> Result<T, String> {
-    result.map_err(|diagnostic| render_compact(&diagnostic, source))
+fn render_compilation_result<T>(
+    result: Result<T, Diagnostic>,
+    source: &Compilation,
+) -> Result<T, String> {
+    result.map_err(|diagnostic| source.render(&diagnostic))
 }
 
-fn render_run_error(error: RunError, source: &str) -> String {
-    match error {
-        RunError::Compilation(diagnostic) => render_compact(&diagnostic, source),
-        RunError::Execution(error) => match error.origin() {
-            Some(InstructionOrigin::Source { span, .. }) => {
-                render_vm_error_with_source(error.vm_error(), source, span)
-            }
-            Some(InstructionOrigin::Synthetic) | None => render_vm_error(error.vm_error()),
-        },
-    }
+fn ir_for(source: &Compilation) -> Result<primer_lang::ir::Program, String> {
+    render_compilation_result(source.to_ir(), source)
 }
 
 fn required_path(value: Option<String>, message: &str) -> Result<PathBuf, String> {
     value.map(PathBuf::from).ok_or_else(|| message.to_owned())
 }
 
-fn read_source(path: &PathBuf) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))
+fn read_source(path: &std::path::Path) -> Result<Compilation, String> {
+    primer_lang::modules::load(path).map_err(|error| error.render())
 }
 
 fn reject_extra(mut args: impl Iterator<Item = String>) -> Result<(), String> {
@@ -341,6 +353,7 @@ fn print_help() {
          A small experimental language with observable code generation.\n\n\
          USAGE:\n\
            primer check <file>\n\
+           primer emit-sources <file> [-o <sources.json>]\n\
            primer emit-ir <file> [-o <output.pir>]\n\
            primer emit-c <file> [-o <output.c>]\n\
            primer emit-llvm <file> [--target <triple>] [--annotate-origins] [-o <output.ll>]\n\

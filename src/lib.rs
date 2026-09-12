@@ -4,6 +4,7 @@ pub mod codegen;
 pub mod diagnostic;
 pub mod ir;
 pub mod lexer;
+pub mod modules;
 pub mod parser;
 pub mod runtime;
 pub mod semantic;

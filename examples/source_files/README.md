@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-モジュール化の最初の段階として、ファイルを分けても正しい式に戻れるか検証します。import構文はまだありません。次のRust exampleが、各Primerファイルを別々に解析して共通IRを作ります。
+モジュール化の最初の段階として、ファイルを分けても正しい式に戻れるか検証します。この低水準API例自体はimportを使いません。実際のimportを使う例は[modules](../modules/README.md)にあります。次のRust exampleが、各Primerファイルを別々に解析して共通IRを作ります。
 
 ```sh
 cargo run --example source_files

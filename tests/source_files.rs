@@ -221,7 +221,7 @@ fn check_execution(program: &ir::Program, output: Output, route: &str) {
                 format!("primer: {}\n", error.runtime_failure().unwrap().record()),
                 "{route}"
             );
-            if route == "wat" {
+            if matches!(route, "wat" | "vm") {
                 assert_eq!(output.status.code(), Some(1));
             } else {
                 let illegal = matches!(route, "llvm" | "asm" | "object");
@@ -251,26 +251,6 @@ fn check_execution(program: &ir::Program, output: Output, route: &str) {
 #[test]
 fn split_and_single_file_examples_execute_identically_on_available_routes() {
     let w = Workspace::new();
-    let cc = w.tool("PRIMER_TEST_CC", "clang", "--version");
-    let llvm = w.tool("PRIMER_TEST_LLVM_CLANG", "clang", "--version");
-    let node = w.tool("PRIMER_TEST_NODE", "node", "--version");
-    let qbe = if cfg!(target_os = "linux") {
-        w.tool("PRIMER_TEST_QBE", "qbe", "-h")
-    } else {
-        None
-    };
-    let wat = std::env::var_os("PRIMER_TEST_WAT2WASM_JS");
-    if let Some(wat) = &wat {
-        assert!(Path::new(wat).is_file());
-    } else {
-        eprintln!("source-file WAT execution skipped: PRIMER_TEST_WAT2WASM_JS not configured");
-    }
-    let target = if cfg!(windows) {
-        codegen::x86_64::Target::X86_64PcWindowsMsvc
-    } else {
-        codegen::x86_64::Target::X86_64UnknownLinuxGnu
-    };
-    let llvm_target = codegen::llvm::Target::parse(target.triple()).unwrap();
     let cases = [
         (
             MAIN,
@@ -318,120 +298,276 @@ fn split_and_single_file_examples_execute_identically_on_available_routes() {
             }
         }
         for (form, program) in [("split", &split), ("single", &single)] {
-            for route in ["c", "llvm", "qbe", "asm", "object", "wat"] {
-                let label = format!("{case}/{form}/{route}");
-                if route == "wat" {
-                    if let (Some(node), Some(wat)) = (&node, &wat) {
-                        let input = w.0.join("program.wat");
-                        let wasm = w.0.join("program.wasm");
-                        fs::write(&input, codegen::emit_wat(program).unwrap()).unwrap();
-                        w.success(
-                            Command::new(node).arg(wat).arg(&input).arg("-o").arg(&wasm),
-                            &format!("{label}/compile"),
-                        );
-                        let output = w.run(
-                            Command::new(node)
-                                .arg(
-                                    Path::new(env!("CARGO_MANIFEST_DIR"))
-                                        .join("tests/support/run_wasm.cjs"),
-                                )
-                                .arg(wasm),
-                            &format!("{label}/run"),
-                        );
-                        check_execution(program, output, route);
-                    }
-                    continue;
-                }
-                let compiler = if route == "llvm" {
-                    llvm.as_ref()
-                } else {
-                    cc.as_ref()
-                };
-                let Some(compiler) = compiler else {
-                    continue;
-                };
-                if route == "qbe" && qbe.is_none() {
-                    continue;
-                }
-                let input = w.0.join(match route {
-                    "c" => "program.c",
-                    "llvm" => "program.ll",
-                    "object" => {
-                        if cfg!(windows) {
-                            "program.obj"
-                        } else {
-                            "program.o"
-                        }
-                    }
-                    _ => "program.s",
-                });
-                match route {
-                    "c" => fs::write(&input, codegen::emit_c(program).unwrap()).unwrap(),
-                    "llvm" => fs::write(
-                        &input,
-                        codegen::llvm::emit_llvm_with_target(program, Some(llvm_target)).unwrap(),
-                    )
-                    .unwrap(),
-                    "asm" => fs::write(
-                        &input,
-                        codegen::x86_64::emit_asm_with_origins(program, target).unwrap(),
-                    )
-                    .unwrap(),
-                    "object" => fs::write(
-                        &input,
-                        codegen::x86_64::emit_object(program, target, true).unwrap(),
-                    )
-                    .unwrap(),
-                    "qbe" => {
-                        let ssa = w.0.join("program.ssa");
-                        fs::write(
-                            &ssa,
-                            codegen::qbe::emit_qbe_with_target(
-                                program,
-                                Some(codegen::qbe::Target::X86_64UnknownLinuxGnu),
-                            )
-                            .unwrap(),
+            compare_routes(&w, program, None, &format!("{case}/{form}"));
+        }
+    }
+}
+
+fn compare_routes(w: &Workspace, program: &ir::Program, entry: Option<&Path>, label: &str) {
+    let cc = w.tool("PRIMER_TEST_CC", "clang", "--version");
+    let llvm = w.tool("PRIMER_TEST_LLVM_CLANG", "clang", "--version");
+    let node = w.tool("PRIMER_TEST_NODE", "node", "--version");
+    let qbe = if cfg!(target_os = "linux") {
+        w.tool("PRIMER_TEST_QBE", "qbe", "-h")
+    } else {
+        None
+    };
+    let wat = std::env::var_os("PRIMER_TEST_WAT2WASM_JS");
+    if let Some(wat) = &wat {
+        assert!(Path::new(wat).is_file());
+    } else {
+        eprintln!("source-file WAT execution skipped: PRIMER_TEST_WAT2WASM_JS not configured");
+    }
+    let target = if cfg!(windows) {
+        codegen::x86_64::Target::X86_64PcWindowsMsvc
+    } else {
+        codegen::x86_64::Target::X86_64UnknownLinuxGnu
+    };
+    for route in ["c", "llvm", "qbe", "asm", "object", "wat"] {
+        let label = format!("{label}/{route}");
+        if route == "wat" {
+            if let (Some(node), Some(wat)) = (&node, &wat) {
+                let input = w.0.join("program.wat");
+                let wasm = w.0.join("program.wasm");
+                fs::write(&input, artifact(w, program, entry, "wat", target)).unwrap();
+                w.success(
+                    Command::new(node).arg(wat).arg(&input).arg("-o").arg(&wasm),
+                    &format!("{label}/compile"),
+                );
+                let output = w.run(
+                    Command::new(node)
+                        .arg(
+                            Path::new(env!("CARGO_MANIFEST_DIR"))
+                                .join("tests/support/run_wasm.cjs"),
                         )
-                        .unwrap();
-                        w.success(
-                            Command::new(qbe.as_ref().unwrap())
-                                .arg("-o")
-                                .arg(&input)
-                                .arg(ssa),
-                            &format!("{label}/lower"),
-                        );
-                    }
-                    _ => unreachable!(),
-                }
-                for optimization in ["-O0", "-O2"] {
-                    let exe = w.0.join(if cfg!(windows) {
-                        "program.exe"
-                    } else {
-                        "program"
-                    });
-                    let mut command = Command::new(compiler);
-                    command.arg(optimization);
-                    if route == "llvm" {
-                        command.arg(format!("--target={}", target.triple()));
-                    }
-                    if route == "c" {
-                        command.args(["-std=c11", "-pedantic-errors"]);
-                    }
-                    command.arg(&input).arg("-o").arg(&exe);
-                    if !cfg!(windows) {
-                        command.arg("-lm");
-                    }
-                    w.success(&mut command, &format!("{label}/{optimization}/link"));
-                    check_execution(
-                        program,
-                        w.run(
-                            &mut Command::new(exe),
-                            &format!("{label}/{optimization}/run"),
-                        ),
-                        route,
-                    );
+                        .arg(wasm),
+                    &format!("{label}/run"),
+                );
+                check_execution(program, output, route);
+            }
+            continue;
+        }
+        let compiler = if route == "llvm" {
+            llvm.as_ref()
+        } else {
+            cc.as_ref()
+        };
+        let Some(compiler) = compiler else {
+            continue;
+        };
+        if route == "qbe" && qbe.is_none() {
+            continue;
+        }
+        let input = w.0.join(match route {
+            "c" => "program.c",
+            "llvm" => "program.ll",
+            "object" => {
+                if cfg!(windows) {
+                    "program.obj"
+                } else {
+                    "program.o"
                 }
             }
+            _ => "program.s",
+        });
+        if route == "qbe" {
+            let ssa = w.0.join("program.ssa");
+            fs::write(&ssa, artifact(w, program, entry, route, target)).unwrap();
+            w.success(
+                Command::new(qbe.as_ref().unwrap())
+                    .arg("-o")
+                    .arg(&input)
+                    .arg(ssa),
+                &format!("{label}/lower"),
+            );
+        } else {
+            fs::write(&input, artifact(w, program, entry, route, target)).unwrap();
         }
+        for optimization in ["-O0", "-O2"] {
+            let exe = w.0.join(if cfg!(windows) {
+                "program.exe"
+            } else {
+                "program"
+            });
+            let mut command = Command::new(compiler);
+            command.arg(optimization);
+            if route == "llvm" {
+                command.arg(format!("--target={}", target.triple()));
+            }
+            if route == "c" {
+                command.args(["-std=c11", "-pedantic-errors"]);
+            }
+            command.arg(&input).arg("-o").arg(&exe);
+            if !cfg!(windows) {
+                command.arg("-lm");
+            }
+            w.success(&mut command, &format!("{label}/{optimization}/link"));
+            check_execution(
+                program,
+                w.run(
+                    &mut Command::new(exe),
+                    &format!("{label}/{optimization}/run"),
+                ),
+                route,
+            );
+        }
+    }
+}
+
+fn artifact(
+    w: &Workspace,
+    program: &ir::Program,
+    entry: Option<&Path>,
+    route: &str,
+    target: codegen::x86_64::Target,
+) -> Vec<u8> {
+    if let Some(entry) = entry {
+        let output = w.0.join("cli-artifact");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_primer"));
+        command
+            .arg(if route == "object" {
+                "emit-obj".into()
+            } else {
+                format!("emit-{route}")
+            })
+            .arg(entry)
+            .arg("-o")
+            .arg(&output);
+        if matches!(route, "llvm" | "qbe" | "asm" | "object") {
+            command.args(["--target", target.triple()]);
+        }
+        if matches!(route, "asm" | "object") {
+            command.arg("--annotate-origins");
+        }
+        w.success(&mut command, &format!("cli/{route}"));
+        return fs::read(output).unwrap();
+    }
+    match route {
+        "c" => codegen::emit_c(program).unwrap().into_bytes(),
+        "llvm" => codegen::llvm::emit_llvm_with_target(
+            program,
+            Some(codegen::llvm::Target::parse(target.triple()).unwrap()),
+        )
+        .unwrap()
+        .into_bytes(),
+        "wat" => codegen::emit_wat(program).unwrap().into_bytes(),
+        "qbe" => codegen::qbe::emit_qbe_with_target(
+            program,
+            Some(codegen::qbe::Target::X86_64UnknownLinuxGnu),
+        )
+        .unwrap()
+        .into_bytes(),
+        "asm" => codegen::x86_64::emit_asm_with_origins(program, target)
+            .unwrap()
+            .into_bytes(),
+        "object" => codegen::x86_64::emit_object(program, target, true).unwrap(),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn module_cli_artifacts_execute_with_the_same_values_order_and_failure_origins() {
+    let w = Workspace::new();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/modules");
+    for (file, expected, failure) in [
+        (
+            "main.prim",
+            "18446744073709551615\n2\n観測\0\r\n\ntrue\nfalse\n計算\n5\n",
+            None,
+        ),
+        (
+            "single.prim",
+            "18446744073709551615\n2\n観測\0\r\n\ntrue\nfalse\n計算\n5\n",
+            None,
+        ),
+        (
+            "failure.prim",
+            "開始\n計算\n5\n計算\n",
+            Some(("division-by-zero", 2, "value / divisor")),
+        ),
+        (
+            "array_update.prim",
+            "添字\n",
+            Some(("array-index-out-of-bounds", 1, "[1]")),
+        ),
+    ] {
+        let entry = root.join(file);
+        let compilation = primer_lang::modules::load(&entry).unwrap();
+        let program = compilation.to_ir().unwrap();
+        let result = run_bytecode(&bytecode::lower(&program).unwrap());
+        if let Some((code, file_id, expression)) = failure {
+            let error = result.unwrap_err();
+            assert_eq!(error.vm_error().output(), expected);
+            let failure = error.runtime_failure().unwrap();
+            assert_eq!(failure.code.name(), code);
+            assert_eq!(failure.span.source_id().index(), file_id);
+            assert_eq!(compilation.sources.slice(failure.span), Some(expression));
+        } else {
+            assert_eq!(result.unwrap(), expected);
+        }
+        check_execution(
+            &program,
+            w.run(
+                Command::new(env!("CARGO_BIN_EXE_primer"))
+                    .arg("run")
+                    .arg(&entry)
+                    .args(["--diagnostic-format", "runtime-v1"]),
+                "cli/vm",
+            ),
+            "vm",
+        );
+        compare_routes(&w, &program, Some(&entry), file);
+    }
+}
+
+#[test]
+fn module_observation_keeps_dependency_sources_for_both_encoders() {
+    let w = Workspace::new();
+    let Some(node) = w.tool("PRIMER_TEST_NODE", "node", "--version") else {
+        return;
+    };
+    let Some(cc) = w.tool("PRIMER_TEST_CC", "clang", "--version") else {
+        return;
+    };
+    let Some(objdump) = w.tool(
+        "PRIMER_TEST_OBJDUMP",
+        if cfg!(windows) {
+            "llvm-objdump"
+        } else {
+            "objdump"
+        },
+        "--version",
+    ) else {
+        return;
+    };
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let target = if cfg!(windows) {
+        "x86_64-pc-windows-msvc"
+    } else {
+        "x86_64-unknown-linux-gnu"
+    };
+    for encoder in ["external", "primer"] {
+        let directory = w.0.join(encoder);
+        w.success(
+            Command::new(&node)
+                .arg(root.join("scripts/observe-native.cjs"))
+                .arg("--source")
+                .arg(root.join("examples/modules/failure.prim"))
+                .args(["--target", target, "--primer", env!("CARGO_BIN_EXE_primer")])
+                .arg("--cc")
+                .arg(&cc)
+                .arg("--objdump")
+                .arg(&objdump)
+                .arg("--output-dir")
+                .arg(&directory)
+                .args(["--encoder", encoder, "--run", "--expect-trap"]),
+            "module-observer",
+        );
+        let sources = fs::read_to_string(directory.join("sources.json")).unwrap();
+        assert!(sources.contains("values.prim"));
+        assert!(sources.contains("pub fn divide"));
+        let manifest = fs::read_to_string(directory.join("manifest.json")).unwrap();
+        assert!(manifest.contains("expected-failure-confirmed"));
+        assert!(manifest.contains("\"file\": 2"));
     }
 }

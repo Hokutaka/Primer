@@ -1,0 +1,266 @@
+//! 明示した入口からファイルを読み、公開範囲を解決して共通ASTへ渡します。
+use crate::{
+    ast::*,
+    diagnostic::{Diagnostic, render},
+    lexer, parser,
+    source::{SourceId, SourceMap, Span},
+};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
+
+mod resolve;
+
+#[derive(Debug)]
+pub struct Compilation {
+    pub sources: SourceMap,
+    pub program: Program,
+    entry: SourceId,
+    pub modular: bool,
+}
+
+impl Compilation {
+    pub fn to_ir(&self) -> Result<crate::ir::Program, Diagnostic> {
+        crate::ir::builder::build(&self.program)
+    }
+
+    pub fn render(&self, diagnostic: &Diagnostic) -> String {
+        render_diagnostic(diagnostic, &self.sources, self.entry)
+    }
+
+    pub fn render_execution(&self, error: &crate::ExecutionError) -> String {
+        match error.origin() {
+            Some(crate::bytecode::InstructionOrigin::Source { span, .. })
+                if span.source_id() != SourceId::ANONYMOUS =>
+            {
+                crate::vm::render::render_compact_with_sources(
+                    error.vm_error(),
+                    &self.sources,
+                    span,
+                )
+            }
+            Some(crate::bytecode::InstructionOrigin::Source { span, .. }) => {
+                crate::vm::render::render_compact_with_source(
+                    error.vm_error(),
+                    self.sources.get(self.entry).unwrap().text(),
+                    span,
+                )
+            }
+            _ => crate::vm::render::render_compact(error.vm_error()),
+        }
+    }
+
+    /// JSONの依存ファイル一覧。呼び出し側が選んだときだけ名前と本文を公開します。
+    /// 本文は正確なバイト範囲の照合用であり、生成プログラムの状態ではありません。
+    pub fn source_manifest(&self) -> String {
+        let files = self
+            .sources
+            .files()
+            .map(|file| {
+                format!(
+                    "{{\"id\":{},\"name\":{},\"text\":{}}}",
+                    if self.modular { file.id().index() } else { 0 },
+                    json(file.name()),
+                    json(file.text())
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{{\"schema\":\"primer-sources-v1\",\"files\":[{files}]}}\n")
+    }
+}
+
+#[derive(Debug)]
+pub struct LoadError {
+    pub diagnostic: Diagnostic,
+    pub sources: SourceMap,
+    entry: Option<SourceId>,
+}
+
+impl LoadError {
+    pub fn render(&self) -> String {
+        match self.entry {
+            Some(entry) => render_diagnostic(&self.diagnostic, &self.sources, entry),
+            None => render::render_compact(&self.diagnostic, ""),
+        }
+    }
+}
+
+fn render_diagnostic(error: &Diagnostic, sources: &SourceMap, entry: SourceId) -> String {
+    if error
+        .primary_span()
+        .is_some_and(|span| span.source_id() != SourceId::ANONYMOUS)
+    {
+        render::render_compact_with_sources(error, sources)
+    } else {
+        render::render_compact(error, sources.get(entry).unwrap().text())
+    }
+}
+
+struct Unit {
+    id: SourceId,
+    path: PathBuf,
+    module: parser::Module,
+    imports: HashMap<String, usize>,
+    complete: bool,
+}
+
+/// 相対importは宣言元のディレクトリを基準にします。CWDや検索パスへフォールバックしません。
+pub fn load(entry: &Path) -> Result<Compilation, LoadError> {
+    let mut sources = SourceMap::new();
+    let mut entry_id = None;
+    let result = (|| {
+        let path = fs::canonicalize(entry).map_err(|e| {
+            Diagnostic::without_span(format!("failed to read {}: {e}", entry.display()))
+        })?;
+        let text = fs::read_to_string(&path).map_err(|e| {
+            Diagnostic::without_span(format!("failed to read {}: {e}", entry.display()))
+        })?;
+        let id = sources.add(entry.to_string_lossy(), text);
+        entry_id = Some(id);
+        let file = sources.get(id).unwrap();
+        // 単一ファイルのCLI成果物と診断は既存の匿名ソースの契約を保ちます。
+        let mut tokens = lexer::lex(file.text())?;
+        let modular = tokens
+            .iter()
+            .any(|token| matches!(token.kind, lexer::TokenKind::Import | lexer::TokenKind::Pub));
+        if modular {
+            for token in &mut tokens {
+                token.span = token.span.with_source(id);
+            }
+        }
+        let module = parser::parse_module(tokens)?;
+        if !modular {
+            return Ok((module.program, false));
+        }
+        let mut units = vec![Unit {
+            id,
+            path,
+            module,
+            imports: HashMap::new(),
+            complete: false,
+        }];
+        let mut paths = HashMap::from([(units[0].path.clone(), 0)]);
+        visit(0, &mut units, &mut paths, &mut sources, 0)?;
+        Ok((resolve::resolve(&units)?, true))
+    })();
+    match result {
+        Ok((program, modular)) => Ok(Compilation {
+            sources,
+            program,
+            entry: entry_id.unwrap(),
+            modular,
+        }),
+        Err(diagnostic) => Err(LoadError {
+            diagnostic,
+            sources,
+            entry: entry_id,
+        }),
+    }
+}
+
+fn visit(
+    index: usize,
+    units: &mut Vec<Unit>,
+    paths: &mut HashMap<PathBuf, usize>,
+    sources: &mut SourceMap,
+    depth: usize,
+) -> Result<(), Diagnostic> {
+    for import in units[index].module.imports.clone() {
+        if depth >= 128 {
+            return Err(Diagnostic::new(
+                "import nesting exceeds 128 files",
+                import.span,
+            ));
+        }
+        if units[index].imports.contains_key(&import.alias) {
+            return Err(Diagnostic::new(
+                format!("duplicate import alias `{}`", import.alias),
+                import.span,
+            ));
+        }
+        if Type::from_name(&import.alias).is_some()
+            || matches!(import.alias.as_str(), "infer" | "convert" | "byte_len")
+        {
+            return Err(Diagnostic::new(
+                format!("import alias `{}` is reserved", import.alias),
+                import.span,
+            ));
+        }
+        if import.path.is_empty()
+            || import.path.starts_with('/')
+            || import.path.contains(['\\', ':'])
+            || import.path.chars().any(char::is_control)
+            || !import.path.ends_with(".prim")
+        {
+            return Err(Diagnostic::new(
+                "import path must be a relative .prim path using forward slashes",
+                import.span,
+            ));
+        }
+        let requested = units[index].path.parent().unwrap().join(&import.path);
+        let path = fs::canonicalize(&requested).map_err(|e| {
+            Diagnostic::new(format!("cannot import `{}`: {e}", import.path), import.span)
+        })?;
+        let target = if let Some(&target) = paths.get(&path) {
+            if !units[target].complete {
+                return Err(Diagnostic::new(
+                    format!("cyclic import of `{}`", import.path),
+                    import.span,
+                ));
+            }
+            target
+        } else {
+            let text = fs::read_to_string(&path).map_err(|e| {
+                Diagnostic::new(format!("cannot import `{}`: {e}", import.path), import.span)
+            })?;
+            // リンク名側の親へ結び付けず、診断も実際に読んだファイルを指します。
+            let name = path.to_string_lossy().into_owned();
+            let id = sources.add(name, text);
+            let module = parser::parse_module(lexer::lex_source(sources.get(id).unwrap())?)?;
+            if let Some(statement) = module.program.items.iter().find_map(|item| {
+                if let Item::Statement(s) = item {
+                    Some(s)
+                } else {
+                    None
+                }
+            }) {
+                return Err(Diagnostic::new(
+                    "imported files may contain only imports, types, and functions; call initialization explicitly",
+                    statement.span,
+                ));
+            }
+            let target = units.len();
+            paths.insert(path.clone(), target);
+            units.push(Unit {
+                id,
+                path,
+                module,
+                imports: HashMap::new(),
+                complete: false,
+            });
+            visit(target, units, paths, sources, depth + 1)?;
+            target
+        };
+        units[index].imports.insert(import.alias, target);
+    }
+    units[index].complete = true;
+    Ok(())
+}
+
+fn json(text: &str) -> String {
+    use std::fmt::Write;
+    let mut result = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' => result.push_str("\\\""),
+            '\\' => result.push_str("\\\\"),
+            c if c <= '\u{1f}' => write!(result, "\\u{:04x}", c as u32).unwrap(),
+            c => result.push(c),
+        }
+    }
+    result.push('"');
+    result
+}

@@ -296,6 +296,20 @@ Updating one copy of an array does not change another copy. The assigned value m
 
 See [Fixed array design](../design/fixed-arrays.en.md) for the detailed design and bounds-check representation in each backend.
 
+## Modules and visibility
+
+```primer
+import "values.prim" as values;
+item: values::Reading = values::reading(7);
+print(item.amount);
+```
+
+Use external types and functions through `alias::name`. Imports precede definitions and statements. Definitions are private to their file unless marked `pub fn` or `pub type`. Public types expose all fields; public parameter/result types and fields cannot contain private types.
+
+Imported files allow only imports, types, and functions at top level. Loading executes no initialization and never invokes a dependency's `main`. Relative `.prim` paths resolve against the declaring file's directory, using `/` separators. Cycles, private access, duplicate aliases, and alias collisions with definitions or bindings are diagnosed. `import`, `as`, and `pub` are keywords.
+
+Re-exports, wildcards, imported variables, and mutable module state are unsupported. See the [rules and loading limits](../design/modules.en.md) and [executable examples](../../examples/modules/README.en.md).
+
 ## Functions and entrypoint
 
 `fn` defines a named computation. Every parameter and the return type are explicit.

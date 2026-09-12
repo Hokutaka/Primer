@@ -48,7 +48,7 @@ Primer VMでの実行結果は次のとおりです。
 
 ## 計算と変換を観測する
 
-モジュール化の最初の段階として、[ファイルを識別できるソース位置](docs/design/source-files.ja.md)を追加しています。import構文は未実装です。
+[モジュール](docs/design/modules.ja.md)で型・関数を別ファイルへ分け、明示的なimport・名前空間・公開範囲を使えます。[分割版と単一ファイル版のexample](examples/modules/README.md)を比較できます。
 
 言語の検査失敗は全出力経路で停止理由・ソース位置・停止前の出力を照合できます。[実行時診断](docs/design/runtime-diagnostics.ja.md)と[意図した停止の4例](examples/runtime_failures/README.md)を参照してください。LLVMは検査付きの数値処理にも明示ターゲットが必要で、WATの実行ホストには診断出力用の`primer.write_error_byte`を追加します。
 

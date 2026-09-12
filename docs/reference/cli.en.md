@@ -10,6 +10,7 @@ The current CLI provides the following commands:
 
 ```text
 primer check <file>
+primer emit-sources <file> [-o <sources.json>]
 primer emit-ir <file> [-o <output.pir>]
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
@@ -23,6 +24,20 @@ primer --version
 ```
 
 ## Validation
+
+`<file>` is the entry file for every command. [Module imports](../design/modules.en.md) resolve from the declaring file's directory, and all dependencies are checked. Changing the CLI working directory does not change resolution. Existing backend `--target` requirements remain in effect.
+
+### Observing dependency sources
+
+```sh
+primer emit-sources examples/modules/main.prim -o sources.json
+```
+
+This explicitly outputs names and source contents. JSON schema `primer-sources-v1` contains a registration-ordered `files` array with `id`, `name`, and `text`. JSON escaping preserves the exact UTF-8 text without normalization. Inputs without import/pub retain anonymous source ID 0; module inputs start with entry ID 1. Resolve runtime `file` and file-local `bytes` against these contents. This does not embed source text in generated programs. Without `-o`, the JSON goes to stdout.
+
+Default `run` diagnostics show the dependency filename, line, and column. `--diagnostic-format runtime-v1` emits numeric file IDs. Compilation failures do not replace output artifacts.
+
+### Syntax and type validation
 
 ```text
 primer check <file>

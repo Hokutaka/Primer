@@ -2,7 +2,7 @@
 
 [日本語](README.md)
 
-This first step toward modules checks whether separated files still identify the correct expression. There is no import syntax yet. The Rust example parses each Primer file separately and builds common IR.
+This first step toward modules checks whether separated files still identify the correct expression. This low-level API example does not use imports; see [modules](../modules/README.en.md) for actual import syntax. The Rust example parses each Primer file separately and builds common IR.
 
 ```sh
 cargo run --example source_files
