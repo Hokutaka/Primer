@@ -343,6 +343,9 @@ fn symlink_imports_share_identity_and_resolve_from_the_target_directory() {
     let entry = w.put("main.prim", "import \"link.prim\" as a; import \"actual/logic.prim\" as b; print(a::make().n); print(b::make().n);");
     let compilation = modules::load(&entry).unwrap();
     assert_eq!(compilation.sources.files().count(), 3);
+    for source in compilation.sources.files() {
+        assert_eq!(fs::read_to_string(source.name()).unwrap(), source.text());
+    }
     assert_eq!(
         run_bytecode(&bytecode::lower(&compilation.to_ir().unwrap()).unwrap()).unwrap(),
         "7\n7\n"

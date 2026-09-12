@@ -216,14 +216,8 @@ fn visit(
             let text = fs::read_to_string(&path).map_err(|e| {
                 Diagnostic::new(format!("cannot import `{}`: {e}", import.path), import.span)
             })?;
-            // 表示名は入口を基準にした読み込み経路。物理パスは重複・循環判定だけに使います。
-            let parent_name = Path::new(sources.get(units[index].id).unwrap().name())
-                .parent()
-                .unwrap_or(Path::new(""));
-            let name = parent_name
-                .join(&import.path)
-                .to_string_lossy()
-                .into_owned();
+            // リンク名側の親へ結び付けず、診断も実際に読んだファイルを指します。
+            let name = path.to_string_lossy().into_owned();
             let id = sources.add(name, text);
             let module = parser::parse_module(lexer::lex_source(sources.get(id).unwrap())?)?;
             if let Some(statement) = module.program.items.iter().find_map(|item| {
