@@ -57,7 +57,9 @@ jobs:
           path: target/ci-tests.log
           if-no-files-found: ignore
       - name: C string and u64 sanitizer checks
-        run: cargo test --test c_strings
+        run: |
+          ulimit -c 0
+          cargo test --test c_strings
         env:
           PRIMER_TEST_CC: clang
           PRIMER_TEST_SANITIZE: "1"
@@ -74,7 +76,7 @@ jobs:
       - name: Install WAT validation tool
         run: npm install --prefix target/wasm-tools --no-audit --no-fund wabt@1.0.39
       - name: Compare strings, u64, assembly, and machine artifacts on Windows
-        run: cargo test --test llvm_strings --test c_strings --test string_routes --test native_assembly
+        run: cargo test --test llvm_strings --test c_strings --test string_routes --test native_assembly --test runtime_routes
         env:
           PRIMER_TEST_CC: clang
           PRIMER_TEST_LLVM_CLANG: clang

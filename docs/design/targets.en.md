@@ -44,7 +44,7 @@ The current outputs can be described as follows:
 | Output route | Target | Artifact |
 | --- | --- | --- |
 | C | not selected by Primer | C source `.c` |
-| LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 (required for strings) | LLVM IR `.ll` |
+| LLVM IR | unspecified, or explicit Windows x64 / Linux x86-64 (required for strings and runtime checks) | LLVM IR `.ll` |
 | QBE IR | unspecified, or explicit Linux x86-64 (required for strings) | QBE IR `.ssa` |
 | WebAssembly Text | WebAssembly | WAT `.wat` |
 | Native assembly | x86-64, Windows / Linux, respective calling conventions | GNU-style assembly `.s` |
@@ -57,7 +57,7 @@ The current outputs can be described as follows:
 
 An existing output route does not imply support for every language feature. Strings now lower through every route. LLVM and QBE diagnose a missing target before lowering, including unused definitions. Successful semantic validation is distinct from successful generation through each route.
 
-LLVM `--target` selects `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc` and records a `target triple` in the artifact. Programs using strings use this selection to initialize Windows standard output in binary mode. Omitting the target for strings produces a source-located diagnostic; the host never supplies a default. See [string design](strings.en.md#llvm-representation-and-targets) for representation and initialization details.
+LLVM `--target` selects `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc` and records a `target triple` in the artifact. Programs using strings use this selection to initialize Windows standard output in binary mode. Omitting the target for strings produces a source-located diagnostic; the host never supplies a default. Numeric-only programs with runtime checks also require a target to select the diagnostic output ABI. See [string design](strings.en.md#llvm-representation-and-targets) for representation and initialization details.
 
 Artifact comparison separates the following questions. Support information is data, not permission to launch external programs.
 

@@ -1,7 +1,9 @@
+#[path = "support/llvm.rs"]
+mod llvm;
 use primer_lang::{
     RunError, bytecode, compile, compile_to_bytecode, compile_to_bytecode_text, compile_to_c,
-    compile_to_ir, compile_to_ir_text, compile_to_llvm, compile_to_qbe, compile_to_wat,
-    compile_to_x86_64_win_asm, ir, run_vm,
+    compile_to_ir, compile_to_ir_text, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm,
+    ir, run_vm,
     types::IntegerType,
     vm::{self, IntegerOperation, VmErrorKind},
 };
@@ -72,7 +74,7 @@ fn typed_arrays_fields_parameters_returns_and_indices_work_together() {
     assert_eq!(run_vm(source).unwrap(), "2147483649\n5\n-2\n");
     for emit in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,

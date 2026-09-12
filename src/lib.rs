@@ -94,7 +94,7 @@ pub fn compile_to_llvm(source: &str) -> Result<String, Diagnostic> {
     codegen::emit_llvm(&program)
 }
 
-/// LLVMの実行環境を明示して生成します。Noneでは文字列にターゲット指定を求めます。
+/// LLVMの実行環境を明示して生成します。Noneでは文字列や実行時検査を持つ処理にターゲット指定を求めます。
 pub fn compile_to_llvm_with_target(
     source: &str,
     target: Option<codegen::llvm::Target>,
@@ -201,7 +201,7 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
 mod tests {
     use super::{
         RunError, compile_to_bytecode, compile_to_bytecode_text, compile_to_c, compile_to_ir_text,
-        compile_to_llvm, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, run_vm,
+        compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, run_vm,
     };
     use crate::{
         bytecode::{InstructionKind, InstructionOrigin},
@@ -337,7 +337,11 @@ mod tests {
         assert!(c.contains("primer_array_i64_4"));
         assert!(c.contains("primer_array_get_i64_4"));
 
-        let llvm = compile_to_llvm(source).unwrap();
+        let llvm = crate::compile_to_llvm_with_target(
+            source,
+            Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu),
+        )
+        .unwrap();
         assert!(llvm.contains("@primer.array.get.i64.4"));
         assert!(llvm.contains("icmp sge i64 %index, 4"));
 
@@ -377,7 +381,13 @@ mod tests {
         let ir = compile_to_ir_text(source).unwrap();
         assert!(ir.contains("set %matrix@0:[[i64; 2]; 2]["));
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -450,7 +460,13 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "2\n6\n");
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -480,7 +496,13 @@ mod tests {
         assert!(bytecode.contains("array.new %Path@1 2"));
         assert!(bytecode.contains("array.get %Path@1 2"));
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -501,7 +523,13 @@ mod tests {
         assert!(bytecode.contains("array.new [i64; 3] 2"));
         assert!(bytecode.contains("array.get [i64; 3] 2"));
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -524,7 +552,13 @@ mod tests {
         assert!(bytecode.contains("array.new [%Point@0; 2] 2"));
         assert!(bytecode.contains("array.get [%Point@0; 2] 2"));
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -593,9 +627,12 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "2\n");
         assert!(
-            compile_to_llvm(source)
-                .unwrap()
-                .contains("define internal i64 @primer.array.get.i64.2")
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .unwrap()
+            .contains("define internal i64 @primer.array.get.i64.2")
         );
     }
 
@@ -614,7 +651,13 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "true\n2\n1.25\n2.5\n");
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -632,7 +675,13 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "20\n");
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -675,7 +724,13 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "2\n12\n3\n");
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());
@@ -705,7 +760,13 @@ mod tests {
 
         assert_eq!(run_vm(source).unwrap(), "3\n2\n1\n");
         assert!(compile_to_c(source).is_ok());
-        assert!(compile_to_llvm(source).is_ok());
+        assert!(
+            crate::compile_to_llvm_with_target(
+                source,
+                Some(crate::codegen::llvm::Target::X86_64UnknownLinuxGnu)
+            )
+            .is_ok()
+        );
         assert!(compile_to_qbe(source).is_ok());
         assert!(compile_to_wat(source).is_ok());
         assert!(compile_to_x86_64_win_asm(source).is_ok());

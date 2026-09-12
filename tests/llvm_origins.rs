@@ -35,6 +35,24 @@ fn annotations_preserve_every_example_and_are_deterministic() {
 }
 
 #[test]
+fn annotations_preserve_failure_records_and_instructions() {
+    for source in [
+        include_str!("../examples/runtime_failures/overflow.prim"),
+        include_str!("../examples/runtime_failures/array_update.prim"),
+        include_str!("../examples/runtime_failures/function_division.prim"),
+    ] {
+        let annotated = emit(source, true);
+        let without_comments: String = annotated
+            .lines()
+            .filter(|line| !line.starts_with("; primer-origin"))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert_eq!(without_comments, emit(source, false));
+        assert!(without_comments.contains("@primer.runtime.fail"));
+    }
+}
+
+#[test]
 fn origin_example_has_reviewable_ir_and_llvm() {
     // fixtureはLFで固定します。利用時のSpanは入力そのもののバイト位置です。
     let source = include_str!("../examples/string_origins.prim").replace("\r\n", "\n");

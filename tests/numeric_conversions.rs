@@ -1,7 +1,9 @@
+#[path = "support/llvm.rs"]
+mod llvm;
 use primer_lang::{
     RunError, bytecode, compile, compile_to_bytecode, compile_to_bytecode_text, compile_to_c,
-    compile_to_ir, compile_to_ir_text, compile_to_llvm, compile_to_qbe, compile_to_wat,
-    compile_to_x86_64_win_asm, ir, run_vm,
+    compile_to_ir, compile_to_ir_text, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm,
+    ir, run_vm,
     source::{ConversionSyntax, Span},
     types::{IntegerType, NumericType},
     vm::{self, NumericConversionFailure as Failure, VmErrorKind},
@@ -36,7 +38,7 @@ fn every_numeric_pair_supports_both_spellings() {
                 assert_eq!(run_vm(&source).unwrap(), "42\n", "{source}");
                 for emit in [
                     compile_to_c,
-                    compile_to_llvm,
+                    llvm::compile,
                     compile_to_qbe,
                     compile_to_wat,
                     compile_to_x86_64_win_asm,
@@ -177,15 +179,13 @@ fn destination_does_not_change_input_arithmetic_or_evaluate_it_twice() {
     let explicit = compact.replace("f64(", "convert<f64>(");
     assert_eq!(run_vm(compact).unwrap(), "7\n3\n0\n0.5\n");
     assert_eq!(run_vm(&explicit).unwrap(), run_vm(compact).unwrap());
-    for emit in [
-        compile_to_c,
-        compile_to_llvm,
-        compile_to_qbe,
-        compile_to_wat,
-    ] {
-        assert_eq!(emit(compact).unwrap(), emit(&explicit).unwrap());
+    for emit in [compile_to_c, llvm::compile, compile_to_qbe, compile_to_wat] {
+        // 表記が変わると診断のUTF-8範囲も変わります。各生成物の決定性を確認します。
+        for source in [compact, explicit.as_str()] {
+            assert_eq!(emit(source).unwrap(), emit(source).unwrap());
+        }
     }
-    // ASMは元の表記のバイト範囲を診断に保持するため、表記の違う生成物は異なります。
+    // 全経路が元の表記のバイト範囲を診断に保持します。
     // 両表記の実行結果はnative_assemblyの既知出力のケースで比較します。
     for source in [compact, explicit.as_str()] {
         assert_eq!(
@@ -221,7 +221,7 @@ fn conversions_compose_with_defaults_arrays_returns_and_short_circuiting() {
     assert_eq!(run_vm(source).unwrap(), "1.5\n2.5\nfalse\ntrue\n");
     for emit in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,

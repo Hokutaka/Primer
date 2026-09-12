@@ -48,6 +48,8 @@ During development, replace `primer` with `cargo run --quiet --` to run the upda
 
 ## Observe Computation and Transformation
 
+Language check failures expose comparable reasons, source locations, and prior output across every route. See [runtime diagnostics](docs/design/runtime-diagnostics.en.md) and the [four expected-failure examples](examples/runtime_failures/README.en.md). Checked numeric LLVM programs require an explicit target, and WAT hosts must implement `primer.write_error_byte` for diagnostic output.
+
 The same source can be inspected as an intermediate representation or generated code, not just executed:
 
 ```sh

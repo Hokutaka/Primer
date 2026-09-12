@@ -1,26 +1,309 @@
 (module
+  (import "primer" "write_error_byte" (func $write_error_byte (param i32)))
   (import "primer" "print_u64" (func $print_u64 (param i64)))
   (import "primer" "print_bool" (func $print_bool (param i32)))
   (import "primer" "print_i64" (func $print_i64 (param i64)))
   (import "primer" "print_f32" (func $print_f32 (param f32)))
   (import "primer" "print_f64" (func $print_f64 (param f64)))
 
-  (func $primer_convert_i64_u64 (param $value i64) (result i64)
+  (func $primer_convert_i64_u64_n17_b121_131 (param $value i64) (result i64)
     (local $result i64) (local $number f64)
     local.get $value
     i64.const 0
     i64.lt_s
     if
+      ;; primer: runtime-v1 code=integer-conversion-out-of-range node=17 bytes=121..131
+      i32.const 112
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 58
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 117
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 99
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 103
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 99
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 117
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 102
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 97
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 103
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 55
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 98
+      call $write_error_byte
+      i32.const 121
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 50
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 51
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 10
+      call $write_error_byte
       unreachable
     end
     local.get $value
     local.set $result
     local.get $result
   )
-  (func $primer_u64_div (param $left i64) (param $right i64) (result i64)
+  (func $primer_u64_div_n9_b79_90 (param $left i64) (param $right i64) (result i64)
     local.get $right
     i64.eqz
     if
+      ;; primer: runtime-v1 code=division-by-zero node=9 bytes=79..90
+      i32.const 112
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 58
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 117
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 99
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 98
+      call $write_error_byte
+      i32.const 121
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 122
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 57
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 98
+      call $write_error_byte
+      i32.const 121
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 55
+      call $write_error_byte
+      i32.const 57
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 57
+      call $write_error_byte
+      i32.const 48
+      call $write_error_byte
+      i32.const 10
+      call $write_error_byte
       unreachable
     end
     local.get $left
@@ -28,11 +311,144 @@
     i64.div_u
   )
 
-  (func $primer_u64_shr (param $left i64) (param $right i64) (result i64)
+  (func $primer_u64_shr_n13_b99_112 (param $left i64) (param $right i64) (result i64)
     local.get $right
     i64.const 64
     i64.ge_u
     if
+      ;; primer: runtime-v1 code=invalid-shift-count node=13 bytes=99..112
+      i32.const 112
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 58
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 114
+      call $write_error_byte
+      i32.const 117
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 109
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 99
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 118
+      call $write_error_byte
+      i32.const 97
+      call $write_error_byte
+      i32.const 108
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 104
+      call $write_error_byte
+      i32.const 105
+      call $write_error_byte
+      i32.const 102
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 45
+      call $write_error_byte
+      i32.const 99
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 117
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 110
+      call $write_error_byte
+      i32.const 111
+      call $write_error_byte
+      i32.const 100
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 51
+      call $write_error_byte
+      i32.const 32
+      call $write_error_byte
+      i32.const 98
+      call $write_error_byte
+      i32.const 121
+      call $write_error_byte
+      i32.const 116
+      call $write_error_byte
+      i32.const 101
+      call $write_error_byte
+      i32.const 115
+      call $write_error_byte
+      i32.const 61
+      call $write_error_byte
+      i32.const 57
+      call $write_error_byte
+      i32.const 57
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 46
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 49
+      call $write_error_byte
+      i32.const 50
+      call $write_error_byte
+      i32.const 10
+      call $write_error_byte
       unreachable
     end
     local.get $left
@@ -53,14 +469,14 @@
     call $print_bool
     local.get $primer_maximum
     i64.const 2
-    call $primer_u64_div
+    call $primer_u64_div_n9_b79_90
     call $print_u64
     local.get $primer_maximum
     i64.const 63
-    call $primer_u64_shr
+    call $primer_u64_shr_n13_b99_112
     call $print_u64
     i64.const 42
-    call $primer_convert_i64_u64
+    call $primer_convert_i64_u64_n17_b121_131
     call $print_u64
   )
   (export "main" (func $main))

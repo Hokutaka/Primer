@@ -70,7 +70,7 @@ Text-producing `emit-*` commands write their observations to standard output by 
 
 ### LLVM target selection
 
-`--target` accepts `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc`. Programs using strings require it, including unused types and functions. Existing numeric-only invocations may omit it. The host OS never supplies a default. `--target` and `-o` (also `--output`) may appear in either order; duplicate options, missing values, and unsupported targets are errors.
+`--target` accepts `x86_64-unknown-linux-gnu` or `x86_64-pc-windows-msvc`. Programs using strings require it, including unused types and functions. Numeric-only programs also require it when checked operations, conversions, or array indexing emit runtime diagnostics. For example, `print(1 + 2);` requires a target, while `print(1);` does not. The host OS never supplies a default. `--target` and `-o` (also `--output`) may appear in either order; duplicate options, missing values, and unsupported targets are errors.
 
 On Linux x86-64:
 
@@ -111,6 +111,8 @@ The artifact records the target in a comment. Invoking QBE and the C linker belo
 
 WAT using strings imports `primer.write_byte(i32) -> void`, passing each byte and a trailing LF without exposing memory. Alongside the existing numeric and Boolean host functions, the host implements the [string output contract](../design/strings.en.md#wat-output-and-the-external-boundary). `emit-wat` does not launch a host.
 
+WAT with runtime checks also imports `primer.write_error_byte(i32) -> void`. Hosts write these ASCII diagnostics to stderr and preserve previous stdout when `unreachable` traps. See the [runtime diagnostic contract](../design/runtime-diagnostics.en.md).
+
 Generate Windows x64 direct assembly with `primer emit-asm examples/string_lookup.prim -o target/string_lookup.s` and build it with `clang --target=x86_64-pc-windows-msvc target/string_lookup.s -o target/string_lookup.exe`. Programs using strings switch standard output to binary mode before output.
 
 ## Execution
@@ -131,7 +133,7 @@ primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
 
 The bytecode instruction index is still displayed when no source location is available. Compact diagnostics do not include source text or the input file path.
 
-`run --diagnostic-format runtime-v1` emits language check failures as a single record containing the reason, NodeId, and UTF-8 byte range. Compilation diagnostics and VM internal errors retain their existing format. Previously executed `print` output remains on stdout. Windows/Linux assembly and internal objects use the same failure records. See the [common diagnostic contract](../design/runtime-diagnostics.en.md) and [expected-failure examples](../../examples/runtime_failures/README.en.md).
+`run --diagnostic-format runtime-v1` emits language check failures as a single record containing the reason, NodeId, and UTF-8 byte range. Compilation diagnostics and VM internal errors retain their existing format. Previously executed `print` output remains on stdout. C, LLVM, QBE, WAT, Windows/Linux assembly, and internal objects use the same failure records. See the [common diagnostic contract](../design/runtime-diagnostics.en.md) and [expected-failure examples](../../examples/runtime_failures/README.en.md).
 
 ## Version
 

@@ -16,6 +16,7 @@ pub fn emit(module: &Module) -> String {
         .unwrap();
     }
     let i64_operations = i64_operations(module);
+    super::failure::emit(module, &mut output);
     if module
         .instructions
         .iter()
@@ -146,7 +147,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         super::integer::emit_support(op, ty, output);
     }
     for ty in &operations.range_checks {
-        output.push_str(&format!("function l $primer_check_{}(l %value) {{\n@start\n  %below =w csltl %value, {}\n  %above =w csgtl %value, {}\n  %bad =w or %below, %above\n  jnz %bad, @trap, @ok\n@trap\n  call $abort()\n  hlt\n@ok\n  ret %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        output.push_str(&format!("function l $primer_check_{}(l %value, l %code, l %code_len, l %origin, l %origin_len) {{\n@start\n  %below =w csltl %value, {}\n  %above =w csgtl %value, {}\n  %bad =w or %below, %above\n  jnz %bad, @trap, @ok\n@trap\n  call $primer_runtime_failure(l %code, l %code_len, l %origin, l %origin_len)\n  hlt\n@ok\n  ret %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     for (enabled, name, operation, check) in [
@@ -168,7 +169,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         }
         writeln!(
             output,
-            "function l $primer_i64_{name}(l %left, l %right) {{"
+            "function l $primer_i64_{name}(l %left, l %right, l %origin, l %origin_len) {{"
         )
         .unwrap();
         output.push_str("@start\n");
@@ -176,12 +177,12 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         output.push_str(check);
         output.push_str("  %overflow =w csltl %sign_changed, 0\n");
         output.push_str("  jnz %overflow, @trap, @ok\n@trap\n");
-        output.push_str("  call $abort()\n  hlt\n@ok\n  ret %result\n}\n\n");
+        output.push_str("  call $primer_fail_integer_overflow(l %origin, l %origin_len)\n  hlt\n@ok\n  ret %result\n}\n\n");
     }
 
     if operations.multiply {
         output.push_str(
-            "function l $primer_i64_mul(l %left, l %right) {\n\
+            "function l $primer_i64_mul(l %left, l %right, l %origin, l %origin_len) {\n\
              @start\n\
              \x20 %left_zero =w ceql %left, 0\n\
              \x20 jnz %left_zero, @zero, @special\n\
@@ -202,7 +203,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
              @zero\n\
              \x20 ret 0\n\
              @trap\n\
-             \x20 call $abort()\n\
+             \x20 call $primer_fail_integer_overflow(l %origin, l %origin_len)\n\
              \x20 hlt\n\
              @ok\n\
              \x20 ret %result\n\
@@ -211,33 +212,24 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
     }
 
     if operations.divide {
-        output.push_str(
-            "function l $primer_i64_div(l %left, l %right) {\n\
-             @start\n\
-             \x20 %is_zero =w ceql %right, 0\n\
-             \x20 %is_min =w ceql %left, -9223372036854775808\n\
-             \x20 %is_negative_one =w ceql %right, -1\n\
-             \x20 %overflows =w and %is_min, %is_negative_one\n\
-             \x20 %invalid =w or %is_zero, %overflows\n\
-             \x20 jnz %invalid, @trap, @ok\n\
-             @trap\n\
-             \x20 call $abort()\n\
-             \x20 hlt\n\
-             @ok\n\
-             \x20 %result =l div %left, %right\n\
-             \x20 ret %result\n\
-             }\n\n",
+        output.push_str("function l $primer_i64_div(l %left, l %right, l %origin, l %origin_len) {\n@start\n  %is_zero =w ceql %right, 0\n  jnz %is_zero, @zero, @bounds\n@bounds\n  %is_min =w ceql %left, -9223372036854775808\n  %is_negative_one =w ceql %right, -1\n  %overflows =w and %is_min, %is_negative_one\n  jnz %overflows, @overflow, @ok\n");
+        super::failure::block("zero", crate::runtime::FailureCode::DivisionByZero, output);
+        super::failure::block(
+            "overflow",
+            crate::runtime::FailureCode::DivisionOverflow,
+            output,
         );
+        output.push_str("@ok\n  %result =l div %left, %right\n  ret %result\n}\n\n");
     }
 
     if operations.negate {
         output.push_str(
-            "function l $primer_i64_neg(l %value) {\n\
+            "function l $primer_i64_neg(l %value, l %origin, l %origin_len) {\n\
              @start\n\
              \x20 %overflow =w ceql %value, -9223372036854775808\n\
              \x20 jnz %overflow, @trap, @ok\n\
              @trap\n\
-             \x20 call $abort()\n\
+             \x20 call $primer_fail_integer_overflow(l %origin, l %origin_len)\n\
              \x20 hlt\n\
              @ok\n\
              \x20 %result =l neg %value\n\
@@ -324,15 +316,17 @@ fn emit_instruction(
             dest,
             value,
             conversion,
+            origin,
         } => {
             writeln!(
                 output,
-                "  {} ={} call ${}({} {})",
+                "  {} ={} call ${}({} {}, {})",
                 temp(*dest),
                 super::conversion::type_name(conversion.to),
                 conversion.helper(),
                 super::conversion::type_name(conversion.from),
-                operand(value, slots)
+                operand(value, slots),
+                super::failure::arguments(*origin)
             )
             .unwrap();
         }
@@ -342,24 +336,34 @@ fn emit_instruction(
             ty,
             left,
             right,
+            origin,
         } => {
             writeln!(
                 output,
-                "  {} =l call ${}(l {}, l {})",
+                "  {} =l call ${}(l {}, l {}, {})",
                 temp(*dest),
                 op.helper(*ty),
                 operand(left, slots),
-                operand(right, slots)
+                operand(right, slots),
+                super::failure::arguments(*origin)
             )
             .unwrap();
         }
-        Instruction::CheckIntegerRange { dest, value, ty } => {
+        Instruction::CheckIntegerRange {
+            dest,
+            value,
+            ty,
+            origin,
+            failure,
+        } => {
             writeln!(
                 output,
-                "  {} =l call $primer_check_{}(l {})",
+                "  {} =l call $primer_check_{}(l {}, {}, {})",
                 temp(*dest),
                 ty.name(),
-                operand(value, slots)
+                operand(value, slots),
+                super::failure::code_arguments(*failure),
+                super::failure::arguments(*origin)
             )
             .unwrap();
         }
@@ -432,9 +436,14 @@ fn emit_instruction(
             .unwrap();
         }
 
-        Instruction::Abort => {
-            output.push_str("  call $abort()\n");
-            output.push_str("  hlt\n");
+        Instruction::Abort { origin } => {
+            writeln!(
+                output,
+                "  call $primer_runtime_failure({}, {})\n  hlt",
+                super::failure::code_arguments(crate::runtime::FailureCode::ArrayIndexOutOfBounds),
+                super::failure::arguments(*origin)
+            )
+            .unwrap();
         }
 
         Instruction::Call {
@@ -480,12 +489,17 @@ fn emit_instruction(
             .unwrap();
         }
 
-        Instruction::CheckedI64Negate { dest, value } => {
+        Instruction::CheckedI64Negate {
+            dest,
+            value,
+            origin,
+        } => {
             writeln!(
                 output,
-                "  {} =l call $primer_i64_neg(l {})",
+                "  {} =l call $primer_i64_neg(l {}, {})",
                 temp(*dest),
                 operand(value, slots),
+                super::failure::arguments(*origin)
             )
             .unwrap();
         }
@@ -506,14 +520,16 @@ fn emit_instruction(
             ty,
             left,
             right,
+            origin,
         } => {
             if let Some(helper) = checked_i64_helper(*op) {
                 writeln!(
                     output,
-                    "  {} =l call ${helper}(l {}, l {})",
+                    "  {} =l call ${helper}(l {}, l {}, {})",
                     temp(*dest),
                     operand(left, slots),
                     operand(right, slots),
+                    super::failure::arguments(*origin)
                 )
                 .unwrap();
             } else {

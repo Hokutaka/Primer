@@ -1,152 +1,285 @@
+section ".rodata" data $primer_origin_9_95_114 = { b 32, b 110, b 111, b 100, b 101, b 61, b 57, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 57, b 53, b 46, b 46, b 49, b 49, b 52, b 10 }
+section ".rodata" data $primer_origin_12_130_139 = { b 32, b 110, b 111, b 100, b 101, b 61, b 49, b 50, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 49, b 51, b 48, b 46, b 46, b 49, b 51, b 57, b 10 }
+section ".rodata" data $primer_origin_15_147_158 = { b 32, b 110, b 111, b 100, b 101, b 61, b 49, b 53, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 49, b 52, b 55, b 46, b 46, b 49, b 53, b 56, b 10 }
+section ".rodata" data $primer_origin_18_167_176 = { b 32, b 110, b 111, b 100, b 101, b 61, b 49, b 56, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 49, b 54, b 55, b 46, b 46, b 49, b 55, b 54, b 10 }
+section ".rodata" data $primer_origin_21_185_196 = { b 32, b 110, b 111, b 100, b 101, b 61, b 50, b 49, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 49, b 56, b 53, b 46, b 46, b 49, b 57, b 54, b 10 }
+section ".rodata" data $primer_origin_24_205_215 = { b 32, b 110, b 111, b 100, b 101, b 61, b 50, b 52, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 50, b 48, b 53, b 46, b 46, b 50, b 49, b 53, b 10 }
+section ".rodata" data $primer_origin_30_243_252 = { b 32, b 110, b 111, b 100, b 101, b 61, b 51, b 48, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 50, b 52, b 51, b 46, b 46, b 50, b 53, b 50, b 10 }
+section ".rodata" data $primer_origin_2_43_53 = { b 32, b 110, b 111, b 100, b 101, b 61, b 50, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 52, b 51, b 46, b 46, b 53, b 51, b 10 }
+section ".rodata" data $primer_origin_4_56_62 = { b 32, b 110, b 111, b 100, b 101, b 61, b 52, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 53, b 54, b 46, b 46, b 54, b 50, b 10 }
+section ".rodata" data $primer_code_integer_overflow = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 116, b 101, b 103, b 101, b 114, b 45, b 111, b 118, b 101, b 114, b 102, b 108, b 111, b 119 }
+function $primer_fail_integer_overflow(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_integer_overflow, l 40, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_division_by_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 100, b 105, b 118, b 105, b 115, b 105, b 111, b 110, b 45, b 98, b 121, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_division_by_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_division_by_zero, l 40, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_division_overflow = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 100, b 105, b 118, b 105, b 115, b 105, b 111, b 110, b 45, b 111, b 118, b 101, b 114, b 102, b 108, b 111, b 119 }
+function $primer_fail_division_overflow(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_division_overflow, l 41, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_remainder_by_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 114, b 101, b 109, b 97, b 105, b 110, b 100, b 101, b 114, b 45, b 98, b 121, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_remainder_by_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_remainder_by_zero, l 41, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_invalid_shift_count = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 118, b 97, b 108, b 105, b 100, b 45, b 115, b 104, b 105, b 102, b 116, b 45, b 99, b 111, b 117, b 110, b 116 }
+function $primer_fail_invalid_shift_count(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_invalid_shift_count, l 43, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_integer_conversion_out_of_range = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 116, b 101, b 103, b 101, b 114, b 45, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 114, b 97, b 110, b 103, b 101 }
+function $primer_fail_integer_conversion_out_of_range(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_integer_conversion_out_of_range, l 55, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_out_of_range = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 114, b 97, b 110, b 103, b 101 }
+function $primer_fail_conversion_out_of_range(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_out_of_range, l 47, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_inexact = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 105, b 110, b 101, b 120, b 97, b 99, b 116 }
+function $primer_fail_conversion_inexact(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_not_finite = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 111, b 116, b 45, b 102, b 105, b 110, b 105, b 116, b 101 }
+function $primer_fail_conversion_not_finite(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_not_finite, l 45, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_nan = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 97, b 110 }
+function $primer_fail_conversion_nan(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_nan, l 38, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_negative_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 101, b 103, b 97, b 116, b 105, b 118, b 101, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_conversion_negative_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_negative_zero, l 48, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_array_index_out_of_bounds = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 97, b 114, b 114, b 97, b 121, b 45, b 105, b 110, b 100, b 101, b 120, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 98, b 111, b 117, b 110, b 100, b 115 }
+function $primer_fail_array_index_out_of_bounds(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_array_index_out_of_bounds, l 49, l %origin, l %origin_len)
+  hlt
+}
+
+function $primer_runtime_failure(l %code, l %code_len, l %origin, l %origin_len) {
+@start
+  call $fflush(l 0)
+  call $write(w 2, l %code, l %code_len)
+  call $write(w 2, l %origin, l %origin_len)
+  call $abort()
+  hlt
+}
+
 data $fmt_i64 = { b "%lld", b 10, b 0 }
 data $fmt_f32 = { b "%.9g", b 10, b 0 }
 data $fmt_f64 = { b "%.17g", b 10, b 0 }
 
-function d $primer_convert_i16_f64(l %value) {
+function d $primer_convert_i16_f64(l %value, l %origin, l %origin_len) {
 @start
   %result =d sltof %value
-  %below =w cltd %result, d_-9223372036854775808
-  %above =w cged %result, d_9223372036854775808
-  %outside =w or %below, %above
-  jnz %outside, @trap, @convert
+  %outside =w cged %result, d_9223372036854775808
+  jnz %outside, @inexact, @convert
 @convert
   %back =l dtosi %result
   %changed =w cnel %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function s $primer_convert_u32_f32(l %value) {
+function s $primer_convert_u32_f32(l %value, l %origin, l %origin_len) {
 @start
   %result =s sltof %value
   %number =d exts %result
-  %below =w cltd %number, d_-9223372036854775808
-  %above =w cged %number, d_9223372036854775808
-  %outside =w or %below, %above
-  jnz %outside, @trap, @convert
+  %outside =w cged %number, d_9223372036854775808
+  jnz %outside, @inexact, @convert
 @convert
   %back =l dtosi %number
   %changed =w cnel %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function d $primer_convert_u32_f64(l %value) {
+function d $primer_convert_u32_f64(l %value, l %origin, l %origin_len) {
 @start
   %result =d sltof %value
-  %below =w cltd %result, d_-9223372036854775808
-  %above =w cged %result, d_9223372036854775808
-  %outside =w or %below, %above
-  jnz %outside, @trap, @convert
+  %outside =w cged %result, d_9223372036854775808
+  jnz %outside, @inexact, @convert
 @convert
   %back =l dtosi %result
   %changed =w cnel %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function d $primer_convert_i64_f64(l %value) {
+function d $primer_convert_i64_f64(l %value, l %origin, l %origin_len) {
 @start
   %result =d sltof %value
-  %below =w cltd %result, d_-9223372036854775808
-  %above =w cged %result, d_9223372036854775808
-  %outside =w or %below, %above
-  jnz %outside, @trap, @convert
+  %outside =w cged %result, d_9223372036854775808
+  jnz %outside, @inexact, @convert
 @convert
   %back =l dtosi %result
   %changed =w cnel %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function l $primer_convert_f32_i16(s %value) {
+function l $primer_convert_f32_i16(s %value, l %origin, l %origin_len) {
 @start
   %number =d exts %value
-  %nan =w cuod %number, %number
+  %bits =l cast %number
+  %magnitude =l and %bits, 9223372036854775807
+  %not_finite =w cugel %magnitude, 9218868437227405312
+  jnz %not_finite, @not_finite, @zero_check
+@zero_check
+  %negative_zero =w ceql %bits, -9223372036854775808
+  jnz %negative_zero, @negative_zero, @bounds
+@bounds
   %below =w cltd %number, d_-32768
   %above =w cged %number, d_32768
   %outside =w or %below, %above
-  %bits =l cast %number
-  %negative_zero =w ceql %bits, -9223372036854775808
-  %special =w or %nan, %negative_zero
-  %bad =w or %outside, %special
-  jnz %bad, @trap, @convert
+  jnz %outside, @range, @convert
 @convert
   %result =l dtosi %number
   %back =d sltof %result
   %changed =w cned %back, %number
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@not_finite
+  call $primer_runtime_failure(l $primer_code_conversion_not_finite, l 45, l %origin, l %origin_len)
+  hlt
+@negative_zero
+  call $primer_runtime_failure(l $primer_code_conversion_negative_zero, l 48, l %origin, l %origin_len)
+  hlt
+@range
+  call $primer_runtime_failure(l $primer_code_conversion_out_of_range, l 47, l %origin, l %origin_len)
+  hlt
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function d $primer_convert_f32_f64(s %value) {
+function d $primer_convert_f32_f64(s %value, l %origin, l %origin_len) {
 @start
   %nan =w cuos %value, %value
-  jnz %nan, @trap, @convert
+  jnz %nan, @nan, @convert
 @convert
   %result =d exts %value
   jmp @ok
-@trap
-  call $abort()
+@nan
+  call $primer_runtime_failure(l $primer_code_conversion_nan, l 38, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function l $primer_convert_f64_i64(d %value) {
+function l $primer_convert_f64_i64(d %value, l %origin, l %origin_len) {
 @start
-  %nan =w cuod %value, %value
+  %bits =l cast %value
+  %magnitude =l and %bits, 9223372036854775807
+  %not_finite =w cugel %magnitude, 9218868437227405312
+  jnz %not_finite, @not_finite, @zero_check
+@zero_check
+  %negative_zero =w ceql %bits, -9223372036854775808
+  jnz %negative_zero, @negative_zero, @bounds
+@bounds
   %below =w cltd %value, d_-9223372036854775808
   %above =w cged %value, d_9223372036854775808
   %outside =w or %below, %above
-  %bits =l cast %value
-  %negative_zero =w ceql %bits, -9223372036854775808
-  %special =w or %nan, %negative_zero
-  %bad =w or %outside, %special
-  jnz %bad, @trap, @convert
+  jnz %outside, @range, @convert
 @convert
   %result =l dtosi %value
   %back =d sltof %result
   %changed =w cned %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@not_finite
+  call $primer_runtime_failure(l $primer_code_conversion_not_finite, l 45, l %origin, l %origin_len)
+  hlt
+@negative_zero
+  call $primer_runtime_failure(l $primer_code_conversion_negative_zero, l 48, l %origin, l %origin_len)
+  hlt
+@range
+  call $primer_runtime_failure(l $primer_code_conversion_out_of_range, l 47, l %origin, l %origin_len)
+  hlt
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function s $primer_convert_f64_f32(d %value) {
+function s $primer_convert_f64_f32(d %value, l %origin, l %origin_len) {
 @start
   %nan =w cuod %value, %value
-  jnz %nan, @trap, @convert
+  jnz %nan, @nan, @bounds
+@bounds
+  %bits =l cast %value
+  %magnitude =l and %bits, 9223372036854775807
+  %finite =w cultl %magnitude, 9218868437227405312
+  %below =w cltd %value, d_-340282346638528859811704183484516925440
+  %above =w cgtd %value, d_340282346638528859811704183484516925440
+  %outside =w or %below, %above
+  %range_error =w and %finite, %outside
+  jnz %range_error, @range, @convert
 @convert
   %result =s truncd %value
   %back =d exts %result
   %changed =w cned %back, %value
-  jnz %changed, @trap, @ok
-@trap
-  call $abort()
+  jnz %changed, @inexact, @ok
+@nan
+  call $primer_runtime_failure(l $primer_code_conversion_nan, l 38, l %origin, l %origin_len)
+  hlt
+@range
+  call $primer_runtime_failure(l $primer_code_conversion_out_of_range, l 47, l %origin, l %origin_len)
+  hlt
+@inexact
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
   hlt
 @ok
   ret %result
@@ -157,8 +290,8 @@ function d $primer_fn_measure_0(l %arg0) {
   %slot_value =l alloc8 8
   storel %arg0, %slot_value
   %tmp0 =l loadl %slot_value
-  %tmp1 =d call $primer_convert_i16_f64(l %tmp0)
-  %tmp2 =d call $primer_convert_i64_f64(l 2)
+  %tmp1 =d call $primer_convert_i16_f64(l %tmp0, l $primer_origin_2_43_53, l 21)
+  %tmp2 =d call $primer_convert_i64_f64(l 2, l $primer_origin_4_56_62, l 21)
   %tmp3 =d div %tmp1, %tmp2
   ret %tmp3
 }
@@ -170,28 +303,28 @@ export function w $main() {
   %slot_narrow =l alloc8 8
   storel 42, %slot_count
   %tmp0 =l loadl %slot_count
-  %tmp1 =d call $primer_convert_u32_f64(l %tmp0)
+  %tmp1 =d call $primer_convert_u32_f64(l %tmp0, l $primer_origin_9_95_114, l 22)
   stored %tmp1, %slot_wide
   %tmp2 =d loadd %slot_wide
-  %tmp3 =s call $primer_convert_f64_f32(d %tmp2)
+  %tmp3 =s call $primer_convert_f64_f32(d %tmp2, l $primer_origin_12_130_139, l 24)
   stores %tmp3, %slot_narrow
   %tmp4 =s loads %slot_narrow
-  %tmp5 =l call $primer_convert_f32_i16(s %tmp4)
+  %tmp5 =l call $primer_convert_f32_i16(s %tmp4, l $primer_origin_15_147_158, l 24)
   %tmp6 =w call $printf(l $fmt_i64, ..., l %tmp5)
   %tmp7 =d loadd %slot_wide
-  %tmp8 =l call $primer_convert_f64_i64(d %tmp7)
+  %tmp8 =l call $primer_convert_f64_i64(d %tmp7, l $primer_origin_18_167_176, l 24)
   %tmp9 =w call $printf(l $fmt_i64, ..., l %tmp8)
   %tmp10 =s loads %slot_narrow
-  %tmp11 =d call $primer_convert_f32_f64(s %tmp10)
+  %tmp11 =d call $primer_convert_f32_f64(s %tmp10, l $primer_origin_21_185_196, l 24)
   %tmp12 =w call $printf(l $fmt_f64, ..., d %tmp11)
   %tmp13 =l loadl %slot_count
-  %tmp14 =s call $primer_convert_u32_f32(l %tmp13)
+  %tmp14 =s call $primer_convert_u32_f32(l %tmp13, l $primer_origin_24_205_215, l 24)
   %tmp15 =d exts %tmp14
   %tmp16 =w call $printf(l $fmt_f32, ..., d %tmp15)
   %tmp17 =d call $primer_fn_measure_0(l 3)
   %tmp18 =w call $printf(l $fmt_f64, ..., d %tmp17)
   %tmp19 =d neg d_0.0
-  %tmp20 =s call $primer_convert_f64_f32(d %tmp19)
+  %tmp20 =s call $primer_convert_f64_f32(d %tmp19, l $primer_origin_30_243_252, l 24)
   %tmp21 =d exts %tmp20
   %tmp22 =w call $printf(l $fmt_f32, ..., d %tmp21)
   ret 0

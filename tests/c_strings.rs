@@ -255,13 +255,7 @@ fn sequencing_also_preserves_numeric_effects_without_strings() {
     assert!(run_vm(source).is_err());
     for optimization in ["-O0", "-O2"] {
         let failed = c.run(source, optimization);
-        assert!(!failed.status.success());
-        let stderr = String::from_utf8_lossy(&failed.stderr);
-        assert!(
-            stderr.contains("cannot divide an integer by zero"),
-            "{stderr}"
-        );
-        assert!(!stderr.contains("array index out of bounds"), "{stderr}");
+        termination::assert_expected(&failed, termination::Expected::CheckedCFailure, source);
     }
 }
 

@@ -1,3 +1,100 @@
+section ".rodata" data $primer_origin_6_83_85 = { b 32, b 110, b 111, b 100, b 101, b 61, b 54, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 56, b 51, b 46, b 46, b 56, b 53, b 10 }
+section ".rodata" data $primer_origin_14_136_145 = { b 32, b 110, b 111, b 100, b 101, b 61, b 49, b 52, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 49, b 51, b 54, b 46, b 46, b 49, b 52, b 53, b 10 }
+section ".rodata" data $primer_origin_25_200_219 = { b 32, b 110, b 111, b 100, b 101, b 61, b 50, b 53, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 50, b 48, b 48, b 46, b 46, b 50, b 49, b 57, b 10 }
+section ".rodata" data $primer_origin_1_50_62 = { b 32, b 110, b 111, b 100, b 101, b 61, b 49, b 32, b 98, b 121, b 116, b 101, b 115, b 61, b 53, b 48, b 46, b 46, b 54, b 50, b 10 }
+section ".rodata" data $primer_code_integer_overflow = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 116, b 101, b 103, b 101, b 114, b 45, b 111, b 118, b 101, b 114, b 102, b 108, b 111, b 119 }
+function $primer_fail_integer_overflow(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_integer_overflow, l 40, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_division_by_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 100, b 105, b 118, b 105, b 115, b 105, b 111, b 110, b 45, b 98, b 121, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_division_by_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_division_by_zero, l 40, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_division_overflow = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 100, b 105, b 118, b 105, b 115, b 105, b 111, b 110, b 45, b 111, b 118, b 101, b 114, b 102, b 108, b 111, b 119 }
+function $primer_fail_division_overflow(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_division_overflow, l 41, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_remainder_by_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 114, b 101, b 109, b 97, b 105, b 110, b 100, b 101, b 114, b 45, b 98, b 121, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_remainder_by_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_remainder_by_zero, l 41, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_invalid_shift_count = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 118, b 97, b 108, b 105, b 100, b 45, b 115, b 104, b 105, b 102, b 116, b 45, b 99, b 111, b 117, b 110, b 116 }
+function $primer_fail_invalid_shift_count(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_invalid_shift_count, l 43, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_integer_conversion_out_of_range = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 105, b 110, b 116, b 101, b 103, b 101, b 114, b 45, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 114, b 97, b 110, b 103, b 101 }
+function $primer_fail_integer_conversion_out_of_range(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_integer_conversion_out_of_range, l 55, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_out_of_range = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 114, b 97, b 110, b 103, b 101 }
+function $primer_fail_conversion_out_of_range(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_out_of_range, l 47, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_inexact = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 105, b 110, b 101, b 120, b 97, b 99, b 116 }
+function $primer_fail_conversion_inexact(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_inexact, l 42, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_not_finite = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 111, b 116, b 45, b 102, b 105, b 110, b 105, b 116, b 101 }
+function $primer_fail_conversion_not_finite(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_not_finite, l 45, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_nan = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 97, b 110 }
+function $primer_fail_conversion_nan(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_nan, l 38, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_conversion_negative_zero = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 99, b 111, b 110, b 118, b 101, b 114, b 115, b 105, b 111, b 110, b 45, b 110, b 101, b 103, b 97, b 116, b 105, b 118, b 101, b 45, b 122, b 101, b 114, b 111 }
+function $primer_fail_conversion_negative_zero(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_conversion_negative_zero, l 48, l %origin, l %origin_len)
+  hlt
+}
+
+section ".rodata" data $primer_code_array_index_out_of_bounds = { b 112, b 114, b 105, b 109, b 101, b 114, b 58, b 32, b 114, b 117, b 110, b 116, b 105, b 109, b 101, b 45, b 118, b 49, b 32, b 99, b 111, b 100, b 101, b 61, b 97, b 114, b 114, b 97, b 121, b 45, b 105, b 110, b 100, b 101, b 120, b 45, b 111, b 117, b 116, b 45, b 111, b 102, b 45, b 98, b 111, b 117, b 110, b 100, b 115 }
+function $primer_fail_array_index_out_of_bounds(l %origin, l %origin_len) {
+@start
+  call $primer_runtime_failure(l $primer_code_array_index_out_of_bounds, l 49, l %origin, l %origin_len)
+  hlt
+}
+
+function $primer_runtime_failure(l %code, l %code_len, l %origin, l %origin_len) {
+@start
+  call $fflush(l 0)
+  call $write(w 2, l %code, l %code_len)
+  call $write(w 2, l %origin, l %origin_len)
+  call $abort()
+  hlt
+}
+
 data $fmt_i64 = { b "%lld", b 10, b 0 }
 data $fmt_f32 = { b "%.9g", b 10, b 0 }
 data $fmt_f64 = { b "%.17g", b 10, b 0 }
@@ -5,33 +102,33 @@ data $bool_false = { b "false", b 0 }
 data $bool_true = { b "true", b 0 }
 data $bool_texts = align 8 { l $bool_false, l $bool_true }
 
-function l $primer_check_i32(l %value) {
+function l $primer_check_i32(l %value, l %code, l %code_len, l %origin, l %origin_len) {
 @start
   %below =w csltl %value, -2147483648
   %above =w csgtl %value, 2147483647
   %bad =w or %below, %above
   jnz %bad, @trap, @ok
 @trap
-  call $abort()
+  call $primer_runtime_failure(l %code, l %code_len, l %origin, l %origin_len)
   hlt
 @ok
   ret %value
 }
 
-function l $primer_check_u32(l %value) {
+function l $primer_check_u32(l %value, l %code, l %code_len, l %origin, l %origin_len) {
 @start
   %below =w csltl %value, 0
   %above =w csgtl %value, 4294967295
   %bad =w or %below, %above
   jnz %bad, @trap, @ok
 @trap
-  call $abort()
+  call $primer_runtime_failure(l %code, l %code_len, l %origin, l %origin_len)
   hlt
 @ok
   ret %value
 }
 
-function l $primer_i64_add(l %left, l %right) {
+function l $primer_i64_add(l %left, l %right, l %origin, l %origin_len) {
 @start
   %result =l add %left, %right
   %left_changed =l xor %result, %left
@@ -40,34 +137,38 @@ function l $primer_i64_add(l %left, l %right) {
   %overflow =w csltl %sign_changed, 0
   jnz %overflow, @trap, @ok
 @trap
-  call $abort()
+  call $primer_fail_integer_overflow(l %origin, l %origin_len)
   hlt
 @ok
   ret %result
 }
 
-function l $primer_i64_div(l %left, l %right) {
+function l $primer_i64_div(l %left, l %right, l %origin, l %origin_len) {
 @start
   %is_zero =w ceql %right, 0
+  jnz %is_zero, @zero, @bounds
+@bounds
   %is_min =w ceql %left, -9223372036854775808
   %is_negative_one =w ceql %right, -1
   %overflows =w and %is_min, %is_negative_one
-  %invalid =w or %is_zero, %overflows
-  jnz %invalid, @trap, @ok
-@trap
-  call $abort()
+  jnz %overflows, @overflow, @ok
+@zero
+  call $primer_runtime_failure(l $primer_code_division_by_zero, l 40, l %origin, l %origin_len)
+  hlt
+@overflow
+  call $primer_runtime_failure(l $primer_code_division_overflow, l 41, l %origin, l %origin_len)
   hlt
 @ok
   %result =l div %left, %right
   ret %result
 }
 
-function l $primer_i64_neg(l %value) {
+function l $primer_i64_neg(l %value, l %origin, l %origin_len) {
 @start
   %overflow =w ceql %value, -9223372036854775808
   jnz %overflow, @trap, @ok
 @trap
-  call $abort()
+  call $primer_fail_integer_overflow(l %origin, l %origin_len)
   hlt
 @ok
   %result =l neg %value
@@ -82,8 +183,8 @@ function l $primer_fn_add_0(l %arg0, l %arg1) {
   storel %arg1, %slot_right
   %tmp0 =l loadl %slot_left
   %tmp1 =l loadl %slot_right
-  %tmp2 =l call $primer_i64_add(l %tmp0, l %tmp1)
-  %tmp3 =l call $primer_check_i32(l %tmp2)
+  %tmp2 =l call $primer_i64_add(l %tmp0, l %tmp1, l $primer_origin_1_50_62, l 21)
+  %tmp3 =l call $primer_check_i32(l %tmp2, l $primer_code_integer_overflow, l 40, l $primer_origin_1_50_62, l 21)
   ret %tmp3
 }
 
@@ -91,16 +192,16 @@ export function w $main() {
 @start
   %slot_small =l alloc8 8
   %slot_large =l alloc8 8
-  %tmp0 =l call $primer_i64_neg(l 3)
-  %tmp1 =l call $primer_check_i32(l %tmp0)
+  %tmp0 =l call $primer_i64_neg(l 3, l $primer_origin_6_83_85, l 21)
+  %tmp1 =l call $primer_check_i32(l %tmp0, l $primer_code_integer_overflow, l 40, l $primer_origin_6_83_85, l 21)
   %tmp2 =l call $primer_fn_add_0(l %tmp1, l 5)
   storel %tmp2, %slot_small
   storel 4294967295, %slot_large
   %tmp3 =l loadl %slot_small
   %tmp4 =w call $printf(l $fmt_i64, ..., l %tmp3)
   %tmp5 =l loadl %slot_large
-  %tmp6 =l call $primer_i64_div(l %tmp5, l 2)
-  %tmp7 =l call $primer_check_u32(l %tmp6)
+  %tmp6 =l call $primer_i64_div(l %tmp5, l 2, l $primer_origin_14_136_145, l 24)
+  %tmp7 =l call $primer_check_u32(l %tmp6, l $primer_code_division_overflow, l 41, l $primer_origin_14_136_145, l 24)
   %tmp8 =w call $printf(l $fmt_i64, ..., l %tmp7)
   %tmp9 =l loadl %slot_large
   %tmp10 =w call $printf(l $fmt_i64, ..., l %tmp9)
@@ -112,7 +213,7 @@ export function w $main() {
   %tmp16 =l loadl %tmp15
   %tmp17 =w call $puts(l %tmp16)
   %tmp18 =l loadl %slot_small
-  %tmp19 =l call $primer_check_u32(l %tmp18)
+  %tmp19 =l call $primer_check_u32(l %tmp18, l $primer_code_integer_conversion_out_of_range, l 55, l $primer_origin_25_200_219, l 24)
   %tmp20 =w call $printf(l $fmt_i64, ..., l %tmp19)
   ret 0
 }

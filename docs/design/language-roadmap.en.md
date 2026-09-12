@@ -2,7 +2,7 @@
 
 [日本語](language-roadmap.ja.md)
 
-This inventory is based on the implementation after PRs #44–#48 were merged, as of 2026-09-08. “Current” means implemented; candidates are proposals awaiting design and implementation. This document does not commit to candidate syntax or adoption. See the [language reference](../reference/language.en.md) for the current specification.
+As of 2026-09-12, this inventory includes merged PR #50 and runtime diagnostics across all routes. “Current” means implemented; candidates are proposals awaiting design and implementation. This document does not commit to candidate syntax or adoption. See the [language reference](../reference/language.en.md) for the current specification.
 
 ## Properties Primer should preserve
 
@@ -36,7 +36,7 @@ These language features are supported by the VM, generated C, LLVM, QBE, WAT, Wi
 
 The native encoder generates x86-64 instructions and COFF/ELF objects. It shares assembly lowering and currently reads an internal assembly representation to encode it. Linking uses external tools. A typed machine-instruction IR or an internal linker would be compiler implementation work, not new language features. See the [native encoder design](native-encoder.en.md).
 
-Language support does not imply equal observation detail. The VM provides runtime reasons and source locations, while generated routes may only trap or abort; consistent runtime diagnostics across every route remain unfinished. LLVM/assembly origin annotations do not promise debugging information across all routes and optimization stages.
+Language support does not imply equal observation detail. Language check failures have comparable reasons, source locations, and prior output across all routes. LLVM/assembly origin annotations still do not promise debugging information across all routes and optimization stages.
 
 ## Proposed priorities
 
@@ -52,7 +52,7 @@ Language support does not imply equal observation detail. The VM provides runtim
 
 This is not a commitment to implement every item together. Start by making priority 1 concrete, and evaluate each addition through a small design and executable example. A limited GPU experiment need not wait for complete modules, generics, or dynamic allocation.
 
-The first priority-1 implementation adds [common runtime failure records](runtime-diagnostics.en.md) to the VM and Windows/Linux assembly and internal objects, including retained output before failure. C, LLVM, QBE, and WAT remain to be extended.
+The first priority-1 implementation adds [common runtime failure records](runtime-diagnostics.en.md) to the VM and Windows/Linux assembly and internal objects, including retained output before failure. C, LLVM, QBE, and WAT now implement the same contract and are compared against those reasons, locations, and prior output. Modules and namespaces are the next language-feature candidate in the table.
 
 Inheritance, implicit shared mutable references, automatic GPU dispatch, general asynchronous execution, and a large package system are not early priorities because current examples have not established their need.
 

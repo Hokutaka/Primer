@@ -64,6 +64,6 @@ WSLで`CARGO_TARGET_DIR=target/unix`を使う場合は、`--primer target/unix/d
 
 `--run --expect-trap`は異常系用です。VMとネイティブの`runtime-v1`記録（理由・NodeId・バイト範囲）、停止前のstdoutの一致、およびネイティブのSIGILL／Windows不正命令終了を要求します。成功実行、アクセス違反、起動失敗、タイムアウトは合格にしません。manifestでは`output-matched`、`expected-failure-confirmed`、`generated-not-executed`、`failed`を分け、照合できた記録を`runtimeFailure`へ残します。[共通診断の契約](runtime-diagnostics.ja.md)を参照してください。各ツールの時間上限は30秒です。
 
-Cのu64検査は失敗理由をstderrへ出し、テストでVMのエラー種別に対応する診断を照合します。Windowsではabortと他のfast-failが同じ終了コードを使い得るため、コードだけでは合格にしません。[Microsoftのabort仕様](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/abort)と[fast-fail仕様](https://learn.microsoft.com/en-us/cpp/intrinsics/fastfail)も参照してください。QBEはSIGABRT、LLVMは不正命令、WATはunreachableを確認します。C・LLVM・QBE・WATへの共通記録の展開は今後の課題です。
+Cの検査は`runtime-v1`をstderrへ出し、VMと停止理由・ソース位置・先行出力を照合します。Windowsではabortと他のfast-failが同じ終了コードを使い得るため、コードだけでは合格にしません。[Microsoftのabort仕様](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/abort)と[fast-fail仕様](https://learn.microsoft.com/en-us/cpp/intrinsics/fastfail)も参照してください。QBEはSIGABRT、LLVMは不正命令、WATはunreachableを確認し、いずれも同じ共通記録を照合します。
 
 `cargo test --test native_assembly`で全example、文字列・u64境界値、混在する4引数、大きなスタック、コピー、出自、期待する停止を検証します。機械語経路のテストではNode・Cドライバ・objdumpが必要です。`PRIMER_TEST_NODE`、`PRIMER_TEST_CC`（Linux）、`PRIMER_TEST_ASM_CLANG`（Windows）、`PRIMER_TEST_OBJDUMP`で指定できます。CIでも両OSの実行を必須にしています。

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use crate::ir as primer_ir;
 
 use super::ir::{
-    BinaryOp, CompareOp, Function, Instruction, Module, Operand, Parameter, ParameterPassing,
-    PrintFormat, Slot, Temp, Type,
+    BinaryOp, CompareOp, FailureOrigin, Function, Instruction, Module, Operand, Parameter,
+    ParameterPassing, PrintFormat, Slot, Temp, Type,
 };
 
 pub fn lower(program: &primer_ir::Program) -> Module {
@@ -224,13 +224,17 @@ impl Lowerer<'_> {
                         index,
                         element,
                         length,
-                        ..
+                        span,
                     } = projection;
                     destination = self.lower_checked_array_address(
                         destination,
                         &array_element_type(element),
                         *length,
                         index,
+                        FailureOrigin {
+                            node: statement.id,
+                            span: *span,
+                        },
                     );
                 }
                 let value = self.lower_expr(value);
@@ -448,6 +452,17 @@ impl Lowerer<'_> {
             };
             let dest = self.next_temp();
             self.instructions.push(Instruction::CheckIntegerRange {
+                origin: expr.into(),
+                failure: match expr.kind {
+                    primer_ir::ExprKind::ConvertInteger { .. } => {
+                        crate::runtime::FailureCode::IntegerConversionOutOfRange
+                    }
+                    primer_ir::ExprKind::Binary {
+                        op: primer_ir::BinaryOp::Divide,
+                        ..
+                    } => crate::runtime::FailureCode::DivisionOverflow,
+                    _ => crate::runtime::FailureCode::IntegerOverflow,
+                },
                 dest,
                 value: operand,
                 ty,
@@ -465,6 +480,7 @@ impl Lowerer<'_> {
             let (_, value) = self.lower_scalar_expr(value);
             let dest = self.next_temp();
             self.instructions.push(Instruction::ConvertNumeric {
+                origin: expr.into(),
                 dest,
                 value,
                 conversion,
@@ -514,6 +530,7 @@ impl Lowerer<'_> {
                 }
                 let dest = self.next_temp();
                 self.instructions.push(Instruction::ConvertNumeric {
+                    origin: expr.into(),
                     dest,
                     value,
                     conversion: crate::codegen::NumericConversion {
@@ -573,6 +590,7 @@ impl Lowerer<'_> {
                 match (op, ty) {
                     (primer_ir::UnaryOp::BitNot, _) => {
                         self.instructions.push(Instruction::IntegerBinary {
+                            origin: expr.into(),
                             dest,
                             op: crate::codegen::IntegerBinaryOp::BitXor,
                             ty: crate::codegen::integer_type(&expr.ty),
@@ -582,6 +600,7 @@ impl Lowerer<'_> {
                     }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         self.instructions.push(Instruction::CheckedI64Negate {
+                            origin: expr.into(),
                             dest,
                             value: operand,
                         })
@@ -662,6 +681,7 @@ impl Lowerer<'_> {
 
                 if let Some(op) = crate::codegen::integer_binary_op(*op, &source_operand_ty) {
                     self.instructions.push(Instruction::IntegerBinary {
+                        origin: expr.into(),
                         dest,
                         op,
                         ty: crate::codegen::integer_type(&expr.ty),
@@ -690,6 +710,7 @@ impl Lowerer<'_> {
                         (*op).into()
                     };
                     self.instructions.push(Instruction::Binary {
+                        origin: expr.into(),
                         dest,
                         op,
                         ty: left_ty,
@@ -862,7 +883,8 @@ impl Lowerer<'_> {
                 else {
                     unreachable!("indexed expression must have an array base")
                 };
-                let address = self.lower_checked_array_address(base, &element, length, index);
+                let address =
+                    self.lower_checked_array_address(base, &element, length, index, expr.into());
                 match element {
                     ArrayElement::Scalar(ty) => {
                         let dest = self.next_temp();
@@ -953,6 +975,7 @@ impl Lowerer<'_> {
         element: &ArrayElement,
         length: usize,
         index: &primer_ir::Expr,
+        origin: FailureOrigin,
     ) -> Operand {
         let (index_ty, index) = self.lower_scalar_expr(index);
         debug_assert_eq!(index_ty, Type::I64);
@@ -995,13 +1018,14 @@ impl Lowerer<'_> {
             id: out_of_bounds,
             name: "array_index_out_of_bounds",
         });
-        self.instructions.push(Instruction::Abort);
+        self.instructions.push(Instruction::Abort { origin });
         self.instructions.push(Instruction::Label {
             id: in_bounds,
             name: "array_index_in_bounds",
         });
         let scaled = self.next_temp();
         self.instructions.push(Instruction::Binary {
+            origin,
             dest: scaled,
             op: BinaryOp::Multiply,
             ty: Type::I64,
@@ -1010,6 +1034,7 @@ impl Lowerer<'_> {
         });
         let address = self.next_temp();
         self.instructions.push(Instruction::Binary {
+            origin,
             dest: address,
             op: BinaryOp::Add,
             ty: Type::I64,

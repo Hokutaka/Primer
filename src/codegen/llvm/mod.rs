@@ -1,5 +1,6 @@
 mod conversion;
 mod emit;
+mod failure;
 mod integer;
 pub mod ir;
 mod lower;
@@ -74,6 +75,14 @@ pub fn emit_llvm_with_options(
         ));
     }
     let mut module = lower(program);
+    if target.is_none()
+        && let Some(span) = failure::first_failure_span(&module)
+    {
+        return Err(Diagnostic::new(
+            "LLVM runtime diagnostics require an explicit --target: x86_64-unknown-linux-gnu or x86_64-pc-windows-msvc",
+            span,
+        ));
+    }
     module.target = target;
     module.uses_strings = string_span.is_some();
 
@@ -84,7 +93,36 @@ pub fn emit_llvm_with_options(
 mod tests {
     use crate::compile_to_ir;
 
-    use super::{emit_llvm, ir::Instruction, lower};
+    use super::{ir::Instruction, lower};
+
+    fn emit_llvm(program: &crate::ir::Program) -> Result<String, crate::diagnostic::Diagnostic> {
+        super::emit_llvm_with_target(program, Some(super::Target::X86_64UnknownLinuxGnu))
+    }
+
+    #[test]
+    fn runtime_diagnostics_require_a_target_only_for_checked_operations() {
+        let infallible = crate::compile_to_ir("print(1);").unwrap();
+        assert!(super::emit_llvm(&infallible).is_ok());
+        let program = crate::compile_to_ir("print(1 / 0);").unwrap();
+        let error = super::emit_llvm(&program).unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("runtime diagnostics require an explicit --target")
+        );
+        for (target, writer) in [
+            (
+                super::Target::X86_64UnknownLinuxGnu,
+                "call i64 @write(i32 2",
+            ),
+            (super::Target::X86_64PcWindowsMsvc, "call i32 @_write(i32 2"),
+        ] {
+            let artifact = super::emit_llvm_with_target(&program, Some(target)).unwrap();
+            assert!(artifact.contains(writer));
+            assert!(artifact.contains("call i32 @fflush(ptr null)"));
+            assert!(artifact.contains("call void @llvm.trap()"));
+        }
+    }
 
     #[test]
     fn lowers_i64_add() {
@@ -146,7 +184,7 @@ mod tests {
         let llvm = emit_llvm(&program).unwrap();
 
         assert!(llvm.contains("@llvm.sadd.with.overflow.i64"));
-        assert!(llvm.contains("call i64 @primer_i64_add(i64 1, i64 2)"));
+        assert!(llvm.contains("call i64 @primer_i64_add(i64 1, i64 2, ptr @primer.failure."));
         assert!(llvm.contains("br i1 %overflow, label %trap, label %ok"));
     }
 

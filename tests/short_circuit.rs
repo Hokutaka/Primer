@@ -1,7 +1,9 @@
+#[path = "support/llvm.rs"]
+mod llvm;
 use primer_lang::{
     RunError, ast, bytecode, compile, compile_to_bytecode, compile_to_c, compile_to_ir,
-    compile_to_ir_text, compile_to_llvm, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm,
-    ir, lexer, run_vm, source::Span, vm::VmErrorKind,
+    compile_to_ir_text, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm, ir, lexer,
+    run_vm, source::Span, vm::VmErrorKind,
 };
 
 #[test]
@@ -153,7 +155,7 @@ fn supports_values_defaults_calls_loops_and_nested_array_index_expressions() {
     assert_eq!(run_vm(source).unwrap(), "true\n1\n2\ntrue\n");
     for compile in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,
@@ -209,7 +211,7 @@ fn emits_conditional_control_flow_in_every_backend() {
     let source = "a: bool = true; print(a && (false || 1 / 2 == 0));";
     assert!(compile_to_c(source).unwrap().contains(" && "));
     assert!(compile_to_c(source).unwrap().contains(" || "));
-    assert!(compile_to_llvm(source).unwrap().contains("br i1"));
+    assert!(llvm::compile(source).unwrap().contains("br i1"));
     assert!(compile_to_qbe(source).unwrap().contains("jnz"));
     assert!(compile_to_wat(source).unwrap().contains("if (result i32)"));
     assert!(

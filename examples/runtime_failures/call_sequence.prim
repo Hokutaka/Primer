@@ -1,0 +1,12 @@
+// 同じ関数を再び呼んでも、停止位置は関数内の除算を指します。
+fn divide(value: i64) -> i64 {
+    print("除算する値");
+    print(value);
+    return 10 / value;
+}
+
+print(divide(2));
+// 短絡評価で、この呼び出しは実行しません。
+print(false && (divide(0) == 0));
+print(divide(0));
+print("ここには到達しない");

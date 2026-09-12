@@ -111,6 +111,7 @@ fn expression(expr: &mut Expr, temporaries: &mut Vec<Type>) {
         expr.kind = ExprKind::Sequence {
             bindings,
             value: Box::new(Expr {
+                origin: expr.origin,
                 ty: expr.ty.clone(),
                 kind: value,
             }),
@@ -130,6 +131,7 @@ fn order(children: Vec<&mut Expr>, temporaries: &mut Vec<Type>) -> Vec<(usize, E
             let value = std::mem::replace(
                 child,
                 Expr {
+                    origin: child.origin,
                     ty: child.ty.clone(),
                     kind: ExprKind::Temporary(id),
                 },

@@ -123,6 +123,7 @@ pub enum Instruction {
         dest: Temp,
         value: Operand,
         ty: crate::types::IntegerType,
+        failure: crate::runtime::FailureCode,
     },
     Label {
         id: Label,

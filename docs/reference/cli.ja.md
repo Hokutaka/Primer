@@ -70,7 +70,7 @@ primer emit-bytecode <file> [-o <output.pbc>]
 
 ### LLVMのターゲット指定
 
-`--target`は`x86_64-unknown-linux-gnu`または`x86_64-pc-windows-msvc`を受け付けます。文字列を使うプログラムでは、未使用の型・関数も含めて指定が必須です。数値だけの従来の呼び出しでは省略できます。ホストOSからは推測しません。`--target`と`-o`（`--output`も可）の順序は自由ですが、同じオプションの重複、値の省略、未対応ターゲットはエラーです。
+`--target`は`x86_64-unknown-linux-gnu`または`x86_64-pc-windows-msvc`を受け付けます。文字列を使うプログラムでは、未使用の型・関数も含めて指定が必須です。数値だけでも、検査付き演算・変換・配列添字など実行時診断を持つ場合は指定が必要です。たとえば`print(1 + 2);`は指定が必要で、`print(1);`は省略できます。ホストOSからは推測しません。`--target`と`-o`（`--output`も可）の順序は自由ですが、同じオプションの重複、値の省略、未対応ターゲットはエラーです。
 
 Linux x86-64上での例:
 
@@ -111,6 +111,8 @@ cc target/string_lookup.s -o target/string_lookup
 
 文字列を使うWATは`primer.write_byte(i32) -> void`をimportし、各バイトと末尾LFを渡します。メモリは公開しません。数値・真偽値の既存のホスト関数も含め、ホストは[文字列の出力契約](../design/strings.ja.md#watの出力と外部との境界)を実装します。`emit-wat`自体はホストを起動しません。
 
+実行時検査を持つWATは`primer.write_error_byte(i32) -> void`もimportします。ホストはこのASCII診断をstderrとして出力し、`unreachable`で停止しても先行stdoutを保持します。[実行時診断の契約](../design/runtime-diagnostics.ja.md)を参照してください。
+
 Windows x64の直接アセンブリは`primer emit-asm examples/string_lookup.prim -o target/string_lookup.s`で生成し、`clang --target=x86_64-pc-windows-msvc target/string_lookup.s -o target/string_lookup.exe`でビルドできます。文字列の出力前に標準出力をバイナリモードへ切り替えます。
 
 ## 実行
@@ -131,7 +133,7 @@ primer: cannot divide an integer by zero at 1:7 (bytecode instruction 0002)
 
 対応するソース位置がない場合も、bytecode命令番号は表示します。簡潔な診断には、ソース本文や入力ファイルのパスを含めません。
 
-`run --diagnostic-format runtime-v1`では、言語の検査失敗を停止理由・NodeId・UTF-8バイト範囲を持つ1行の記録で出力します。コンパイル診断やVM内部エラーは従来の形式です。停止前に実行した`print`はstdoutに残します。Windows/LinuxのASMと自前オブジェクトでも同じ停止記録を使います。[共通診断の契約](../design/runtime-diagnostics.ja.md)と[意図した停止の例](../../examples/runtime_failures/README.md)を参照してください。
+`run --diagnostic-format runtime-v1`では、言語の検査失敗を停止理由・NodeId・UTF-8バイト範囲を持つ1行の記録で出力します。コンパイル診断やVM内部エラーは従来の形式です。停止前に実行した`print`はstdoutに残します。C・LLVM・QBE・WAT・Windows/LinuxのASMと自前オブジェクトも同じ停止記録を使います。[共通診断の契約](../design/runtime-diagnostics.ja.md)と[意図した停止の例](../../examples/runtime_failures/README.md)を参照してください。
 
 ## バージョン表示
 

@@ -1,3 +1,8 @@
+#[path = "support/process.rs"]
+mod process;
+#[path = "support/runtime_cases.rs"]
+mod runtime_cases;
+use process::bounded_output;
 #[path = "support/crash_dialogs.rs"]
 mod crash_dialogs;
 #[path = "support/string_cases.rs"]
@@ -12,91 +17,10 @@ use primer_lang::{
 };
 use std::{
     fs,
-    path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    path::PathBuf,
+    process::Command,
     time::{Duration, Instant},
 };
-
-// pipeのEOFを待たず、子プロセスの終了と取得済み出力を別々に観測します。
-// 異常停止を大量に実行するCIでも、どのケースを待っているか残します。
-fn bounded_output(
-    command: &mut Command,
-    directory: &Path,
-    label: &str,
-    limit: Duration,
-) -> Result<Output, String> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let id = NEXT.fetch_add(1, Ordering::Relaxed);
-    let stdout = directory.join(format!("process-{id}.stdout"));
-    let stderr = directory.join(format!("process-{id}.stderr"));
-    command.stdout(Stdio::from(fs::File::create(&stdout).unwrap()));
-    command.stderr(Stdio::from(fs::File::create(&stderr).unwrap()));
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let trace = std::env::var_os("PRIMER_TEST_TRACE").is_some();
-    if trace {
-        use std::io::Write;
-        let _ = writeln!(std::io::stderr().lock(), "[native-process] start {label}");
-    }
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("{label}: {error}"))?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| format!("{label}: {error}"))?
-        {
-            break status;
-        }
-        if start.elapsed() >= limit {
-            #[cfg(unix)]
-            {
-                // この呼び出し専用のprocess groupだけを終了します。
-                unsafe extern "C" {
-                    fn kill(pid: i32, signal: i32) -> i32;
-                }
-                unsafe {
-                    kill(-(child.id() as i32), 9);
-                }
-            }
-            #[cfg(windows)]
-            {
-                // テストが起動した子とその子孫だけが対象です。
-                let _ = Command::new("taskkill")
-                    .args(["/PID", &child.id().to_string(), "/T", "/F"])
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status();
-            }
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "{label}: timed out after {limit:?}; stdout={:?}; stderr={:?}",
-                String::from_utf8_lossy(&fs::read(&stdout).unwrap()),
-                String::from_utf8_lossy(&fs::read(&stderr).unwrap())
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    if trace {
-        use std::io::Write;
-        let _ = writeln!(
-            std::io::stderr().lock(),
-            "[native-process] end {label}: {status} in {:?}",
-            start.elapsed()
-        );
-    }
-    Ok(Output {
-        status,
-        stdout: fs::read(stdout).unwrap(),
-        stderr: fs::read(stderr).unwrap(),
-    })
-}
 
 struct Workspace(PathBuf);
 impl Workspace {
@@ -257,88 +181,7 @@ for (const text of ['', 'segmentation fault\n', valid + '\n', valid + valid, val
 #[test]
 fn runtime_failures_match_vm_codes_origins_and_prior_output() {
     use primer_lang::{RunError, compile_to_native_object};
-    let cases = [
-        ("print(9223372036854775807 + 1);", "integer-overflow"),
-        ("print(-(-9223372036854775808));", "integer-overflow"),
-        ("print(127i8 + 1);", "integer-overflow"),
-        ("print(0u8 - 1);", "integer-overflow"),
-        ("print(18446744073709551615u64 + 1);", "integer-overflow"),
-        ("print(0u64 - 1);", "integer-overflow"),
-        ("print(18446744073709551615u64 * 2);", "integer-overflow"),
-        ("print(1 / 0);", "division-by-zero"),
-        ("print(1u64 / 0);", "division-by-zero"),
-        ("print(-9223372036854775808 / -1);", "division-overflow"),
-        ("print(-128i8 / -1);", "division-overflow"),
-        ("print(1 % 0);", "remainder-by-zero"),
-        ("print(1u64 % 0);", "remainder-by-zero"),
-        ("print(1 << -1);", "invalid-shift-count"),
-        ("print(0u8 >> 8);", "invalid-shift-count"),
-        ("print(0u64 << 64);", "invalid-shift-count"),
-        (
-            "print(0u64 >> 18446744073709551615u64);",
-            "invalid-shift-count",
-        ),
-        ("print(64i8 << 1);", "integer-overflow"),
-        ("print(9223372036854775808u64 << 1);", "integer-overflow"),
-        ("print(i8(128));", "integer-conversion-out-of-range"),
-        ("print(u64(-1));", "integer-conversion-out-of-range"),
-        (
-            "print(i64(9223372036854775808u64));",
-            "integer-conversion-out-of-range",
-        ),
-        ("print(f64(9223372036854775807));", "conversion-inexact"),
-        ("print(f32(16777217));", "conversion-inexact"),
-        ("print(f64(18446744073709551615u64));", "conversion-inexact"),
-        ("print(f32(18446744073709551615u64));", "conversion-inexact"),
-        ("print(i64(1.5));", "conversion-inexact"),
-        ("print(u64(1.5));", "conversion-inexact"),
-        ("print(i8(128.0));", "conversion-out-of-range"),
-        ("print(u64(-1.0));", "conversion-out-of-range"),
-        (
-            "print(u64(18446744073709551616.0));",
-            "conversion-out-of-range",
-        ),
-        ("print(i64(0.0 / 0.0));", "conversion-not-finite"),
-        ("print(i64(1.0 / 0.0));", "conversion-not-finite"),
-        ("print(i64(-1.0 / 0.0));", "conversion-not-finite"),
-        ("print(u64(0.0 / 0.0));", "conversion-not-finite"),
-        ("print(u64(1.0 / 0.0));", "conversion-not-finite"),
-        ("print(u64(-1.0 / 0.0));", "conversion-not-finite"),
-        ("print(i64(-0.0));", "conversion-negative-zero"),
-        ("print(u64(-0.0));", "conversion-negative-zero"),
-        ("print(f32(0.0 / 0.0));", "conversion-nan"),
-        ("x: f32 = 0.0 / 0.0; print(f64(x));", "conversion-nan"),
-        ("print(f32(0.1));", "conversion-inexact"),
-        // f32へ丸めると最大有限値になる場合でも、元の値は範囲外です。
-        (
-            "print(f32(3.402823466385289e38));",
-            "conversion-out-of-range",
-        ),
-        (
-            "print(f32(-3.402823466385289e38));",
-            "conversion-out-of-range",
-        ),
-        (
-            "a: [i64; 1] = [1]; print(a[1]);",
-            "array-index-out-of-bounds",
-        ),
-        (
-            "a: [[i64; 1]; 1] = [[1]]; print(a[-1][0]);",
-            "array-index-out-of-bounds",
-        ),
-        (
-            "fn value() -> i64 { print(999); return 1; } mut a: [[i64; 1]; 1] = [[1]]; a[0][1] = value();",
-            "array-index-out-of-bounds",
-        ),
-        (
-            "fn fail() -> i64 { return 1 / 0; } fn outer() -> i64 { return fail(); } print(outer());",
-            "division-by-zero",
-        ),
-        (
-            "type P { marker: bool, value: i64 = 1 / 0, } p: P = P { marker: true, };",
-            "division-by-zero",
-        ),
-    ];
+    let cases = runtime_cases::FAILURES;
     let workspace = Workspace::new();
     let target = if cfg!(windows) {
         Target::X86_64PcWindowsMsvc
@@ -356,7 +199,7 @@ fn runtime_failures_match_vm_codes_origins_and_prior_output() {
     } else {
         "program"
     });
-    for (case_index, (body, expected_code)) in cases.into_iter().enumerate() {
+    for (case_index, (body, expected_code)) in cases.iter().copied().enumerate() {
         // Unicode・CRLFのバイト位置、停止前の出力、短絡で失敗を避ける経路を併せて検証します。
         let source = format!(
             "// 日本語\r\nprint(\"開始\\0\\r\\n\");\r\nprint(false && (1 / 0 == 0));\r\n{body}"
@@ -646,6 +489,7 @@ fn machine_artifacts_execute_examples_and_retain_origin_symbols() {
                 include_str!("../examples/runtime_failures/overflow.prim"),
                 include_str!("../examples/runtime_failures/array_update.prim"),
                 include_str!("../examples/runtime_failures/function_division.prim"),
+                include_str!("../examples/runtime_failures/call_sequence.prim"),
             ]
             .iter(),
         )

@@ -8,7 +8,7 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
     }
     writeln!(
         output,
-        "function l ${}(l %left, l %right) {{\n@start",
+        "function l ${}(l %left, l %right, l %origin, l %origin_len) {{\n@start",
         op.helper(ty)
     )
     .unwrap();
@@ -21,13 +21,13 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
         IntegerBinaryOp::BitOr => "or",
         IntegerBinaryOp::BitXor => "xor",
         IntegerBinaryOp::Remainder => {
-            output.push_str("  %zero =w ceql %right, 0\n  jnz %zero, @trap, @special\n@special\n  %negative_one =w ceql %right, -1\n  jnz %negative_one, @zero_result, @ok\n@zero_result\n  ret 0\n@trap\n  call $abort()\n  hlt\n@ok\n");
+            output.push_str("  %zero =w ceql %right, 0\n  jnz %zero, @trap, @special\n@special\n  %negative_one =w ceql %right, -1\n  jnz %negative_one, @zero_result, @ok\n@zero_result\n  ret 0\n@trap\n  call $primer_fail_remainder_by_zero(l %origin, l %origin_len)\n  hlt\n@ok\n");
             "rem"
         }
         IntegerBinaryOp::ShiftLeft | IntegerBinaryOp::ShiftRight => {
-            writeln!(output, "  %negative =w csltl %right, 0\n  %wide =w csgel %right, {}\n  %bad_count =w or %negative, %wide\n  jnz %bad_count, @trap, @bounds\n@trap\n  call $abort()\n  hlt\n@bounds", ty.bit_width()).unwrap();
+            writeln!(output, "  %negative =w csltl %right, 0\n  %wide =w csgel %right, {}\n  %bad_count =w or %negative, %wide\n  jnz %bad_count, @count, @bounds\n@count\n  call $primer_fail_invalid_shift_count(l %origin, l %origin_len)\n  hlt\n@bounds", ty.bit_width()).unwrap();
             if op == IntegerBinaryOp::ShiftLeft {
-                writeln!(output, "  %minimum =l sar {}, %right\n  %maximum =l shr {}, %right\n  %below =w csltl %left, %minimum\n  %above =w csgtl %left, %maximum\n  %overflow =w or %below, %above\n  jnz %overflow, @trap, @ok\n@ok", ty.minimum(), ty.maximum()).unwrap();
+                writeln!(output, "  %minimum =l sar {}, %right\n  %maximum =l shr {}, %right\n  %below =w csltl %left, %minimum\n  %above =w csgtl %left, %maximum\n  %overflow =w or %below, %above\n  jnz %overflow, @overflow_failure, @ok\n@overflow_failure\n  call $primer_fail_integer_overflow(l %origin, l %origin_len)\n  hlt\n@ok", ty.minimum(), ty.maximum()).unwrap();
                 "shl"
             } else {
                 "sar"

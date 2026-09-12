@@ -2,15 +2,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void primer_integer_overflow(void) {
-    fputs("primer: integer operation produced a value outside the supported range\n", stderr);
+static void primer_runtime_fail(const char *code, const char *origin) {
+    fflush(stdout);
+    fputs("primer: runtime-v1 code=", stderr);
+    fputs(code, stderr);
+    fputs(origin, stderr);
+    fflush(stderr);
     abort();
 }
 
-static int64_t primer_i64_add(int64_t left, int64_t right) {
+static int64_t primer_i64_add(int64_t left, int64_t right, const char *origin) {
     if ((right > 0 && left > INT64_MAX - right) ||
         (right < 0 && left < INT64_MIN - right)) {
-        primer_integer_overflow();
+        primer_runtime_fail("integer-overflow", origin);
     }
     return left + right;
 }
@@ -19,7 +23,7 @@ int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_
 void primer_fn_show_1(int64_t primer_binding_2_value);
 
 int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right) {
-    return primer_i64_add(primer_binding_0_left, primer_binding_1_right);
+    return primer_i64_add(primer_binding_0_left, primer_binding_1_right, " node=1 bytes=50..62\n");
 }
 
 void primer_fn_show_1(int64_t primer_binding_2_value) {

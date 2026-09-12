@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
 use crate::ir as primer_ir;
+use crate::runtime::{FailureCode, RuntimeFailure};
 
-use super::ir::{Function, Instruction, Local, LoopKind, Module, Type};
+use super::ir::{Function, Instruction, Local, LoopKind, Module, Origin, Type};
 
 pub fn lower(program: &primer_ir::Program) -> Module {
     let mut strings = Vec::new();
@@ -325,13 +326,17 @@ impl LoweringContext<'_> {
                             index,
                             element,
                             length,
-                            ..
+                            span,
                         } = projection;
                         destination = self.lower_checked_array_address(
                             destination,
                             &array_element_type(element),
                             *length,
                             index,
+                            Origin {
+                                node_id: statement.id,
+                                span: *span,
+                            },
                             instructions,
                         );
                     }
@@ -579,6 +584,7 @@ impl LoweringContext<'_> {
         element: &ArrayElement,
         length: usize,
         index: &primer_ir::Expr,
+        origin: Origin,
         instructions: &mut Vec<Instruction>,
     ) -> Address {
         let index_address = self.allocate(8);
@@ -593,7 +599,7 @@ impl LoweringContext<'_> {
         instructions.push(Instruction::I64Const(0));
         instructions.push(Instruction::I64LtS);
         instructions.push(Instruction::If {
-            then_instructions: vec![Instruction::Unreachable],
+            then_instructions: vec![array_failure(origin)],
             else_instructions: Vec::new(),
         });
         instructions.push(Instruction::I32Const(index_address as i32));
@@ -601,7 +607,7 @@ impl LoweringContext<'_> {
         instructions.push(Instruction::I64Const(length as i64));
         instructions.push(Instruction::I64GeS);
         instructions.push(Instruction::If {
-            then_instructions: vec![Instruction::Unreachable],
+            then_instructions: vec![array_failure(origin)],
             else_instructions: Vec::new(),
         });
 
@@ -620,7 +626,17 @@ impl LoweringContext<'_> {
     fn lower_expr(&mut self, expr: &primer_ir::Expr, instructions: &mut Vec<Instruction>) -> Value {
         let value = self.lower_expr_unchecked(expr, instructions);
         if let Some(ty) = super::super::integer_range_check(expr) {
-            instructions.push(Instruction::CheckIntegerRange(ty));
+            let failure = match expr.kind {
+                primer_ir::ExprKind::ConvertInteger { .. } => {
+                    FailureCode::IntegerConversionOutOfRange
+                }
+                primer_ir::ExprKind::Binary {
+                    op: primer_ir::BinaryOp::Divide,
+                    ..
+                } => FailureCode::DivisionOverflow,
+                _ => FailureCode::IntegerOverflow,
+            };
+            instructions.push(Instruction::CheckIntegerRange { ty, failure }.at(expr));
         }
         value
     }
@@ -632,7 +648,7 @@ impl LoweringContext<'_> {
     ) -> Value {
         if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
             self.lower_expr(value, instructions);
-            instructions.push(Instruction::ConvertNumeric { conversion });
+            instructions.push(Instruction::ConvertNumeric { conversion }.at(expr));
             return Value::Scalar(Type::I64);
         }
         match &expr.kind {
@@ -652,12 +668,15 @@ impl LoweringContext<'_> {
             } => {
                 self.lower_expr(value, instructions);
                 if from != to {
-                    instructions.push(Instruction::ConvertNumeric {
-                        conversion: crate::codegen::NumericConversion {
-                            from: *from,
-                            to: *to,
-                        },
-                    });
+                    instructions.push(
+                        Instruction::ConvertNumeric {
+                            conversion: crate::codegen::NumericConversion {
+                                from: *from,
+                                to: *to,
+                            },
+                        }
+                        .at(expr),
+                    );
                 }
                 Value::Scalar(scalar_type(&expr.ty))
             }
@@ -877,7 +896,10 @@ impl LoweringContext<'_> {
                 instructions.push(Instruction::I64Const(0));
                 instructions.push(Instruction::I64LtS);
                 instructions.push(Instruction::If {
-                    then_instructions: vec![Instruction::Unreachable],
+                    then_instructions: vec![array_failure(Origin {
+                        node_id: expr.id,
+                        span: expr.span,
+                    })],
                     else_instructions: Vec::new(),
                 });
 
@@ -886,7 +908,10 @@ impl LoweringContext<'_> {
                 instructions.push(Instruction::I64Const(length as i64));
                 instructions.push(Instruction::I64GeS);
                 instructions.push(Instruction::If {
-                    then_instructions: vec![Instruction::Unreachable],
+                    then_instructions: vec![array_failure(Origin {
+                        node_id: expr.id,
+                        span: expr.span,
+                    })],
                     else_instructions: Vec::new(),
                 });
 
@@ -945,15 +970,18 @@ impl LoweringContext<'_> {
                         instructions.push(Instruction::I64Const(crate::codegen::complement_mask(
                             &expr.ty,
                         )));
-                        instructions.push(Instruction::IntegerBinary {
-                            op: crate::codegen::IntegerBinaryOp::BitXor,
-                            ty: crate::codegen::integer_type(&expr.ty),
-                        });
+                        instructions.push(
+                            Instruction::IntegerBinary {
+                                op: crate::codegen::IntegerBinaryOp::BitXor,
+                                ty: crate::codegen::integer_type(&expr.ty),
+                            }
+                            .at(expr),
+                        );
                     }
                     (primer_ir::UnaryOp::Negate, Type::I64) => {
                         instructions.push(Instruction::I64Const(0));
                         self.lower_expr(value, instructions);
-                        instructions.push(Instruction::CheckedI64Sub);
+                        instructions.push(Instruction::CheckedI64Sub.at(expr));
                     }
                     (primer_ir::UnaryOp::Negate, Type::F32) => {
                         self.lower_expr(value, instructions);
@@ -994,12 +1022,28 @@ impl LoweringContext<'_> {
                 };
                 debug_assert_eq!(left_ty, right_ty);
                 if let Some(op) = crate::codegen::integer_binary_op(*op, &left.ty) {
-                    instructions.push(Instruction::IntegerBinary {
-                        op,
-                        ty: crate::codegen::integer_type(&expr.ty),
-                    });
+                    instructions.push(
+                        Instruction::IntegerBinary {
+                            op,
+                            ty: crate::codegen::integer_type(&expr.ty),
+                        }
+                        .at(expr),
+                    );
                 } else {
-                    instructions.push(lower_binary(*op, left.ty.clone()));
+                    let instruction = lower_binary(*op, left.ty.clone());
+                    instructions.push(
+                        if matches!(
+                            instruction,
+                            Instruction::CheckedI64Add
+                                | Instruction::CheckedI64Sub
+                                | Instruction::CheckedI64Mul
+                                | Instruction::CheckedI64DivS
+                        ) {
+                            instruction.at(expr)
+                        } else {
+                            instruction
+                        },
+                    );
                 }
                 Value::Scalar(scalar_type(&expr.ty))
             }
@@ -1214,6 +1258,14 @@ impl LoweringContext<'_> {
         self.next_address += size;
         address
     }
+}
+
+fn array_failure(origin: Origin) -> Instruction {
+    Instruction::Failure(RuntimeFailure {
+        code: FailureCode::ArrayIndexOutOfBounds,
+        node_id: origin.node_id,
+        span: origin.span,
+    })
 }
 
 fn collect_locations(
