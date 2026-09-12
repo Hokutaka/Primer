@@ -73,13 +73,19 @@ function observe(options) {
     fs.mkdirSync(directory);
     created = true;
     write('source.prim', sourceBytes);
-    write('program.pir', run('primer-ir', primer, ['emit-ir', 'source.prim']).stdout);
-    write('program.s', run('assembly', primer, ['emit-asm', 'source.prim', '--target', target, '--annotate-origins']).stdout);
+    // 元の入口から依存を読み、別ディレクトリへのコピーでimportの意味を変えません。
+    const sourceManifest = run('sources', primer, ['emit-sources', source]).stdout;
+    if (!Buffer.from(JSON.parse(sourceManifest).files[0].text, 'utf8').equals(sourceBytes)) {
+      throw new Error('entry source changed before observation');
+    }
+    write('sources.json', sourceManifest);
+    write('program.pir', run('primer-ir', primer, ['emit-ir', source]).stdout);
+    write('program.s', run('assembly', primer, ['emit-asm', source, '--target', target, '--annotate-origins']).stdout);
     const object = windows ? 'program.obj' : 'program.o';
     const executable = windows ? 'program.exe' : 'program';
     const flags = windows ? ['--target=' + target] : ['-m64'];
     if (report.encoder === 'primer') {
-      run('encode-object', primer, ['emit-obj', 'source.prim', '--target', target, '--annotate-origins', '-o', object]);
+      run('encode-object', primer, ['emit-obj', source, '--target', target, '--annotate-origins', '-o', object]);
     } else {
       run('assemble', cc, [...flags, '-c', 'program.s', '-o', object]);
     }
@@ -95,7 +101,7 @@ function observe(options) {
       report.artifacts[name] = { sha256: hash(bytes), bytes: bytes.length };
     }
     if (options['--run']) {
-      const vm = run('vm', primer, ['run', 'source.prim', '--diagnostic-format', 'runtime-v1'], true);
+      const vm = run('vm', primer, ['run', source, '--diagnostic-format', 'runtime-v1'], true);
       const native = run('native', path.join(directory, executable), [], true);
       write('vm.stdout', vm.stdout);
       write('vm.stderr', vm.stderr);
@@ -124,6 +130,10 @@ function observe(options) {
       }
     } else {
       report.status = 'generated-not-executed';
+    }
+    // 生成と実行の間に依存本文が変わった観測は、同じコンパイルとして合格にしません。
+    if (!sourceManifest.equals(run('verify-sources', primer, ['emit-sources', source]).stdout)) {
+      throw new Error('source files changed during observation');
     }
     save();
     return report;

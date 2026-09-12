@@ -48,7 +48,7 @@ During development, replace `primer` with `cargo run --quiet --` to run the upda
 
 ## Observe Computation and Transformation
 
-The first step toward modules adds [source locations with file identity](docs/design/source-files.en.md). Import syntax is not implemented yet.
+[Modules](docs/design/modules.en.md) split types and functions across files with explicit imports, namespaces, and visibility. Compare the [modular and single-file examples](examples/modules/README.en.md).
 
 Language check failures expose comparable reasons, source locations, and prior output across every route. See [runtime diagnostics](docs/design/runtime-diagnostics.en.md) and the [four expected-failure examples](examples/runtime_failures/README.en.md). Checked numeric LLVM programs require an explicit target, and WAT hosts must implement `primer.write_error_byte` for diagnostic output.
 

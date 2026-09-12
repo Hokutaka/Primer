@@ -10,6 +10,7 @@
 
 ```text
 primer check <file>
+primer emit-sources <file> [-o <sources.json>]
 primer emit-ir <file> [-o <output.pir>]
 primer emit-c <file> [-o <output.c>]
 primer emit-llvm <file> [--target <triple>] [-o <output.ll>]
@@ -23,6 +24,20 @@ primer --version
 ```
 
 ## 検証
+
+各コマンドの`<file>`は入口ファイルです。[モジュール](../design/modules.ja.md)のimportは宣言元のディレクトリから解決し、全依存を検査します。CLIを別ディレクトリから起動してもimport先は変わりません。対象の生成経路に必要な`--target`指定は従来通りです。
+
+### 依存ファイルの観測
+
+```sh
+primer emit-sources examples/modules/main.prim -o sources.json
+```
+
+ファイル名と本文を明示的に出力します。JSONの`schema`は`primer-sources-v1`、`files`は登録順の`id`・`name`・`text`です。`text`は正規化前の正確なUTF-8本文をJSONエスケープで保持します。import/pubのない入力のIDは既存の匿名ソース0、モジュール入力は入口1からです。実行時記録の`file`とそのファイル内の`bytes`を、この本文で照合します。生成プログラムへ本文を埋め込む操作ではありません。`-o`がなければstdoutへ出します。
+
+`run`の既定診断は依存ファイルの名前・行・列を表示します。`--diagnostic-format runtime-v1`では数値の`file`を含む記録を出します。コンパイル失敗時は出力成果物を書き換えません。
+
+### 構文・型の検証
 
 ```text
 primer check <file>

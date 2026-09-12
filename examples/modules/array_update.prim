@@ -1,0 +1,5 @@
+import "values.prim" as values;
+
+print("添字");
+mut amounts: [u64; 1] = [0];
+amounts[1] = values::divide(10, 0);

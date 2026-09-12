@@ -1,0 +1,11 @@
+import "values.prim" as values;
+
+mut readings: [values::Reading; 1] = [values::reading(18446744073709551615)];
+saved: [values::Reading; 1] = readings;
+readings[0] = values::Reading { amount: 2 };
+print(saved[0].amount);
+print(readings[0].amount);
+print(saved[0].label);
+print(saved[0].label == readings[0].label);
+print(false && (values::divide(1, 0) == 0));
+print(values::divide(10, 2));

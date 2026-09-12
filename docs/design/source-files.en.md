@@ -2,17 +2,13 @@
 
 [日本語](source-files.ja.md)
 
-## Sequence toward modules
+## Use in modules
 
-1. **Implemented foundation**: preserve file identity through parsing, diagnostics, and every output route.
-2. **Next**: design and implement loading, explicit imports, namespaces, and function/type visibility.
-3. **Then**: compare user-written single-file and modular programs through the CLI on every route.
-
-Import syntax and CLI module loading are not implemented yet. The current multi-file example parses files separately through the Rust API and combines their AST items to validate origins. This does not implement module name resolution or visibility.
+This foundation now supports [imports, namespaces, and visibility](modules.en.md), with cross-route CLI execution comparisons. `examples/source_files` remains a low-level API origin test combining AST items; `examples/modules` demonstrates real imports.
 
 ## Identity and contents
 
-`SourceMap` stores caller-provided display names and UTF-8 text, assigning `SourceId` values starting at 1 in registration order. It performs no file I/O, path normalization, or Unicode normalization. Duplicate names do not overwrite existing files. ID 0 is reserved for the existing anonymous single-source APIs, including `compile(&str)` and the CLI.
+`SourceMap` stores caller-provided display names and UTF-8 text, assigning `SourceId` values starting at 1 in registration order. It performs no file I/O, path normalization, or Unicode normalization. Duplicate names do not overwrite existing files. ID 0 is reserved for the existing anonymous single-source APIs, including `compile(&str)` and CLI inputs without import/pub.
 
 `Span` carries a file ID and a file-local byte range with an exclusive end. Japanese text, NUL, and CR/LF remain intact; files are not concatenated into virtual offsets. Resolution checks both UTF-8 boundaries and refuses to associate unknown files or invalid ranges with another source.
 
@@ -36,6 +32,6 @@ The [source_files example](../../examples/source_files/README.en.md) covers maxi
 
 `tests/source_files.rs` compares known results and separate-file ASTs against a single source through VM, C, LLVM, QBE, WAT, direct assembly, and internal objects. C and LLVM run with and without optimization. It checks that callee failures refer to the definition file, and invalid array assignment targets prevent execution of the right-hand function. Unavailable tools are reported as skipped; explicitly configured tools are required. Tests explicitly select the Windows target on Windows and Linux on Linux; QBE execution is tested on Linux.
 
-## Next design decisions
+## Current module boundary
 
-The intended first module scope exposes function and type definitions without initialization code executing merely because a file was loaded. Execution belongs in the entry file and explicit function calls. Initially, cyclic imports, namespace conflicts, and references to private names should be diagnosed. These rules and syntax will be made concrete in the next stage. Package distribution, dynamic loading, and shared mutable globals are outside this foundation.
+Explicit imports, function/type visibility, and diagnostics for cycles, name conflicts, and private access are implemented. Loading alone executes no initialization. Package distribution, dynamic loading, and mutable globals remain unsupported. See the [module rules](modules.en.md).

@@ -1,0 +1,23 @@
+type Reading {
+    amount: u64,
+    label: string = "観測\0\r\n",
+}
+fn reading(amount: u64) -> Reading {
+    return Reading { amount: amount };
+}
+fn announce() -> void {
+    print("計算");
+}
+fn divide(value: u64, divisor: u64) -> u64 {
+    announce();
+    return value / divisor;
+}
+mut readings: [Reading; 1] = [reading(18446744073709551615)];
+saved: [Reading; 1] = readings;
+readings[0] = Reading { amount: 2 };
+print(saved[0].amount);
+print(readings[0].amount);
+print(saved[0].label);
+print(saved[0].label == readings[0].label);
+print(false && (divide(1, 0) == 0));
+print(divide(10, 2));

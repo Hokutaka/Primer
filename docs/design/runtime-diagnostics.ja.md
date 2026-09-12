@@ -31,7 +31,7 @@ primer: runtime-v1 code=division-by-zero node=1 bytes=6..11
 - `file`（任意）: `SourceMap`に登録したファイルの正の識別子。`node`と`bytes`の間に置く。省略時は従来の匿名ソース0。
 - `bytes`: 元ソースのUTF-8バイト範囲。0起点、終端を含まない。行番号や表示上の文字数ではない。
 
-[ファイル識別のAPI](source-files.ja.md)を使うと、例えば`primer: runtime-v1 code=division-by-zero node=1 file=2 bytes=6..11`となります。`bytes`は識別されたファイル内の範囲です。既存の単一ソースAPIとCLIのレコードは変わりません。受信側はこの任意フィールドに対応する必要があり、古い厳密なreaderは登録済みファイルのレコードを受理できません。付属の観測スクリプトとWAT検証ホストは両形式を検査します。`file=0`、先頭ゼロ、重複や不正な数値は拒否します。importとファイル一覧manifestのCLI対応は次の段階です。
+[ファイル識別のAPI](source-files.ja.md)を使うと、例えば`primer: runtime-v1 code=division-by-zero node=1 file=2 bytes=6..11`となります。`bytes`は識別されたファイル内の範囲です。既存の単一ソースAPIとimport/pubのないCLI入力のレコードは変わりません。受信側はこの任意フィールドに対応する必要があり、古い厳密なreaderは登録済みファイルのレコードを受理できません。付属の観測スクリプトとWAT検証ホストは両形式を検査します。`file=0`、先頭ゼロ、重複や不正な数値は拒否します。[モジュール](modules.ja.md)を使うCLI入力では入口を含めてfileを記録し、`emit-sources`の一覧と本文で照合します。
 
 パス、ソース本文、実行時の値は含めません。元ソースとコンパイラ版を合わせて解釈します。NodeIdは編集や版の変更をまたぐ永続IDではありません。ネイティブ観測manifestは元ソースのSHA-256と使用ツールも記録します。
 

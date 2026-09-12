@@ -4,6 +4,10 @@ mod string;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
+    Import,
+    As,
+    Pub,
+    ColonColon,
     Type,
     Fn,
     Return,
@@ -153,6 +157,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
             b'>' if bytes.get(i + 1) == Some(&b'>') => {
                 i += 2;
                 TokenKind::ShiftRight
+            }
+            b':' if bytes.get(i + 1) == Some(&b':') => {
+                i += 2;
+                TokenKind::ColonColon
             }
             b':' => {
                 i += 1;
@@ -365,6 +373,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, Diagnostic> {
                 match &source[start..i] {
                     "type" => TokenKind::Type,
                     "fn" => TokenKind::Fn,
+                    "import" => TokenKind::Import,
+                    "as" => TokenKind::As,
+                    "pub" => TokenKind::Pub,
                     "return" => TokenKind::Return,
                     "void" => TokenKind::Void,
                     "print" => TokenKind::Print,

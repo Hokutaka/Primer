@@ -9,7 +9,39 @@ use crate::source::{ConversionSyntax, SourceId, Span};
 
 type ParseResult<T> = Result<T, Diagnostic>;
 
+/// ファイル単位の宣言。名前解決後にだけ従来の共通ASTへ渡します。
+#[derive(Debug, Clone)]
+pub struct Module {
+    pub program: Program,
+    pub imports: Vec<Import>,
+    pub exports: Vec<(String, Span)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub path: String,
+    pub alias: String,
+    pub span: Span,
+}
+
 pub fn parse(tokens: Vec<Token>) -> Result<Program, Diagnostic> {
+    let module = parse_module(tokens)?;
+    if let Some(import) = module.imports.first() {
+        return Err(Diagnostic::new(
+            "imports require modules::load with an entry file",
+            import.span,
+        ));
+    }
+    if let Some((_, span)) = module.exports.first() {
+        return Err(Diagnostic::new(
+            "public declarations require modules::load with an entry file",
+            *span,
+        ));
+    }
+    Ok(module.program)
+}
+
+pub fn parse_module(tokens: Vec<Token>) -> Result<Module, Diagnostic> {
     let source_id = tokens
         .first()
         .map_or(SourceId::ANONYMOUS, |token| token.span.source_id());
@@ -42,10 +74,47 @@ impl Parser {
     fn span(&self, start: usize, end: usize) -> Span {
         Span::in_source(self.source_id, start, end)
     }
-    fn parse_program(&mut self) -> ParseResult<Program> {
+    fn parse_program(&mut self) -> ParseResult<Module> {
         let mut items = Vec::new();
+        let mut imports = Vec::new();
+        let mut exports = Vec::new();
 
         while !matches!(&self.peek().kind, TokenKind::Eof) {
+            if matches!(self.peek().kind, TokenKind::Import) {
+                if !items.is_empty() {
+                    return Err(
+                        self.error("imports must precede definitions and statements".into())
+                    );
+                }
+                let start = self.advance().span.start();
+                let token = self.advance().clone();
+                let TokenKind::String(path) = token.kind else {
+                    return Err(Diagnostic::new(
+                        "expected a quoted relative import path",
+                        token.span,
+                    ));
+                };
+                self.expect_simple(TokenKind::As)?;
+                let (alias, _) = self.expect_identifier()?;
+                let end = self.expect_simple(TokenKind::Semicolon)?.end();
+                imports.push(Import {
+                    path,
+                    alias,
+                    span: self.span(start, end),
+                });
+                continue;
+            }
+            let public = matches!(self.peek().kind, TokenKind::Pub);
+            if public {
+                self.advance();
+                if !matches!(self.peek().kind, TokenKind::Fn | TokenKind::Type) {
+                    return Err(self.error("pub is only supported on functions and types".into()));
+                }
+                let token = self.peek_next().clone();
+                if let TokenKind::Identifier(name) = token.kind {
+                    exports.push((name, token.span));
+                }
+            }
             if matches!(&self.peek().kind, TokenKind::Type) {
                 items.push(Item::TypeDefinition(self.parse_type_definition()?));
             } else if matches!(&self.peek().kind, TokenKind::Fn) {
@@ -55,7 +124,11 @@ impl Parser {
             }
         }
 
-        Ok(Program { items })
+        Ok(Module {
+            program: Program { items },
+            imports,
+            exports,
+        })
     }
 
     fn parse_type_definition(&mut self) -> ParseResult<TypeDefinition> {
@@ -187,6 +260,7 @@ impl Parser {
             TokenKind::Mut => self.parse_binding(),
             TokenKind::Identifier(_) => match &self.peek_next().kind {
                 TokenKind::Colon => self.parse_binding(),
+                TokenKind::ColonColon => self.parse_call_statement(),
                 TokenKind::Equal | TokenKind::LeftBracket => self.parse_assignment(),
                 TokenKind::LeftParen => self.parse_call_statement(),
                 TokenKind::Dot => Err(Diagnostic::new(
@@ -345,7 +419,7 @@ impl Parser {
                 span: self.span(start, end),
             })
         } else {
-            let (name, span) = self.expect_identifier()?;
+            let (name, span) = self.expect_path()?;
             Ok(TypeRef {
                 kind: TypeRefKind::Named(name),
                 span,
@@ -851,6 +925,7 @@ impl Parser {
             }),
 
             TokenKind::Identifier(name) => {
+                let (name, span) = self.finish_path(name, span)?;
                 if name == "convert" && self.starts_explicit_conversion() {
                     self.expect_simple(TokenKind::Less)?;
                     let target = self.parse_type_ref()?;
@@ -1068,6 +1143,22 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn expect_path(&mut self) -> ParseResult<(String, Span)> {
+        let (name, span) = self.expect_identifier()?;
+        self.finish_path(name, span)
+    }
+
+    fn finish_path(&mut self, mut name: String, mut span: Span) -> ParseResult<(String, Span)> {
+        if matches!(self.peek().kind, TokenKind::ColonColon) {
+            self.advance();
+            let (member, end) = self.expect_identifier()?;
+            name.push_str("::");
+            name.push_str(&member);
+            span = self.span(span.start(), end.end());
+        }
+        Ok((name, span))
     }
 
     fn peek(&self) -> &Token {

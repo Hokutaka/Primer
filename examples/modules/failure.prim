@@ -1,0 +1,5 @@
+import "values.prim" as values;
+
+print("開始");
+print(values::divide(10, 2));
+print(values::divide(10, 0));

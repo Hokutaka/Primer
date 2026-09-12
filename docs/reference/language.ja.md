@@ -296,6 +296,20 @@ print(matrix[1][2]); // 6
 
 詳しい設計と各backendでの境界検査は[固定長配列の設計](../design/fixed-arrays.ja.md)で説明します。
 
+## モジュールと公開範囲
+
+```primer
+import "values.prim" as values;
+item: values::Reading = values::reading(7);
+print(item.amount);
+```
+
+別ファイルの型・関数を`別名::名前`で使います。importは定義・文より前に置きます。定義は既定でファイル内だけに公開し、外部へ出すものに`pub fn`・`pub type`を付けます。公開型は全フィールドを公開します。公開関数の引数・戻り値と公開型のフィールドには、非公開型を含めません。
+
+読み込まれるファイルのトップレベルにはimport・型・関数だけを許します。importしただけで初期化処理は走りません。依存側の`main`も自動実行しません。相対`.prim`パスは宣言元のディレクトリ基準で、`/`を区切りに使います。循環、非公開参照、別名の重複や定義・変数との衝突は診断します。`import`・`as`・`pub`は予約語です。
+
+再export、ワイルドカード、外部変数、可変なモジュール状態は未対応です。[規則と読み込みの上限](../design/modules.ja.md)、[動作するexample](../../examples/modules/README.md)を参照してください。
+
 ## 関数とentry point
 
 `fn`は、名前を付けた処理を定義します。parameterと戻り値の型は必ず書きます。
