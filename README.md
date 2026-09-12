@@ -48,6 +48,8 @@ Primer VMでの実行結果は次のとおりです。
 
 ## 計算と変換を観測する
 
+言語の検査失敗は全出力経路で停止理由・ソース位置・停止前の出力を照合できます。[実行時診断](docs/design/runtime-diagnostics.ja.md)と[意図した停止の4例](examples/runtime_failures/README.md)を参照してください。LLVMは検査付きの数値処理にも明示ターゲットが必要で、WATの実行ホストには診断出力用の`primer.write_error_byte`を追加します。
+
 同じソースを、実行するだけでなく中間表現や生成コードとして確認できます。
 
 ```sh

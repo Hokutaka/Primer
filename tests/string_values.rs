@@ -222,9 +222,12 @@ fn numeric_only_programs_still_emit_through_every_backend() {
     codegen::emit_c(&program).unwrap();
     codegen::emit_wat(&program).unwrap();
     codegen::emit_x86_64_win_asm(&program).unwrap();
-    for &(_, emit) in TARGET_REQUIRED {
-        emit(&program).unwrap();
-    }
+    codegen::llvm::emit_llvm_with_target(
+        &program,
+        Some(codegen::llvm::Target::X86_64UnknownLinuxGnu),
+    )
+    .unwrap();
+    codegen::emit_qbe(&program).unwrap();
 }
 
 fn vm_failure(instructions: Vec<InstructionKind>) -> VmErrorKind {

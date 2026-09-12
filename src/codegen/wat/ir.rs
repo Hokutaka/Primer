@@ -45,6 +45,12 @@ pub enum LoopKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instruction {
+    /// 検査の呼び出し先をソース位置ごとに静的に生成します。
+    Located {
+        origin: Origin,
+        instruction: Box<Instruction>,
+    },
+    Failure(crate::runtime::RuntimeFailure),
     CallPrintU64,
     I64LtU,
     I64LeU,
@@ -59,7 +65,10 @@ pub enum Instruction {
         op: crate::codegen::IntegerBinaryOp,
         ty: crate::types::IntegerType,
     },
-    CheckIntegerRange(crate::types::IntegerType),
+    CheckIntegerRange {
+        ty: crate::types::IntegerType,
+        failure: crate::runtime::FailureCode,
+    },
     I32Const(i32),
     I64Const(i64),
     F32Const(String),
@@ -167,4 +176,22 @@ pub enum Instruction {
     F64Ge,
 
     CallPrint(Type),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Origin {
+    pub node_id: crate::ir::NodeId,
+    pub span: crate::source::Span,
+}
+
+impl Instruction {
+    pub(super) fn at(self, expr: &crate::ir::Expr) -> Self {
+        Self::Located {
+            origin: Origin {
+                node_id: expr.id,
+                span: expr.span,
+            },
+            instruction: Box::new(self),
+        }
+    }
 }

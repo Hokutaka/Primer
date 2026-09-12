@@ -1,12 +1,26 @@
 use std::fmt::Write;
 
-use super::ir::{Function, Instruction, LoopKind, Module, Type};
+use super::ir::{Function, Instruction, LoopKind, Module, Origin, Type};
 
 pub fn emit(module: &Module) -> String {
     let mut output = String::new();
-    let i64_operations = i64_operations(module);
+    let mut helpers = std::collections::BTreeMap::new();
+    let mut uses_failures = false;
+    for instruction in module.instructions.iter().chain(
+        module
+            .functions
+            .iter()
+            .flat_map(|function| &function.instructions),
+    ) {
+        collect_helpers(instruction, &mut helpers, &mut uses_failures);
+    }
 
     writeln!(output, "(module").unwrap();
+    if uses_failures {
+        output.push_str(
+            "  (import \"primer\" \"write_error_byte\" (func $write_error_byte (param i32)))\n",
+        );
+    }
     if module.uses_strings {
         output.push_str("  (import \"primer\" \"write_byte\" (func $write_byte (param i32)))\n");
     }
@@ -43,7 +57,9 @@ pub fn emit(module: &Module) -> String {
 
     writeln!(output).unwrap();
 
-    emit_i64_operation_support(i64_operations, &mut output);
+    for (name, (instruction, origin)) in helpers {
+        emit_helper(instruction, origin, &name, &mut output);
+    }
 
     if module.memory_pages > 0 || module.uses_strings {
         writeln!(output, "  (memory {})", module.memory_pages).unwrap();
@@ -97,182 +113,82 @@ pub fn emit(module: &Module) -> String {
     output
 }
 
-#[derive(Clone, Default)]
-struct I64Operations {
-    conversions: std::collections::BTreeSet<crate::codegen::NumericConversion>,
-    integer_binary:
-        std::collections::BTreeSet<(crate::codegen::IntegerBinaryOp, crate::types::IntegerType)>,
-    range_checks: std::collections::BTreeSet<crate::types::IntegerType>,
-    add: bool,
-    subtract: bool,
-    multiply: bool,
-}
-
-impl I64Operations {
-    fn include(&mut self, instruction: &Instruction) {
-        if let Instruction::ConvertNumeric { conversion, .. } = instruction {
-            self.conversions.insert(*conversion);
+fn collect_helpers<'a>(
+    instruction: &'a Instruction,
+    helpers: &mut std::collections::BTreeMap<String, (&'a Instruction, Origin)>,
+    uses_failures: &mut bool,
+) {
+    match instruction {
+        Instruction::Located {
+            origin,
+            instruction,
+        } => {
+            *uses_failures = true;
+            helpers.insert(
+                super::failure::helper_name(instruction, *origin),
+                (instruction, *origin),
+            );
         }
-        if let Instruction::IntegerBinary { op, ty, .. } = instruction {
-            self.integer_binary.insert((*op, *ty));
+        Instruction::Failure(_) => *uses_failures = true,
+        Instruction::If {
+            then_instructions,
+            else_instructions,
         }
-        match instruction {
-            Instruction::CheckIntegerRange(ty) => {
-                if *ty != crate::types::IntegerType::I64 {
-                    self.range_checks.insert(*ty);
-                }
+        | Instruction::IfBool {
+            then_instructions,
+            else_instructions,
+        } => {
+            for child in then_instructions.iter().chain(else_instructions) {
+                collect_helpers(child, helpers, uses_failures);
             }
-            Instruction::CheckedI64Add => self.add = true,
-            Instruction::CheckedI64Sub => self.subtract = true,
-            Instruction::CheckedI64Mul => self.multiply = true,
-            Instruction::If {
-                then_instructions,
-                else_instructions,
-            }
-            | Instruction::IfBool {
-                then_instructions,
-                else_instructions,
-            } => {
-                for instruction in then_instructions.iter().chain(else_instructions) {
-                    self.include(instruction);
-                }
-            }
-            Instruction::Loop {
-                condition_instructions,
-                body_instructions,
-                update_instructions,
-                ..
-            } => {
-                for instruction in condition_instructions
-                    .iter()
-                    .chain(body_instructions)
-                    .chain(update_instructions)
-                {
-                    self.include(instruction);
-                }
-            }
-            _ => {}
         }
+        Instruction::Loop {
+            condition_instructions,
+            body_instructions,
+            update_instructions,
+            ..
+        } => {
+            for child in condition_instructions
+                .iter()
+                .chain(body_instructions)
+                .chain(update_instructions)
+            {
+                collect_helpers(child, helpers, uses_failures);
+            }
+        }
+        _ => {}
     }
 }
 
-fn i64_operations(module: &Module) -> I64Operations {
-    let mut operations = I64Operations::default();
-    for instruction in &module.instructions {
-        operations.include(instruction);
-    }
-    for function in &module.functions {
-        for instruction in &function.instructions {
-            operations.include(instruction);
+fn emit_helper(instruction: &Instruction, origin: Origin, name: &str, output: &mut String) {
+    match instruction {
+        Instruction::ConvertNumeric { conversion } => {
+            super::conversion::emit_support(*conversion, origin, name, output)
         }
-    }
-    operations
-}
-
-fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
-    for &conversion in &operations.conversions {
-        super::conversion::emit_support(conversion, output);
-    }
-    for &(op, ty) in &operations.integer_binary {
-        super::integer::emit_support(op, ty, output);
-    }
-    for ty in &operations.range_checks {
-        output.push_str(&format!("  (func $primer_check_{} (param $value i64) (result i64)\n    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n    if\n      unreachable\n    end\n    local.get $value\n  )\n\n", ty.name(), ty.minimum(), ty.maximum()));
-    }
-
-    if operations.add {
-        output.push_str(
-            "  (func $primer_i64_add (param $left i64) (param $right i64) (result i64)\n\
-             \x20   (local $result i64)\n\
-             \x20   local.get $left\n\
-             \x20   local.get $right\n\
-             \x20   i64.add\n\
-             \x20   local.set $result\n\
-             \x20   local.get $result\n\
-             \x20   local.get $left\n\
-             \x20   i64.xor\n\
-             \x20   local.get $result\n\
-             \x20   local.get $right\n\
-             \x20   i64.xor\n\
-             \x20   i64.and\n\
-             \x20   i64.const 0\n\
-             \x20   i64.lt_s\n\
-             \x20   if\n\
-             \x20     unreachable\n\
-             \x20   end\n\
-             \x20   local.get $result\n\
-             \x20 )\n\n",
-        );
-    }
-
-    if operations.subtract {
-        output.push_str(
-            "  (func $primer_i64_sub (param $left i64) (param $right i64) (result i64)\n\
-             \x20   (local $result i64)\n\
-             \x20   local.get $left\n\
-             \x20   local.get $right\n\
-             \x20   i64.sub\n\
-             \x20   local.set $result\n\
-             \x20   local.get $left\n\
-             \x20   local.get $right\n\
-             \x20   i64.xor\n\
-             \x20   local.get $left\n\
-             \x20   local.get $result\n\
-             \x20   i64.xor\n\
-             \x20   i64.and\n\
-             \x20   i64.const 0\n\
-             \x20   i64.lt_s\n\
-             \x20   if\n\
-             \x20     unreachable\n\
-             \x20   end\n\
-             \x20   local.get $result\n\
-             \x20 )\n\n",
-        );
-    }
-
-    if operations.multiply {
-        output.push_str(
-            "  (func $primer_i64_mul (param $left i64) (param $right i64) (result i64)\n\
-             \x20   (local $result i64)\n\
-             \x20   local.get $left\n\
-             \x20   i64.eqz\n\
-             \x20   if\n\
-             \x20     i64.const 0\n\
-             \x20     return\n\
-             \x20   end\n\
-             \x20   local.get $left\n\
-             \x20   i64.const -1\n\
-             \x20   i64.eq\n\
-             \x20   local.get $right\n\
-             \x20   i64.const -9223372036854775808\n\
-             \x20   i64.eq\n\
-             \x20   i32.and\n\
-             \x20   local.get $right\n\
-             \x20   i64.const -1\n\
-             \x20   i64.eq\n\
-             \x20   local.get $left\n\
-             \x20   i64.const -9223372036854775808\n\
-             \x20   i64.eq\n\
-             \x20   i32.and\n\
-             \x20   i32.or\n\
-             \x20   if\n\
-             \x20     unreachable\n\
-             \x20   end\n\
-             \x20   local.get $left\n\
-             \x20   local.get $right\n\
-             \x20   i64.mul\n\
-             \x20   local.set $result\n\
-             \x20   local.get $result\n\
-             \x20   local.get $left\n\
-             \x20   i64.div_s\n\
-             \x20   local.get $right\n\
-             \x20   i64.ne\n\
-             \x20   if\n\
-             \x20     unreachable\n\
-             \x20   end\n\
-             \x20   local.get $result\n\
-             \x20 )\n\n",
-        );
+        Instruction::IntegerBinary { op, ty } => {
+            super::integer::emit_support(*op, *ty, origin, name, output)
+        }
+        Instruction::CheckIntegerRange { ty, failure } => {
+            writeln!(output, "  (func ${name} (param $value i64) (result i64)").unwrap();
+            super::failure::emit_if(
+                &format!(
+                    "    local.get $value\n    i64.const {}\n    i64.lt_s\n    local.get $value\n    i64.const {}\n    i64.gt_s\n    i32.or\n",
+                    ty.minimum(),
+                    ty.maximum()
+                ),
+                *failure,
+                origin,
+                output,
+            );
+            output.push_str("    local.get $value\n  )\n\n");
+        }
+        Instruction::CheckedI64Add
+        | Instruction::CheckedI64Sub
+        | Instruction::CheckedI64Mul
+        | Instruction::CheckedI64DivS => {
+            super::integer::emit_signed(instruction, origin, name, output)
+        }
+        _ => unreachable!("only checked operations have specialized helpers"),
     }
 }
 
@@ -323,6 +239,16 @@ fn emit_instruction(
     let prefix = "  ".repeat(indent);
 
     match instruction {
+        Instruction::Located {
+            origin,
+            instruction,
+        } => writeln!(
+            output,
+            "{prefix}call ${}",
+            super::failure::helper_name(instruction, *origin)
+        )
+        .unwrap(),
+        Instruction::Failure(record) => super::failure::emit(*record, &prefix, output),
         Instruction::CallPrintU64 => writeln!(output, "{prefix}call $print_u64").unwrap(),
         Instruction::I64LtU => writeln!(output, "{prefix}i64.lt_u").unwrap(),
         Instruction::I64LeU => writeln!(output, "{prefix}i64.le_u").unwrap(),
@@ -338,7 +264,7 @@ fn emit_instruction(
         Instruction::IntegerBinary { op, ty } => {
             writeln!(output, "{prefix}call ${}", op.helper(*ty)).unwrap();
         }
-        Instruction::CheckIntegerRange(ty) => {
+        Instruction::CheckIntegerRange { ty, .. } => {
             writeln!(output, "{prefix}call $primer_check_{}", ty.name()).unwrap();
         }
         Instruction::I32Const(value) => {

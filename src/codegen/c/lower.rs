@@ -176,9 +176,13 @@ fn lower_statement(statement: &primer_ir::Statement) -> Statement {
                             index,
                             element,
                             length,
-                            ..
+                            span,
                         } = projection;
                         ArrayProjection {
+                            origin: super::ir::Origin {
+                                node_id: statement.id,
+                                span: *span,
+                            },
                             index: lower_expr(index),
                             element: element.clone().into(),
                             length: *length,
@@ -251,10 +255,21 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
     let value = lower_expr_unchecked(expr);
     if let Some(ty) = super::super::integer_range_check(expr) {
         Expr {
+            origin: expr.into(),
             ty: value.ty.clone(),
             kind: ExprKind::CheckIntegerRange {
                 value: Box::new(value),
                 ty,
+                code: match expr.kind {
+                    primer_ir::ExprKind::ConvertInteger { .. } => {
+                        crate::runtime::FailureCode::IntegerConversionOutOfRange
+                    }
+                    primer_ir::ExprKind::Binary {
+                        op: primer_ir::BinaryOp::Divide,
+                        ..
+                    } => crate::runtime::FailureCode::DivisionOverflow,
+                    _ => crate::runtime::FailureCode::IntegerOverflow,
+                },
             },
         }
     } else {
@@ -265,6 +280,7 @@ fn lower_expr(expr: &primer_ir::Expr) -> Expr {
 fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     if let Some((value, conversion)) = crate::codegen::u64_integer_conversion(expr) {
         return Expr {
+            origin: expr.into(),
             ty: expr.ty.clone().into(),
             kind: ExprKind::ConvertNumeric {
                 value: Box::new(lower_expr(value)),
@@ -321,6 +337,7 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
             ty: crate::codegen::integer_type(&expr.ty),
             left: Box::new(lower_expr(value)),
             right: Box::new(Expr {
+                origin: expr.into(),
                 ty: expr.ty.clone().into(),
                 kind: ExprKind::Integer(crate::codegen::complement_mask(&expr.ty) as i128),
             }),
@@ -385,6 +402,7 @@ fn lower_expr_unchecked(expr: &primer_ir::Expr) -> Expr {
     };
 
     Expr {
+        origin: expr.into(),
         ty: expr.ty.clone().into(),
         kind,
     }

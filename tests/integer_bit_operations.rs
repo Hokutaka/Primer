@@ -1,7 +1,9 @@
+#[path = "support/llvm.rs"]
+mod llvm;
 use primer_lang::{
     RunError, bytecode, compile, compile_to_bytecode, compile_to_bytecode_text, compile_to_c,
-    compile_to_ir, compile_to_ir_text, compile_to_llvm, compile_to_qbe, compile_to_wat,
-    compile_to_x86_64_win_asm, ir, lexer, run_vm,
+    compile_to_ir, compile_to_ir_text, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm,
+    ir, lexer, run_vm,
     source::Span,
     types::IntegerType,
     vm::{self, IntegerOperation, VmErrorKind},
@@ -308,7 +310,7 @@ fn works_in_defaults_calls_arrays_loops_and_conversions() {
     assert_eq!(run_vm(source).unwrap(), "3\n9\n6\n");
     for compile in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,

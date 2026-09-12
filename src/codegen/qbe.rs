@@ -1,5 +1,6 @@
 mod conversion;
 mod emit;
+mod failure;
 mod integer;
 pub mod ir;
 mod lower;
@@ -76,7 +77,7 @@ mod tests {
         let qbe = emit_qbe(&program).unwrap();
 
         assert!(qbe.contains("function l $primer_i64_add"));
-        assert!(qbe.contains("=l call $primer_i64_add(l 1, l 2)"));
+        assert!(qbe.contains("=l call $primer_i64_add(l 1, l 2, l $primer_origin_"));
         assert!(qbe.contains("jnz %overflow, @trap, @ok"));
         assert!(qbe.contains("storel %tmp0, %slot_x"));
         assert!(qbe.contains("call $printf(l $fmt_i64"));

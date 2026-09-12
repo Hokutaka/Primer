@@ -1,5 +1,6 @@
 mod conversion;
 mod emit;
+mod failure;
 mod integer;
 pub mod ir;
 mod lower;
@@ -106,9 +107,9 @@ mod tests {
         let c = emit_c(&program).unwrap();
 
         assert!(c.contains("int64_t primer_fn_add_0(int64_t primer_binding_0_left, int64_t primer_binding_1_right);"));
-        assert!(
-            c.contains("return primer_i64_add(primer_binding_0_left, primer_binding_1_right);")
-        );
+        assert!(c.contains(
+            "return primer_i64_add(primer_binding_0_left, primer_binding_1_right, \" node="
+        ));
         assert!(c.contains("primer_fn_add_0(20, 22)"));
     }
 

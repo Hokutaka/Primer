@@ -1,7 +1,9 @@
+#[path = "support/llvm.rs"]
+mod llvm;
 use primer_lang::{
     RunError, ast, bytecode, compile, compile_to_bytecode, compile_to_bytecode_text, compile_to_c,
-    compile_to_ir, compile_to_ir_text, compile_to_llvm, compile_to_qbe, compile_to_wat,
-    compile_to_x86_64_win_asm, ir, run_vm,
+    compile_to_ir, compile_to_ir_text, compile_to_qbe, compile_to_wat, compile_to_x86_64_win_asm,
+    ir, run_vm,
     source::{ConversionSyntax, Span},
     types::IntegerType,
     vm::{self, VmErrorKind},
@@ -119,7 +121,7 @@ fn both_spellings_evaluate_the_input_once_and_emit_identical_native_artifacts() 
     }
     for emit in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,
@@ -142,7 +144,7 @@ fn conversions_work_in_fields_arrays_indices_and_function_returns() {
     assert_eq!(run_vm(source).unwrap(), "3\n5\n");
     for emit in [
         compile_to_c,
-        compile_to_llvm,
+        llvm::compile,
         compile_to_qbe,
         compile_to_wat,
         compile_to_x86_64_win_asm,

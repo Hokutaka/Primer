@@ -46,38 +46,13 @@ pub fn assert_expected(output: &Output, expected: Expected, context: &str) {
         output.stdout
     );
     if matches!(expected, Expected::CheckedCFailure) {
-        use primer_lang::vm::{
-            IntegerOperation as Op, NumericConversionFailure as Conversion, VmErrorKind as Error,
-        };
         let primer_lang::RunError::Execution(error) = primer_lang::run_vm(context).unwrap_err()
         else {
             panic!("expected runtime failure")
         };
-        let reason = match error.vm_error().kind() {
-            Error::IntegerOverflow { operation, .. } => match operation {
-                Op::Add => "u64 add overflow",
-                Op::Subtract => "u64 subtract overflow",
-                Op::Multiply => "u64 multiply overflow",
-                Op::ShiftLeft => "u64 left shift overflow",
-                Op::Negate => panic!("unexpected unsigned negation"),
-            },
-            Error::DivisionByZero => "integer division by zero",
-            Error::RemainderByZero => "integer remainder by zero",
-            Error::InvalidShiftCount { .. } => "u64 invalid shift count",
-            Error::IntegerConversionOutOfRange { .. } => "integer conversion out of range",
-            Error::NumericConversionFailed { reason, .. } => match reason {
-                Conversion::OutOfRange => "numeric conversion out of range",
-                Conversion::Inexact => "numeric conversion inexact",
-                Conversion::NotFinite => "numeric conversion not finite",
-                Conversion::NegativeZero => "numeric conversion negative zero",
-                Conversion::NaN => panic!("unexpected width-changing NaN conversion"),
-            },
-            Error::ArrayIndexOutOfBounds { .. } => "array index out of bounds",
-            other => panic!("unhandled expected C failure: {other:?}"),
-        };
         assert_eq!(
             String::from_utf8_lossy(&output.stderr).replace("\r\n", "\n"),
-            format!("primer: {reason}\n"),
+            format!("primer: {}\n", error.runtime_failure().unwrap().record()),
             "{context}"
         );
     }

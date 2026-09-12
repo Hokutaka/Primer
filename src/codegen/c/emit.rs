@@ -24,6 +24,9 @@ pub fn emit(module: &Module) -> String {
     }
     output.push('\n');
 
+    if !module.array_types.is_empty() || support.any_numeric() {
+        output.push_str(super::failure::SUPPORT);
+    }
     emit_i64_operation_support(support, &mut output);
     if strings {
         output.push_str(super::string::SUPPORT);
@@ -194,6 +197,7 @@ fn emit_statement(statement: &Statement, indent: usize, module: &Module, output:
                     }
                     output.push_str(", ");
                     emit_expr(&projection.index, module, output);
+                    super::failure::argument(projection.origin, output);
                     output.push(')');
                     output.push_str(";\n");
                 }
@@ -441,6 +445,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             output.push_str(&conversion.helper());
             output.push('(');
             emit_expr(value, module, output);
+            super::failure::argument(expr.origin, output);
             output.push(')');
         }
         ExprKind::IntegerBinary {
@@ -455,13 +460,17 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             output.push_str(&format!(", _primer_bit_right_{scratch} = "));
             emit_expr(right, module, output);
             output.push_str(&format!(
-                ", {}(_primer_bit_left_{scratch}, _primer_bit_right_{scratch}))",
+                ", {}(_primer_bit_left_{scratch}, _primer_bit_right_{scratch}",
                 op.helper(*ty)
             ));
+            super::failure::argument(expr.origin, output);
+            output.push_str("))");
         }
-        ExprKind::CheckIntegerRange { value, ty } => {
+        ExprKind::CheckIntegerRange { value, ty, code } => {
             output.push_str(&format!("primer_check_{}(", ty.name()));
             emit_expr(value, module, output);
+            write!(output, ", \"{}\"", code.name()).unwrap();
+            super::failure::argument(expr.origin, output);
             output.push(')');
         }
         ExprKind::Boolean(value) => {
@@ -536,6 +545,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             emit_expr(base, module, output);
             output.push_str(", ");
             emit_expr(index, module, output);
+            super::failure::argument(expr.origin, output);
             output.push(')');
         }
 
@@ -549,6 +559,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
             if *op == UnaryOp::CheckedI64Negate {
                 output.push_str("primer_i64_neg(");
                 emit_expr(value, module, output);
+                super::failure::argument(expr.origin, output);
                 output.push(')');
             } else {
                 output.push('(');
@@ -613,6 +624,7 @@ fn emit_expr(expr: &Expr, module: &Module, output: &mut String) {
                 emit_expr(left, module, output);
                 output.push_str(", ");
                 emit_expr(right, module, output);
+                super::failure::argument(expr.origin, output);
                 output.push(')');
                 return;
             }
@@ -702,7 +714,7 @@ impl RuntimeSupport {
                 self.include_expr(left);
                 self.include_expr(right);
             }
-            ExprKind::CheckIntegerRange { value, ty } => {
+            ExprKind::CheckIntegerRange { value, ty, .. } => {
                 self.include_expr(value);
                 if *ty != crate::types::IntegerType::I64 {
                     self.range_checks.insert(*ty);
@@ -864,60 +876,60 @@ fn emit_i64_operation_support(operations: RuntimeSupport, output: &mut String) {
         super::integer::emit_support(op, ty, output);
     }
     for ty in &operations.range_checks {
-        output.push_str(&format!("static int64_t primer_check_{}(int64_t value) {{\n    if (value < {}LL || value > {}LL) abort();\n    return value;\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        output.push_str(&format!("static int64_t primer_check_{}(int64_t value, const char *code, const char *origin) {{\n    if (value < {}LL || value > {}LL) primer_runtime_fail(code, origin);\n    return value;\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     if !operations.any_numeric() {
         return;
     }
 
-    output.push_str("static void primer_integer_overflow(void) {\n");
-    output.push_str(
-        "    fputs(\"primer: integer operation produced a value outside the supported range\\n\", stderr);\n",
-    );
-    output.push_str("    abort();\n}\n\n");
-
     if operations.add {
-        output.push_str("static int64_t primer_i64_add(int64_t left, int64_t right) {\n");
+        output.push_str(
+            "static int64_t primer_i64_add(int64_t left, int64_t right, const char *origin) {\n",
+        );
         output.push_str("    if ((right > 0 && left > INT64_MAX - right) ||\n");
         output.push_str("        (right < 0 && left < INT64_MIN - right)) {\n");
-        output.push_str("        primer_integer_overflow();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"integer-overflow\", origin);\n    }\n");
         output.push_str("    return left + right;\n}\n\n");
     }
 
     if operations.subtract {
-        output.push_str("static int64_t primer_i64_sub(int64_t left, int64_t right) {\n");
+        output.push_str(
+            "static int64_t primer_i64_sub(int64_t left, int64_t right, const char *origin) {\n",
+        );
         output.push_str("    if ((right < 0 && left > INT64_MAX + right) ||\n");
         output.push_str("        (right > 0 && left < INT64_MIN + right)) {\n");
-        output.push_str("        primer_integer_overflow();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"integer-overflow\", origin);\n    }\n");
         output.push_str("    return left - right;\n}\n\n");
     }
 
     if operations.multiply {
-        output.push_str("static int64_t primer_i64_mul(int64_t left, int64_t right) {\n");
+        output.push_str(
+            "static int64_t primer_i64_mul(int64_t left, int64_t right, const char *origin) {\n",
+        );
         output.push_str("    if ((left > 0 && right > 0 && left > INT64_MAX / right) ||\n");
         output.push_str("        (left > 0 && right < 0 && right < INT64_MIN / left) ||\n");
         output.push_str("        (left < 0 && right > 0 && left < INT64_MIN / right) ||\n");
         output.push_str("        (left < 0 && right < 0 && left < INT64_MAX / right)) {\n");
-        output.push_str("        primer_integer_overflow();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"integer-overflow\", origin);\n    }\n");
         output.push_str("    return left * right;\n}\n\n");
     }
 
     if operations.divide {
-        output.push_str("static int64_t primer_i64_div(int64_t left, int64_t right) {\n");
+        output.push_str(
+            "static int64_t primer_i64_div(int64_t left, int64_t right, const char *origin) {\n",
+        );
         output.push_str("    if (right == 0) {\n");
-        output
-            .push_str("        fputs(\"primer: cannot divide an integer by zero\\n\", stderr);\n");
-        output.push_str("        abort();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"division-by-zero\", origin);\n    }\n");
         output.push_str("    if (left == INT64_MIN && right == -1) {\n");
-        output.push_str("        primer_integer_overflow();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"division-overflow\", origin);\n    }\n");
         output.push_str("    return left / right;\n}\n\n");
     }
 
     if operations.negate {
-        output.push_str("static int64_t primer_i64_neg(int64_t value) {\n");
+        output.push_str("static int64_t primer_i64_neg(int64_t value, const char *origin) {\n");
         output.push_str("    if (value == INT64_MIN) {\n");
-        output.push_str("        primer_integer_overflow();\n    }\n");
+        output.push_str("        primer_runtime_fail(\"integer-overflow\", origin);\n    }\n");
         output.push_str("    return -value;\n}\n\n");
     }
 }
@@ -1024,12 +1036,11 @@ fn emit_array_support(ty: &Type, module: &Module, output: &mut String) {
     output.push_str(&array_get_name(element, *length, module));
     output.push('(');
     output.push_str(&name);
-    output.push_str(" value, int64_t index) {\n");
+    output.push_str(" value, int64_t index, const char *origin) {\n");
     output.push_str("    if (index < 0 || index >= ");
     output.push_str(&length.to_string());
     output.push_str(") {\n");
-    output.push_str("        fputs(\"primer: array index out of bounds\\n\", stderr);\n");
-    output.push_str("        abort();\n    }\n");
+    output.push_str("        primer_runtime_fail(\"array-index-out-of-bounds\", origin);\n    }\n");
     output.push_str("    return value.items[index];\n}\n\n");
 
     if module.array_assignment_types.contains(ty) {
@@ -1039,12 +1050,13 @@ fn emit_array_support(ty: &Type, module: &Module, output: &mut String) {
         output.push_str(&array_at_name(element, *length, module));
         output.push('(');
         output.push_str(&name);
-        output.push_str(" *value, int64_t index) {\n");
+        output.push_str(" *value, int64_t index, const char *origin) {\n");
         output.push_str("    if (index < 0 || index >= ");
         output.push_str(&length.to_string());
         output.push_str(") {\n");
-        output.push_str("        fputs(\"primer: array index out of bounds\\n\", stderr);\n");
-        output.push_str("        abort();\n    }\n");
+        output.push_str(
+            "        primer_runtime_fail(\"array-index-out-of-bounds\", origin);\n    }\n",
+        );
         output.push_str("    return &value->items[index];\n}\n\n");
     }
 }

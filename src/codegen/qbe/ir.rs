@@ -106,11 +106,13 @@ pub enum Instruction {
         value: Operand,
     },
     ConvertNumeric {
+        origin: FailureOrigin,
         conversion: crate::codegen::NumericConversion,
         dest: Temp,
         value: Operand,
     },
     IntegerBinary {
+        origin: FailureOrigin,
         op: crate::codegen::IntegerBinaryOp,
         ty: crate::types::IntegerType,
         dest: Temp,
@@ -118,6 +120,8 @@ pub enum Instruction {
         right: Operand,
     },
     CheckIntegerRange {
+        origin: FailureOrigin,
+        failure: crate::runtime::FailureCode,
         dest: Temp,
         value: Operand,
         ty: crate::types::IntegerType,
@@ -152,7 +156,9 @@ pub enum Instruction {
         destination: Operand,
         size: usize,
     },
-    Abort,
+    Abort {
+        origin: FailureOrigin,
+    },
     Call {
         dest: Option<Temp>,
         function_id: usize,
@@ -168,6 +174,7 @@ pub enum Instruction {
         value: Operand,
     },
     CheckedI64Negate {
+        origin: FailureOrigin,
         dest: Temp,
         value: Operand,
     },
@@ -176,6 +183,7 @@ pub enum Instruction {
         value: Operand,
     },
     Binary {
+        origin: FailureOrigin,
         dest: Temp,
         op: BinaryOp,
         ty: Type,
@@ -208,4 +216,20 @@ pub enum Instruction {
         result: Temp,
         value: Operand,
     },
+}
+
+/// 実行中に変更する現在位置ではなく、検査箇所へ埋め込む不変の由来です。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FailureOrigin {
+    pub node: crate::ir::NodeId,
+    pub span: crate::source::Span,
+}
+
+impl From<&crate::ir::Expr> for FailureOrigin {
+    fn from(expr: &crate::ir::Expr) -> Self {
+        Self {
+            node: expr.id,
+            span: expr.span,
+        }
+    }
 }

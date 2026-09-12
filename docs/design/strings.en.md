@@ -63,7 +63,7 @@ LLVM programs using strings require an explicit `--target`. Two targets are supp
 | `x86_64-unknown-linux-gnu` | No mode change |
 | `x86_64-pc-windows-msvc` | Call `_setmode(1, 32768)` on CRT standard output (descriptor 1) to select binary mode |
 
-Windows initialization runs before any Primer operation, including a call to an explicit `main`. Failure exits with code 1. Programs using strings also terminate numeric and Boolean output with LF. Existing programs without strings retain unspecified-target generation and their previous output mode.
+Windows initialization runs before any Primer operation, including a call to an explicit `main`. Failure exits with code 1. Programs using strings also terminate numeric and Boolean output with LF. Programs without strings retain their previous output mode, but checked operations, conversions, and indexing require a target to select the [runtime diagnostic](runtime-diagnostics.en.md) output ABI.
 
 The selection is recorded in the artifact's `target triple`; the compiler never selects it from its host OS or environment variables. Strings in unused definitions also require a target, with a source-located diagnostic when omitted. Pass the same target to downstream Clang. Overriding it with a different target does not translate already generated OS-specific operations.
 

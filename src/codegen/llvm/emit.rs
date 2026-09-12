@@ -16,6 +16,7 @@ pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
     }
     emit_origin(Origin::Synthetic, annotate_origins, &mut output);
     let i64_operations = i64_operations(module);
+    let runtime_failures = super::failure::first_failure_span(module).is_some();
     if let Some(target) = module.target {
         writeln!(output, "target triple = \"{}\"\n", target.triple()).unwrap();
     }
@@ -34,6 +35,9 @@ pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
         })
     {
         output.push_str("@.fmt_u64 = private unnamed_addr constant [6 x i8] c\"%llu\\0A\\00\"\n");
+    }
+    if runtime_failures {
+        super::failure::emit_data(module, &mut output);
     }
     if module.uses_strings {
         super::string::emit_data(module, &mut output);
@@ -90,6 +94,9 @@ pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
 
     output.push('\n');
 
+    if runtime_failures {
+        super::failure::emit_support(module, &mut output);
+    }
     emit_i64_operation_support(i64_operations, &mut output);
     if module.uses_strings {
         super::string::emit_support(module, &mut output);
@@ -131,7 +138,13 @@ pub fn emit_with_origins(module: &Module, annotate_origins: bool) -> String {
 
     for instruction in &module.instructions {
         emit_origin(instruction.origin, annotate_origins, &mut output);
-        emit_instruction(&instruction.instruction, &module.slots, module, &mut output);
+        emit_instruction(
+            &instruction.instruction,
+            instruction.origin,
+            &module.slots,
+            module,
+            &mut output,
+        );
     }
 
     emit_origin(Origin::Synthetic, annotate_origins, &mut output);
@@ -191,17 +204,25 @@ fn emit_function(
     }
     for instruction in &function.instructions {
         emit_origin(instruction.origin, annotate_origins, output);
-        emit_instruction(&instruction.instruction, &function.slots, module, output);
+        emit_instruction(
+            &instruction.instruction,
+            instruction.origin,
+            &function.slots,
+            module,
+            output,
+        );
     }
     output.push_str("}\n");
 }
 
 fn emit_instruction(
     instruction: &Instruction,
+    origin: Origin,
     slots: &[Slot],
     module: &Module,
     output: &mut String,
 ) {
+    let failure = super::failure::argument(instruction, origin);
     match instruction {
         Instruction::PrintString { value } => {
             writeln!(
@@ -218,7 +239,7 @@ fn emit_instruction(
         } => {
             writeln!(
                 output,
-                "  {} = call {} @{}({} {})",
+                "  {} = call {} @{}({} {}, ptr {failure})",
                 temp(*dest),
                 super::conversion::type_name(conversion.to),
                 conversion.helper(),
@@ -236,7 +257,7 @@ fn emit_instruction(
         } => {
             writeln!(
                 output,
-                "  {} = call i64 @{}(i64 {}, i64 {})",
+                "  {} = call i64 @{}(i64 {}, i64 {}, ptr {failure})",
                 temp(*dest),
                 op.helper(*ty),
                 operand(*left),
@@ -244,10 +265,16 @@ fn emit_instruction(
             )
             .unwrap();
         }
-        Instruction::CheckIntegerRange { dest, value, ty } => {
+        Instruction::CheckIntegerRange {
+            dest,
+            value,
+            ty,
+            failure: code,
+        } => {
+            let code = super::failure::index(*code);
             writeln!(
                 output,
-                "  {} = call i64 @primer_check_{}(i64 {})",
+                "  {} = call i64 @primer_check_{}(i64 {}, ptr {failure}, i64 {code})",
                 temp(*dest),
                 ty.name(),
                 operand(*value)
@@ -350,7 +377,7 @@ fn emit_instruction(
             };
             writeln!(
                 output,
-                "  {} = call {} @{}({} {}, i64 {})",
+                "  {} = call {} @{}({} {}, i64 {}, ptr {failure})",
                 temp(*dest),
                 type_name(element, module),
                 array_get_name(element, *length, module),
@@ -375,7 +402,7 @@ fn emit_instruction(
             };
             writeln!(
                 output,
-                "  {} = call {} @{}({} {}, i64 {}, {} {})",
+                "  {} = call {} @{}({} {}, i64 {}, {} {}, ptr {failure})",
                 temp(*dest),
                 type_name(&array_ty, module),
                 array_set_name(element, *length, module),
@@ -440,7 +467,7 @@ fn emit_instruction(
             if let Some(helper) = checked_i64_helper(*op) {
                 writeln!(
                     output,
-                    "  {} = call i64 @{helper}(i64 {}, i64 {})",
+                    "  {} = call i64 @{helper}(i64 {}, i64 {}, ptr {failure})",
                     temp(*dest),
                     operand(*left),
                     operand(*right),
@@ -678,7 +705,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         super::integer::emit_support(op, ty, output);
     }
     for ty in &operations.range_checks {
-        output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @llvm.trap()\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
+        output.push_str(&format!("define internal i64 @primer_check_{}(i64 %value, ptr %failure, i64 %code) {{\nentry:\n  %below = icmp slt i64 %value, {}\n  %above = icmp sgt i64 %value, {}\n  %bad = or i1 %below, %above\n  br i1 %bad, label %trap, label %ok\ntrap:\n  call void @primer.runtime.fail(ptr %failure, i64 %code)\n  unreachable\nok:\n  ret i64 %value\n}}\n\n", ty.name(), ty.minimum(), ty.maximum()));
     }
 
     for (enabled, name, intrinsic) in [
@@ -691,7 +718,7 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         }
         writeln!(
             output,
-            "define internal i64 @primer_i64_{name}(i64 %left, i64 %right) {{"
+            "define internal i64 @primer_i64_{name}(i64 %left, i64 %right, ptr %failure) {{"
         )
         .unwrap();
         output.push_str("entry:\n");
@@ -703,20 +730,16 @@ fn emit_i64_operation_support(operations: I64Operations, output: &mut String) {
         output.push_str("  %result = extractvalue { i64, i1 } %checked, 0\n");
         output.push_str("  %overflow = extractvalue { i64, i1 } %checked, 1\n");
         output.push_str("  br i1 %overflow, label %trap, label %ok\n\n");
-        output.push_str("trap:\n  call void @llvm.trap()\n  unreachable\n\n");
+        output.push_str("trap:\n");
+        super::failure::emit_trap(crate::runtime::FailureCode::IntegerOverflow, output);
         output.push_str("ok:\n  ret i64 %result\n}\n\n");
     }
 
     if operations.divide {
-        output.push_str("define internal i64 @primer_i64_div(i64 %left, i64 %right) {\n");
-        output.push_str("entry:\n");
-        output.push_str("  %is_zero = icmp eq i64 %right, 0\n");
-        output.push_str("  %is_min = icmp eq i64 %left, -9223372036854775808\n");
-        output.push_str("  %is_negative_one = icmp eq i64 %right, -1\n");
-        output.push_str("  %overflows = and i1 %is_min, %is_negative_one\n");
-        output.push_str("  %invalid = or i1 %is_zero, %overflows\n");
-        output.push_str("  br i1 %invalid, label %trap, label %ok\n\n");
-        output.push_str("trap:\n  call void @llvm.trap()\n  unreachable\n\n");
+        output.push_str("define internal i64 @primer_i64_div(i64 %left, i64 %right, ptr %failure) {\nentry:\n  %is_zero = icmp eq i64 %right, 0\n  br i1 %is_zero, label %zero, label %bounds\nzero:\n");
+        super::failure::emit_trap(crate::runtime::FailureCode::DivisionByZero, output);
+        output.push_str("bounds:\n  %is_min = icmp eq i64 %left, -9223372036854775808\n  %is_negative_one = icmp eq i64 %right, -1\n  %overflows = and i1 %is_min, %is_negative_one\n  br i1 %overflows, label %overflow, label %ok\noverflow:\n");
+        super::failure::emit_trap(crate::runtime::FailureCode::DivisionOverflow, output);
         output.push_str("ok:\n  %result = sdiv i64 %left, %right\n  ret i64 %result\n}\n\n");
     }
 }
@@ -807,20 +830,6 @@ fn array_types(module: &Module) -> Vec<Type> {
     }
 
     let mut result = Vec::new();
-    for ty in module
-        .slots
-        .iter()
-        .map(|slot| &slot.ty)
-        .chain(module.functions.iter().flat_map(|function| {
-            function
-                .slots
-                .iter()
-                .map(|slot| &slot.ty)
-                .chain(function.return_type.iter())
-        }))
-    {
-        add(ty, &mut result);
-    }
     for instruction in module.instructions.iter().chain(
         module
             .functions
@@ -880,7 +889,7 @@ fn emit_array_get(ty: &Type, module: &Module, output: &mut String) {
     let array_ty = format!("[{length} x {element_ty}]");
     writeln!(
         output,
-        "define internal {element_ty} @{}({array_ty} %value, i64 %index) {{",
+        "define internal {element_ty} @{}({array_ty} %value, i64 %index, ptr %failure) {{",
         array_get_name(element, *length, module)
     )
     .unwrap();
@@ -890,8 +899,7 @@ fn emit_array_get(ty: &Type, module: &Module, output: &mut String) {
     output.push_str("  %index.outside = or i1 %index.low, %index.high\n");
     output.push_str("  br i1 %index.outside, label %out_of_bounds, label %in_bounds\n");
     output.push_str("out_of_bounds:\n");
-    output.push_str("  call void @llvm.trap()\n");
-    output.push_str("  unreachable\n");
+    super::failure::emit_trap(crate::runtime::FailureCode::ArrayIndexOutOfBounds, output);
     output.push_str("in_bounds:\n");
     writeln!(output, "  %array = alloca {array_ty}").unwrap();
     writeln!(output, "  store {array_ty} %value, ptr %array").unwrap();
@@ -913,7 +921,7 @@ fn emit_array_set(ty: &Type, module: &Module, output: &mut String) {
     let array_ty = format!("[{length} x {element_ty}]");
     writeln!(
         output,
-        "define internal {array_ty} @{}({array_ty} %value, i64 %index, {element_ty} %replacement) {{",
+        "define internal {array_ty} @{}({array_ty} %value, i64 %index, {element_ty} %replacement, ptr %failure) {{",
         array_set_name(element, *length, module)
     )
     .unwrap();
@@ -923,8 +931,7 @@ fn emit_array_set(ty: &Type, module: &Module, output: &mut String) {
     output.push_str("  %index.outside = or i1 %index.low, %index.high\n");
     output.push_str("  br i1 %index.outside, label %out_of_bounds, label %in_bounds\n");
     output.push_str("out_of_bounds:\n");
-    output.push_str("  call void @llvm.trap()\n");
-    output.push_str("  unreachable\n");
+    super::failure::emit_trap(crate::runtime::FailureCode::ArrayIndexOutOfBounds, output);
     output.push_str("in_bounds:\n");
     writeln!(output, "  %array = alloca {array_ty}").unwrap();
     writeln!(output, "  store {array_ty} %value, ptr %array").unwrap();

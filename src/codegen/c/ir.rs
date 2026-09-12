@@ -101,6 +101,7 @@ pub struct AssignmentTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrayProjection {
+    pub origin: Origin,
     pub index: Expr,
     pub element: Type,
     pub length: usize,
@@ -118,8 +119,24 @@ pub enum PrintFormat {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expr {
+    pub origin: Origin,
     pub ty: Type,
     pub kind: ExprKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Origin {
+    pub node_id: crate::ir::NodeId,
+    pub span: crate::source::Span,
+}
+
+impl From<&crate::ir::Expr> for Origin {
+    fn from(expr: &crate::ir::Expr) -> Self {
+        Self {
+            node_id: expr.id,
+            span: expr.span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,6 +170,7 @@ pub enum ExprKind {
     CheckIntegerRange {
         value: Box<Expr>,
         ty: crate::types::IntegerType,
+        code: crate::runtime::FailureCode,
     },
     Boolean(bool),
     Integer(i128),

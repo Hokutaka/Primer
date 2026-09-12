@@ -1,31 +1,57 @@
+use super::{failure::emit_if, ir::Origin};
 use crate::{
     codegen::{IntegerBinaryOp as Op, NumericConversion},
+    runtime::FailureCode as Failure,
     types::{IntegerType, NumericType as N},
 };
 use std::fmt::Write;
-pub(super) fn emit_binary(op: Op, output: &mut String) {
+
+pub(super) fn emit_binary(op: Op, origin: Origin, name: &str, output: &mut String) {
     writeln!(
         output,
-        "  (func ${} (param $left i64) (param $right i64) (result i64)",
-        op.helper(IntegerType::U64)
+        "  (func ${name} (param $left i64) (param $right i64) (result i64)"
     )
     .unwrap();
     let instruction = match op {
         Op::Add => {
-            output.push_str("    local.get $left\n    i64.const -1\n    local.get $right\n    i64.sub\n    i64.gt_u\n    if\n      unreachable\n    end\n");
+            emit_if(
+                "    local.get $left\n    i64.const -1\n    local.get $right\n    i64.sub\n    i64.gt_u\n",
+                Failure::IntegerOverflow,
+                origin,
+                output,
+            );
             "add"
         }
         Op::Subtract => {
-            output.push_str("    local.get $left\n    local.get $right\n    i64.lt_u\n    if\n      unreachable\n    end\n");
+            emit_if(
+                "    local.get $left\n    local.get $right\n    i64.lt_u\n",
+                Failure::IntegerOverflow,
+                origin,
+                output,
+            );
             "sub"
         }
         Op::Multiply => {
-            output.push_str("    local.get $right\n    i64.eqz\n    if\n    else\n      local.get $left\n      i64.const -1\n      local.get $right\n      i64.div_u\n      i64.gt_u\n      if\n        unreachable\n      end\n    end\n");
+            output.push_str("    local.get $right\n    i64.eqz\n    if\n    else\n");
+            emit_if(
+                "    local.get $left\n    i64.const -1\n    local.get $right\n    i64.div_u\n    i64.gt_u\n",
+                Failure::IntegerOverflow,
+                origin,
+                output,
+            );
+            output.push_str("    end\n");
             "mul"
         }
         Op::Divide | Op::Remainder => {
-            output.push_str(
-                "    local.get $right\n    i64.eqz\n    if\n      unreachable\n    end\n",
+            emit_if(
+                "    local.get $right\n    i64.eqz\n",
+                if op == Op::Divide {
+                    Failure::DivisionByZero
+                } else {
+                    Failure::RemainderByZero
+                },
+                origin,
+                output,
             );
             if op == Op::Divide { "div_u" } else { "rem_u" }
         }
@@ -33,9 +59,19 @@ pub(super) fn emit_binary(op: Op, output: &mut String) {
         Op::BitOr => "or",
         Op::BitXor => "xor",
         Op::ShiftLeft | Op::ShiftRight => {
-            output.push_str("    local.get $right\n    i64.const 64\n    i64.ge_u\n    if\n      unreachable\n    end\n");
+            emit_if(
+                "    local.get $right\n    i64.const 64\n    i64.ge_u\n",
+                Failure::InvalidShiftCount,
+                origin,
+                output,
+            );
             if op == Op::ShiftLeft {
-                output.push_str("    local.get $left\n    i64.const -1\n    local.get $right\n    i64.shr_u\n    i64.gt_u\n    if\n      unreachable\n    end\n");
+                emit_if(
+                    "    local.get $left\n    i64.const -1\n    local.get $right\n    i64.shr_u\n    i64.gt_u\n",
+                    Failure::IntegerOverflow,
+                    origin,
+                    output,
+                );
                 "shl"
             } else {
                 "shr_u"
@@ -48,21 +84,33 @@ pub(super) fn emit_binary(op: Op, output: &mut String) {
     )
     .unwrap();
 }
-pub(super) fn emit_conversion(c: NumericConversion, output: &mut String) {
+
+pub(super) fn emit_conversion(
+    c: NumericConversion,
+    origin: Origin,
+    name: &str,
+    output: &mut String,
+) {
     let from = super::conversion::type_name(c.from);
     let to = super::conversion::type_name(c.to);
-    writeln!(output,"  (func ${} (param $value {from}) (result {to})\n    (local $result {to}) (local $number f64)",c.helper()).unwrap();
+    writeln!(output, "  (func ${name} (param $value {from}) (result {to})\n    (local $result {to}) (local $number f64)").unwrap();
     match (c.from, c.to) {
         (N::Integer(from), N::Integer(to)) => {
-            output.push_str("    local.get $value\n");
-            if from == IntegerType::U64 {
-                writeln!(output, "    i64.const {}\n    i64.gt_u", to.maximum()).unwrap();
+            let condition = if from == IntegerType::U64 {
+                format!(
+                    "    local.get $value\n    i64.const {}\n    i64.gt_u\n",
+                    to.maximum()
+                )
             } else {
-                output.push_str("    i64.const 0\n    i64.lt_s\n");
-            }
-            output.push_str(
-                "    if\n      unreachable\n    end\n    local.get $value\n    local.set $result\n",
+                "    local.get $value\n    i64.const 0\n    i64.lt_s\n".into()
+            };
+            emit_if(
+                &condition,
+                Failure::IntegerConversionOutOfRange,
+                origin,
+                output,
             );
+            output.push_str("    local.get $value\n    local.set $result\n");
         }
         (N::Integer(_), N::F32 | N::F64) => {
             writeln!(
@@ -73,14 +121,22 @@ pub(super) fn emit_conversion(c: NumericConversion, output: &mut String) {
             if c.to == N::F32 {
                 output.push_str("    f64.promote_f32\n");
             }
-            output.push_str("    local.set $number\n    local.get $number\n    f64.const 18446744073709551616\n    f64.ge\n    if\n      unreachable\n    end\n    local.get $number\n    i64.trunc_f64_u\n    local.get $value\n    i64.ne\n    if\n      unreachable\n    end\n");
+            output.push_str("    local.set $number\n");
+            emit_if(
+                "    local.get $number\n    f64.const 18446744073709551616\n    f64.ge\n",
+                Failure::ConversionInexact,
+                origin,
+                output,
+            );
+            emit_if(
+                "    local.get $number\n    i64.trunc_f64_u\n    local.get $value\n    i64.ne\n",
+                Failure::ConversionInexact,
+                origin,
+                output,
+            );
         }
         (N::F32 | N::F64, N::Integer(_)) => {
-            output.push_str("    local.get $value\n");
-            if c.from == N::F32 {
-                output.push_str("    f64.promote_f32\n");
-            }
-            output.push_str("    local.set $number\n    local.get $number\n    f64.const 0\n    f64.ge\n    local.get $number\n    f64.const 18446744073709551616\n    f64.lt\n    i32.and\n    i32.eqz\n    if\n      unreachable\n    end\n    local.get $number\n    i64.reinterpret_f64\n    i64.const -9223372036854775808\n    i64.eq\n    if\n      unreachable\n    end\n    local.get $number\n    i64.trunc_f64_u\n    local.tee $result\n    f64.convert_i64_u\n    local.get $number\n    f64.ne\n    if\n      unreachable\n    end\n");
+            super::conversion::emit_float_integer(c.from, IntegerType::U64, origin, output);
         }
         _ => unreachable!("u64 conversion"),
     }

@@ -1,3 +1,5 @@
+target triple = "x86_64-unknown-linux-gnu"
+
 @.fmt_i64 = private unnamed_addr constant [6 x i8] c"%lld\0A\00"
 @.fmt_f32 = private unnamed_addr constant [6 x i8] c"%.9g\0A\00"
 @.fmt_f64 = private unnamed_addr constant [7 x i8] c"%.17g\0A\00"

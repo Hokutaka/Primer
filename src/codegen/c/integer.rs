@@ -8,7 +8,7 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
     }
     writeln!(
         output,
-        "static int64_t {}(int64_t left, int64_t right) {{",
+        "static int64_t {}(int64_t left, int64_t right, const char *origin) {{",
         op.helper(ty)
     )
     .unwrap();
@@ -28,12 +28,12 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
         }
         IntegerBinaryOp::Remainder => {
             // Cの最小値 / -1は未定義ですが、Primerの余りは0になります。
-            output.push_str("    if (right == 0) abort();\n    if (right == -1) return 0;\n    return left % right;\n");
+            output.push_str("    if (right == 0) primer_runtime_fail(\"remainder-by-zero\", origin);\n    if (right == -1) return 0;\n    return left % right;\n");
         }
         IntegerBinaryOp::ShiftLeft | IntegerBinaryOp::ShiftRight => {
             writeln!(
                 output,
-                "    if (right < 0 || right >= {}) abort();",
+                "    if (right < 0 || right >= {}) primer_runtime_fail(\"invalid-shift-count\", origin);",
                 ty.bit_width()
             )
             .unwrap();
@@ -46,7 +46,7 @@ pub(super) fn emit_support(op: IntegerBinaryOp, ty: IntegerType, output: &mut St
                 };
                 writeln!(
                     output,
-                    "    if (left < ({lower}) || left > ({}LL >> right)) abort();",
+                    "    if (left < ({lower}) || left > ({}LL >> right)) primer_runtime_fail(\"integer-overflow\", origin);",
                     ty.maximum()
                 )
                 .unwrap();

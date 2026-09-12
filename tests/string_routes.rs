@@ -333,8 +333,14 @@ fn wat_matches_known_bytes_and_vm_without_exposing_memory() {
                 .arg(&wasm),
         );
         let failed = Command::new(&node).arg(&host).arg(&wasm).output().unwrap();
+        let primer_lang::RunError::Execution(expected) = run_vm(source).unwrap_err() else {
+            panic!("expected a runtime failure");
+        };
         assert!(!failed.status.success());
         assert!(failed.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&failed.stderr).contains("unreachable"));
+        assert_eq!(
+            String::from_utf8_lossy(&failed.stderr),
+            format!("primer: {}\n", expected.runtime_failure().unwrap().record())
+        );
     }
 }

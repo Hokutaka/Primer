@@ -226,11 +226,16 @@ impl Lowerer<'_> {
                         index,
                         element,
                         length,
-                        ..
+                        span,
                     } = projection;
                     let index = self.lower_expr(index);
                     let element: Type = element.clone().into();
                     let dest = self.next_temp();
+                    let previous = self.origin;
+                    self.origin = Origin::Source {
+                        node_id: statement.id,
+                        span: *span,
+                    };
                     self.push(Instruction::ArrayGet {
                         dest,
                         element: element.clone(),
@@ -238,7 +243,14 @@ impl Lowerer<'_> {
                         array: current.operand,
                         index: index.operand,
                     });
-                    parents.push((current.operand, index.operand, element.clone(), *length));
+                    self.origin = previous;
+                    parents.push((
+                        current.operand,
+                        index.operand,
+                        element.clone(),
+                        *length,
+                        *span,
+                    ));
                     current = Value {
                         ty: element,
                         operand: Operand::Temp(dest),
@@ -246,8 +258,13 @@ impl Lowerer<'_> {
                 }
 
                 let mut updated = self.lower_expr(value).operand;
-                for (array, index, element, length) in parents.into_iter().rev() {
+                for (array, index, element, length, span) in parents.into_iter().rev() {
                     let dest = self.next_temp();
+                    let previous = self.origin;
+                    self.origin = Origin::Source {
+                        node_id: statement.id,
+                        span,
+                    };
                     self.push(Instruction::ArraySet {
                         dest,
                         element: element.clone(),
@@ -256,6 +273,7 @@ impl Lowerer<'_> {
                         index,
                         value: updated,
                     });
+                    self.origin = previous;
                     updated = Operand::Temp(dest);
                 }
                 self.push(Instruction::Store {
@@ -496,6 +514,16 @@ impl Lowerer<'_> {
                 dest,
                 value: value.operand,
                 ty,
+                failure: match expr.kind {
+                    primer_ir::ExprKind::ConvertInteger { .. } => {
+                        crate::runtime::FailureCode::IntegerConversionOutOfRange
+                    }
+                    primer_ir::ExprKind::Binary {
+                        op: primer_ir::BinaryOp::Divide,
+                        ..
+                    } => crate::runtime::FailureCode::DivisionOverflow,
+                    _ => crate::runtime::FailureCode::IntegerOverflow,
+                },
             });
             return Value {
                 ty: Type::I64,

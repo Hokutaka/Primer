@@ -1,3 +1,21 @@
+target triple = "x86_64-unknown-linux-gnu"
+
+@primer.failure.56.760.769.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\35\36\20\62\79\74\65\73\3D\37\36\30\2E\2E\37\36\39\0A"
+@primer.failure.56.760.769 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.56.760.769.11, i64 73 }]
+@primer.failure.55.760.772.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\35\35\20\62\79\74\65\73\3D\37\36\30\2E\2E\37\37\32\0A"
+@primer.failure.55.760.772 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.55.760.772.11, i64 73 }]
+@primer.failure.62.781.788.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\36\32\20\62\79\74\65\73\3D\37\38\31\2E\2E\37\38\38\0A"
+@primer.failure.62.781.788 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.62.781.788.11, i64 73 }]
+@primer.failure.61.781.791.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\36\31\20\62\79\74\65\73\3D\37\38\31\2E\2E\37\39\31\0A"
+@primer.failure.61.781.791 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.61.781.791.11, i64 73 }]
+@primer.failure.68.800.807.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\36\38\20\62\79\74\65\73\3D\38\30\30\2E\2E\38\30\37\0A"
+@primer.failure.68.800.807 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.68.800.807.11, i64 73 }]
+@primer.failure.67.800.810.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\36\37\20\62\79\74\65\73\3D\38\30\30\2E\2E\38\31\30\0A"
+@primer.failure.67.800.810 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.67.800.810.11, i64 73 }]
+@primer.failure.2.118.134.0 = private unnamed_addr constant [63 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\69\6E\74\65\67\65\72\2D\6F\76\65\72\66\6C\6F\77\20\6E\6F\64\65\3D\32\20\62\79\74\65\73\3D\31\31\38\2E\2E\31\33\34\0A"
+@primer.failure.2.118.134 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } { ptr @primer.failure.2.118.134.0, i64 63 }, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer]
+@primer.failure.15.332.341.11 = private unnamed_addr constant [73 x i8] c"\70\72\69\6D\65\72\3A\20\72\75\6E\74\69\6D\65\2D\76\31\20\63\6F\64\65\3D\61\72\72\61\79\2D\69\6E\64\65\78\2D\6F\75\74\2D\6F\66\2D\62\6F\75\6E\64\73\20\6E\6F\64\65\3D\31\35\20\62\79\74\65\73\3D\33\33\32\2E\2E\33\34\31\0A"
+@primer.failure.15.332.341 = private constant [12 x { ptr, i64 }] [{ ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } zeroinitializer, { ptr, i64 } { ptr @primer.failure.15.332.341.11, i64 73 }]
 @.fmt_i64 = private unnamed_addr constant [6 x i8] c"%lld\0A\00"
 @.fmt_f32 = private unnamed_addr constant [6 x i8] c"%.9g\0A\00"
 @.fmt_f64 = private unnamed_addr constant [7 x i8] c"%.17g\0A\00"
@@ -7,7 +25,22 @@ declare i32 @printf(ptr, ...)
 declare void @llvm.trap()
 declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
 
-define internal i64 @primer_i64_add(i64 %left, i64 %right) {
+declare i32 @fflush(ptr)
+declare i64 @write(i32, ptr, i64)
+
+define internal void @primer.runtime.fail(ptr %failure, i64 %code) {
+entry:
+  call i32 @fflush(ptr null)
+  %slot = getelementptr inbounds { ptr, i64 }, ptr %failure, i64 %code
+  %record = load { ptr, i64 }, ptr %slot
+  %data = extractvalue { ptr, i64 } %record, 0
+  %length = extractvalue { ptr, i64 } %record, 1
+  call i64 @write(i32 2, ptr %data, i64 %length)
+  call void @llvm.trap()
+  unreachable
+}
+
+define internal i64 @primer_i64_add(i64 %left, i64 %right, ptr %failure) {
 entry:
   %checked = call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %left, i64 %right)
   %result = extractvalue { i64, i1 } %checked, 0
@@ -15,21 +48,20 @@ entry:
   br i1 %overflow, label %trap, label %ok
 
 trap:
-  call void @llvm.trap()
+  call void @primer.runtime.fail(ptr %failure, i64 0)
   unreachable
-
 ok:
   ret i64 %result
 }
 
-define internal i64 @primer.array.get.i64.2([2 x i64] %value, i64 %index) {
+define internal i64 @primer.array.get.i64.2([2 x i64] %value, i64 %index, ptr %failure) {
 entry:
   %index.low = icmp slt i64 %index, 0
   %index.high = icmp sge i64 %index, 2
   %index.outside = or i1 %index.low, %index.high
   br i1 %index.outside, label %out_of_bounds, label %in_bounds
 out_of_bounds:
-  call void @llvm.trap()
+  call void @primer.runtime.fail(ptr %failure, i64 11)
   unreachable
 in_bounds:
   %array = alloca [2 x i64]
@@ -39,14 +71,14 @@ in_bounds:
   ret i64 %result
 }
 
-define internal [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %value, i64 %index) {
+define internal [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %value, i64 %index, ptr %failure) {
 entry:
   %index.low = icmp slt i64 %index, 0
   %index.high = icmp sge i64 %index, 2
   %index.outside = or i1 %index.low, %index.high
   br i1 %index.outside, label %out_of_bounds, label %in_bounds
 out_of_bounds:
-  call void @llvm.trap()
+  call void @primer.runtime.fail(ptr %failure, i64 11)
   unreachable
 in_bounds:
   %array = alloca [2 x [2 x i64]]
@@ -65,7 +97,7 @@ entry:
   %tmp0 = load %primer.type.Point.0, ptr %primer_point
   %tmp1 = extractvalue %primer.type.Point.0 %tmp0, 0
   %tmp2 = load i64, ptr %primer_amount
-  %tmp3 = call i64 @primer_i64_add(i64 %tmp1, i64 %tmp2)
+  %tmp3 = call i64 @primer_i64_add(i64 %tmp1, i64 %tmp2, ptr @primer.failure.2.118.134)
   %tmp4 = insertvalue %primer.type.Point.0 poison, i64 %tmp3, 0
   %tmp5 = load %primer.type.Point.0, ptr %primer_point
   %tmp6 = extractvalue %primer.type.Point.0 %tmp5, 1
@@ -92,7 +124,7 @@ entry:
   %primer_matrix = alloca [2 x [2 x i64]]
   store [2 x [2 x i64]] %arg0, ptr %primer_matrix
   %tmp0 = load [2 x [2 x i64]], ptr %primer_matrix
-  %tmp1 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp0, i64 0)
+  %tmp1 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp0, i64 0, ptr @primer.failure.15.332.341)
   ret [2 x i64] %tmp1
 }
 
@@ -149,16 +181,16 @@ entry:
   %tmp17 = extractvalue %primer.type.Point.0 %tmp16, 1
   call i32 (ptr, ...) @printf(ptr @.fmt_i64, i64 %tmp17)
   %tmp18 = load [2 x [2 x i64]], ptr %primer_matrix
-  %tmp19 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp18, i64 1)
-  %tmp20 = call i64 @primer.array.get.i64.2([2 x i64] %tmp19, i64 0)
+  %tmp19 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp18, i64 1, ptr @primer.failure.56.760.769)
+  %tmp20 = call i64 @primer.array.get.i64.2([2 x i64] %tmp19, i64 0, ptr @primer.failure.55.760.772)
   call i32 (ptr, ...) @printf(ptr @.fmt_i64, i64 %tmp20)
   %tmp21 = load [2 x [2 x i64]], ptr %primer_rows
-  %tmp22 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp21, i64 0)
-  %tmp23 = call i64 @primer.array.get.i64.2([2 x i64] %tmp22, i64 1)
+  %tmp22 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp21, i64 0, ptr @primer.failure.62.781.788)
+  %tmp23 = call i64 @primer.array.get.i64.2([2 x i64] %tmp22, i64 1, ptr @primer.failure.61.781.791)
   call i32 (ptr, ...) @printf(ptr @.fmt_i64, i64 %tmp23)
   %tmp24 = load [2 x [2 x i64]], ptr %primer_rows
-  %tmp25 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp24, i64 1)
-  %tmp26 = call i64 @primer.array.get.i64.2([2 x i64] %tmp25, i64 0)
+  %tmp25 = call [2 x i64] @primer.array.get.array.i64.2.2([2 x [2 x i64]] %tmp24, i64 1, ptr @primer.failure.68.800.807)
+  %tmp26 = call i64 @primer.array.get.i64.2([2 x i64] %tmp25, i64 0, ptr @primer.failure.67.800.810)
   call i32 (ptr, ...) @printf(ptr @.fmt_i64, i64 %tmp26)
   ret i32 0
 }

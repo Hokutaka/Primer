@@ -1,5 +1,6 @@
 mod conversion;
 mod emit;
+mod failure;
 mod integer;
 pub mod ir;
 mod lower;
@@ -38,8 +39,9 @@ mod tests {
                 [
                     Instruction::I64Const(0),
                     Instruction::I64Const(1),
-                    Instruction::CheckedI64Sub
+                    Instruction::Located { instruction, .. }
                 ]
+                if matches!(**instruction, Instruction::CheckedI64Sub)
             )
         }));
     }
