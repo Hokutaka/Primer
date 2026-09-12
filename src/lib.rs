@@ -74,6 +74,18 @@ pub fn compile_to_ir(source: &str) -> Result<ir::Program, Diagnostic> {
     ir::builder::build(&program)
 }
 
+/// 登録済みファイルを解析し、診断とASTにそのファイルの識別子を保持します。
+pub fn compile_source(source: &source::SourceFile) -> Result<Program, Diagnostic> {
+    let program = parser::parse(lexer::lex_source(source)?)?;
+    semantic::check(&program)?;
+    Ok(program)
+}
+
+/// 全生成経路が受け取るIRまで、ファイル内のバイト範囲を保持します。
+pub fn compile_source_to_ir(source: &source::SourceFile) -> Result<ir::Program, Diagnostic> {
+    ir::builder::build(&parser::parse(lexer::lex_source(source)?)?)
+}
+
 pub fn compile_to_ir_text(source: &str) -> Result<String, Diagnostic> {
     let program = compile_to_ir(source)?;
 
@@ -179,7 +191,12 @@ pub fn compile_to_bytecode_text(source: &str) -> Result<String, Diagnostic> {
 pub fn run_vm(source: &str) -> Result<String, RunError> {
     let bytecode = compile_to_bytecode(source).map_err(RunError::Compilation)?;
 
-    vm::run(&bytecode).map_err(|vm_error| {
+    run_bytecode(&bytecode).map_err(RunError::Execution)
+}
+
+/// ファイル識別子を持つIRからlowerしたbytecodeも、同じ出自付きエラーを返します。
+pub fn run_bytecode(bytecode: &bytecode::BytecodeProgram) -> Result<String, ExecutionError> {
+    vm::run(bytecode).map_err(|vm_error| {
         let instructions = vm_error
             .function_id()
             .and_then(|function_id| bytecode.functions.get(function_id))
@@ -190,10 +207,10 @@ pub fn run_vm(source: &str) -> Result<String, RunError> {
             .get(vm_error.instruction_index())
             .map(|instruction| instruction.origin);
 
-        RunError::Execution(ExecutionError {
+        ExecutionError {
             vm_error: Box::new(vm_error),
             origin,
-        })
+        }
     })
 }
 

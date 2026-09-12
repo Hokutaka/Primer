@@ -6,6 +6,8 @@ This directory contains programs that can be read and executed with the current 
 
 Four [expected-failure examples](runtime_failures/README.en.md) separately demonstrate retained output and the source expression where execution stops.
 
+The [file-origin example](source_files/README.en.md) uses the Rust API to validate the foundation for modules, parsing type/function definitions separately and comparing origins. Import syntax is not implemented; these components are outside the batch runner below.
+
 ## Run all examples
 
 From the repository root, run the following command to display each example's name, output, status, and a final summary:

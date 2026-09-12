@@ -140,14 +140,14 @@ function hash(bytes) { return crypto.createHash('sha256').update(bytes).digest('
 // 完全な1レコードだけを受け付け、別のクラッシュや追加のエラーを合格にしません。
 function parseRuntimeFailure(bytes) {
   const text = bytes.toString('utf8').replace(/\r\n/g, '\n');
-  const match = /^primer: runtime-v1 code=([a-z-]+) node=(0|[1-9][0-9]*) bytes=(0|[1-9][0-9]*)\.\.(0|[1-9][0-9]*)\n$/.exec(text);
+  const match = /^primer: runtime-v1 code=([a-z-]+) node=(0|[1-9][0-9]*)(?: file=([1-9][0-9]*))? bytes=(0|[1-9][0-9]*)\.\.(0|[1-9][0-9]*)\n$/.exec(text);
   if (!match || match[0].length !== text.length) return null;
   const codes = ['integer-overflow', 'division-by-zero', 'division-overflow', 'remainder-by-zero',
     'invalid-shift-count', 'integer-conversion-out-of-range', 'conversion-out-of-range',
     'conversion-inexact', 'conversion-not-finite', 'conversion-nan', 'conversion-negative-zero', 'array-index-out-of-bounds'];
-  const [node, start, end] = match.slice(2).map(Number);
-  if (!codes.includes(match[1]) || ![node, start, end].every(Number.isSafeInteger) || start >= end) return null;
-  return { schema: 'runtime-v1', code: match[1], node, start, end };
+  const node = Number(match[2]), file = Number(match[3] || 0), start = Number(match[4]), end = Number(match[5]);
+  if (!codes.includes(match[1]) || ![node, file, start, end].every(Number.isSafeInteger) || start >= end) return null;
+  return { schema: 'runtime-v1', code: match[1], node, ...(file ? { file } : {}), start, end };
 }
 
 if (require.main === module) {

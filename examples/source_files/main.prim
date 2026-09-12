@@ -1,0 +1,8 @@
+mut values: [Reading; 1] = [reading(18446744073709551615)];
+copy: [Reading; 1] = values;
+values[0] = reading(2);
+print(copy[0].amount);
+print(values[0].amount);
+print(copy[0].label);
+print(false && (divide(1, 0) == 0));
+print(divide(10, 2));

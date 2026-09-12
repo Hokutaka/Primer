@@ -893,8 +893,9 @@ fn emit_origin(
         super::ir::Origin::Synthetic => output.push_str("# primer-origin: synthetic\n"),
         super::ir::Origin::Source { node_id, span } => {
             output.push_str(&format!(
-                "# primer-origin: #{} bytes {}..{}\nprimer_origin_n{}_{prefix}_{index}:\n",
+                "# primer-origin: #{}{} bytes {}..{}\nprimer_origin_n{}_{prefix}_{index}:\n",
                 node_id.0,
+                span.source_id().record_field(),
                 span.start(),
                 span.end(),
                 node_id.0

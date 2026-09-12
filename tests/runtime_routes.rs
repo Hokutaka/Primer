@@ -299,6 +299,36 @@ fn wat_host_requires_a_valid_record_and_an_unreachable_trap() {
     let record = "primer: runtime-v1 code=division-by-zero node=7 bytes=0..1\n";
     for (label, diagnostic, tail, accepted) in [
         ("reported-unreachable", record, "unreachable", true),
+        (
+            "reported-file",
+            "primer: runtime-v1 code=division-by-zero node=7 file=2 bytes=0..1\n",
+            "unreachable",
+            true,
+        ),
+        (
+            "zero-file",
+            "primer: runtime-v1 code=division-by-zero node=7 file=0 bytes=0..1\n",
+            "unreachable",
+            false,
+        ),
+        (
+            "leading-zero-file",
+            "primer: runtime-v1 code=division-by-zero node=7 file=02 bytes=0..1\n",
+            "unreachable",
+            false,
+        ),
+        (
+            "unsafe-file",
+            "primer: runtime-v1 code=division-by-zero node=7 file=9007199254740992 bytes=0..1\n",
+            "unreachable",
+            false,
+        ),
+        (
+            "duplicate-file",
+            "primer: runtime-v1 code=division-by-zero node=7 file=2 file=3 bytes=0..1\n",
+            "unreachable",
+            false,
+        ),
         ("reported-return", record, "", false),
         (
             "reported-memory-trap",

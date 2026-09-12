@@ -26,8 +26,9 @@ fn origin(instruction: &Instruction) -> Option<FailureOrigin> {
 
 fn suffix(origin: FailureOrigin) -> String {
     format!(
-        " node={} bytes={}..{}\n",
+        " node={}{} bytes={}..{}\n",
         origin.node.0,
+        origin.span.source_id().record_field(),
         origin.span.start(),
         origin.span.end()
     )

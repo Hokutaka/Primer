@@ -1,5 +1,5 @@
 use super::Diagnostic;
-use crate::source::SourceLocation;
+use crate::source::{SourceId, SourceLocation, SourceMap, Span};
 
 const MAX_MESSAGE_CHARACTERS: usize = 4096;
 
@@ -8,6 +8,13 @@ pub fn render_compact(diagnostic: &Diagnostic, source: &str) -> String {
     let message = sanitize_message(diagnostic.message());
 
     match diagnostic.primary_span() {
+        Some(span) if span.source_id() != SourceId::ANONYMOUS => {
+            format!(
+                "{message} at file={} byte {}",
+                span.source_id().index(),
+                span.start()
+            )
+        }
         Some(span) => match SourceLocation::from_offset(source, span.start()) {
             Some(location) => {
                 format!("{message} at {}:{}", location.line(), location.column())
@@ -15,6 +22,28 @@ pub fn render_compact(diagnostic: &Diagnostic, source: &str) -> String {
             None => format!("{message} at byte {}", span.start()),
         },
         None => message,
+    }
+}
+
+/// SourceMapに登録した本文だけを参照して、ファイル名と行・列を表示します。
+pub fn render_compact_with_sources(diagnostic: &Diagnostic, sources: &SourceMap) -> String {
+    let message = sanitize_message(diagnostic.message());
+    match diagnostic.primary_span() {
+        Some(span) => format!("{message} at {}", render_source_position(sources, span)),
+        None => message,
+    }
+}
+
+pub(crate) fn render_source_position(sources: &SourceMap, span: Span) -> String {
+    match sources.resolve(span) {
+        Some((file, location)) => format!(
+            "{}:{}:{} (file={})",
+            sanitize_message(file.name()),
+            location.line(),
+            location.column(),
+            file.id().index()
+        ),
+        None => format!("file={} byte {}", span.source_id().index(), span.start()),
     }
 }
 

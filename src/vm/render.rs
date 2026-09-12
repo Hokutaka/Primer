@@ -1,5 +1,5 @@
 use crate::bytecode::Type;
-use crate::source::{SourceLocation, Span};
+use crate::source::{SourceId, SourceLocation, SourceMap, Span};
 
 use super::{IntegerOperation, VmError, VmErrorKind};
 
@@ -19,6 +19,9 @@ pub fn render_compact(error: &VmError) -> String {
 ///
 /// ソース位置を解決できない場合は、bytecode命令番号だけを含む形式へ戻します。
 pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> String {
+    if span.source_id() != SourceId::ANONYMOUS {
+        return render_compact_with_sources(error, &SourceMap::new(), span);
+    }
     let Some(location) = SourceLocation::from_offset(source, span.start()) else {
         return render_compact(error);
     };
@@ -35,6 +38,15 @@ pub fn render_compact_with_source(error: &VmError, source: &str, span: Span) -> 
         render_message(error),
         location.line(),
         location.column()
+    )
+}
+
+/// 実行命令の出自に対応するファイルを明示して診断します。
+pub fn render_compact_with_sources(error: &VmError, sources: &SourceMap, span: Span) -> String {
+    format!(
+        "{}; source {}",
+        render_compact(error),
+        crate::diagnostic::render::render_source_position(sources, span)
     )
 }
 

@@ -984,8 +984,9 @@ fn emit_origin(origin: Origin, enabled: bool, output: &mut String) {
     match origin {
         Origin::Source { node_id, span } => writeln!(
             output,
-            "; primer-origin: #{} bytes {}..{}",
+            "; primer-origin: #{}{} bytes {}..{}",
             node_id.0,
+            span.source_id().record_field(),
             span.start(),
             span.end()
         )
